@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>KODA - Stock Details</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0e17">
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#34a8eb", 
+                        "success": "#00c076", 
+                        "danger": "#ff4d4d", 
+                        "background-dark": "#0a0e17", 
+                        "surface-dark": "#161c2b", 
+                        "border-dark": "#232b3e",
+                    },
+                    fontFamily: { "display": ["Inter", "sans-serif"] },
+                },
+            },
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .fill-icon { font-variation-settings: 'FILL' 1; }
+        ::-webkit-scrollbar { display: none; }
+        body { min-height: max(884px, 100dvh); }
+    </style>
+</head>
+<body class="bg-background-dark text-slate-100 min-h-screen font-display">
+<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative">
+    
+    <header class="flex items-center p-4 justify-between sticky top-0 bg-background-dark/95 backdrop-blur-md z-20 border-b border-border-dark/30">
+        <button onclick="window.history.back()" class="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors">
+            <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div class="flex flex-col items-center flex-1">
+            <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight" id="detail-symbol">-</h2>
+            <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider" id="detail-name">Loading...</p>
+        </div>
+        <button id="btn-toggle-star" class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors">
+            <span id="icon-star" class="material-symbols-outlined transition-colors">star</span>
+        </button>
+    </header>
+
+    <main class="flex-1 overflow-y-auto pb-28">
+        
+        <section class="px-4 pt-4 pb-2">
+            <div class="flex flex-col items-center text-center">
+                <h1 class="text-white text-4xl font-black tracking-tight" id="detail-price">$0.00</h1>
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-slate-400 text-sm font-bold bg-slate-800 px-2 py-0.5 rounded flex items-center gap-1" id="detail-change">
+                        <span class="material-symbols-outlined text-[14px]">horizontal_rule</span>
+                        0.00 (0.00%)
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-4 border-y border-border-dark/50">
+            <div class="w-full h-[350px] relative bg-background-dark" id="tv-widget-container" style="touch-action: none;"></div>
+        </section>
+
+        <section class="px-4 pt-6" id="financials-section">
+            <div class="flex items-center justify-between mb-3 relative">
+                <h3 class="text-white text-base font-bold flex items-center gap-2 cursor-pointer select-none" id="fin-dropdown-btn">
+                    Financials: <span id="fin-current-tab" class="text-primary">Income Statement</span>
+                    <span class="material-symbols-outlined text-xl transition-transform duration-200" id="fin-dropdown-icon">arrow_drop_down</span>
+                </h3>
+                
+                <div id="fin-dropdown-menu" class="hidden absolute top-8 left-0 mt-1 w-56 bg-surface-dark border border-border-dark rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                    <button class="w-full text-left px-4 py-3 hover:bg-slate-800 text-sm font-bold text-primary fin-tab-btn" data-tab="income">Income Statement</button>
+                    <button class="w-full text-left px-4 py-3 border-t border-border-dark/50 hover:bg-slate-800 text-sm font-bold text-slate-300 fin-tab-btn" data-tab="balance">Balance Sheet</button>
+                    <button class="w-full text-left px-4 py-3 border-t border-border-dark/50 hover:bg-slate-800 text-sm font-bold text-slate-300 fin-tab-btn" data-tab="cashflow">Cash Flow</button>
+                </div>
+            </div>
+            
+            <div class="bg-surface-dark border border-border-dark rounded-xl p-4 shadow-sm">
+                <div id="fin-legend" class="flex items-center justify-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    </div>
+                
+                <div class="w-full h-[180px] relative mb-4 border-b border-border-dark/50 pb-4">
+                    <canvas id="financials-chart"></canvas>
+                </div>
+                
+                <div id="fin-data-list" class="space-y-0.5 mt-2">
+                    <p class="text-center text-slate-500 text-xs py-4">Fetching financial statements...</p>
+                </div>
+            </div>
+
+            <div class="hidden">
+                <span id="stat-pe"></span><span id="stat-eps"></span><span id="stat-mcap"></span>
+                <span id="stat-rev"></span><span id="stat-ps"></span><span id="stat-margin"></span>
+                <span id="stat-beta"></span><span id="stat-div"></span><span id="stat-yoy"></span>
+            </div>
+        </section>
+
+        <section class="px-4 pt-6" id="consensus-section" style="display: none;">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-primary text-[18px]">query_stats</span>
+                <h3 class="text-white text-base font-bold">Analyst Consensus</h3>
+            </div>
+            <div class="bg-surface-dark border border-border-dark rounded-xl p-4 shadow-sm">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-slate-400 text-xs font-medium" id="consensus-period">Wall Street Rating</span>
+                    <span class="text-white text-xs font-bold bg-slate-800 px-2 py-0.5 rounded" id="consensus-total">0 Ratings</span>
+                </div>
+                <div class="flex h-3 rounded-full overflow-hidden bg-background-dark w-full mb-3" id="consensus-bar">
+                    </div>
+                <div class="flex justify-between text-[10px] font-bold uppercase tracking-wider">
+                    <div class="flex items-center gap-1.5 text-success"><span class="size-2.5 rounded-full bg-success shadow-[0_0_5px_rgba(0,192,118,0.5)]"></span><span id="consensus-buy">0 Buy</span></div>
+                    <div class="flex items-center gap-1.5 text-slate-400"><span class="size-2.5 rounded-full bg-slate-400"></span><span id="consensus-hold">0 Hold</span></div>
+                    <div class="flex items-center gap-1.5 text-danger"><span class="size-2.5 rounded-full bg-danger shadow-[0_0_5px_rgba(255,77,77,0.5)]"></span><span id="consensus-sell">0 Sell</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="px-4 pt-6">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-primary text-[18px]">insights</span>
+                <h3 class="text-white text-base font-bold">AI Financial Summary</h3>
+            </div>
+            <div class="bg-surface-dark border-l-4 border-primary rounded-r-xl p-4 shadow-lg">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-primary text-[10px] font-bold uppercase tracking-widest border border-primary/30 bg-primary/10 px-2 py-0.5 rounded">Gemini Insight</span>
+                    <span class="text-slate-500 text-[10px]" id="ai-summary-date">Just Now</span>
+                </div>
+                <p class="text-slate-300 text-sm leading-relaxed" id="ai-financial-summary">Analyzing financial metrics...</p>
+                <div class="mt-3 flex gap-2">
+                    <div class="flex-1 bg-background-dark h-1.5 rounded-full overflow-hidden border border-border-dark">
+                        <div class="bg-primary h-full w-full opacity-50 animate-pulse" id="ai-loading-bar"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="px-4 pt-6" id="insider-section" style="display: none;">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-primary text-[18px]">policy</span>
+                <h3 class="text-white text-base font-bold">Insider Transactions</h3>
+            </div>
+            <div class="space-y-2" id="insider-container">
+                </div>
+        </section>
+
+        <section class="px-4 pt-6 pb-6">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-primary text-[18px]">feed</span>
+                <h3 class="text-white text-base font-bold">Latest Catalysts</h3>
+            </div>
+            <div class="space-y-3" id="stock-news-container">
+                <p class="text-slate-500 text-sm text-center py-4">Fetching latest news...</p>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="modal-remove-star" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-surface-dark border border-border-dark w-[300px] rounded-2xl p-5 shadow-2xl transform scale-95 transition-transform" id="modal-remove-content">
+            <div class="flex items-center gap-3 mb-3">
+                <span class="material-symbols-outlined text-danger text-3xl">warning</span>
+                <h3 class="text-white text-lg font-bold">Remove Asset?</h3>
+            </div>
+            <p class="text-slate-400 text-sm mb-6">Are you sure you want to remove <span id="remove-symbol-text" class="font-bold text-white"></span> from your watchlist?</p>
+            <div class="flex gap-3">
+                <button id="btn-cancel-remove" class="flex-1 py-2.5 rounded-xl font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors">Cancel</button>
+                <button id="btn-confirm-remove" class="flex-1 py-2.5 rounded-xl font-bold text-white bg-danger hover:bg-danger/80 transition-colors shadow-lg shadow-danger/20">Remove</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="modal-news-detail" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/90 backdrop-blur-sm transition-opacity opacity-0 pb-10">
+        <div class="bg-surface-dark border border-border-dark w-[90%] max-w-md rounded-2xl flex flex-col max-h-[85vh] shadow-2xl transform scale-95 transition-transform" id="modal-news-content">
+            <div class="flex items-center justify-between p-4 border-b border-border-dark shrink-0">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">psychology</span>
+                    <h3 class="text-white font-bold text-sm uppercase tracking-wider">KODA Deep Summary</h3>
+                </div>
+                <button id="btn-close-news" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1 active:scale-90 transition-all"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            
+            <div class="p-4 overflow-y-auto no-scrollbar flex-1 space-y-4" id="news-modal-body">
+                </div>
+            
+            <div class="p-4 border-t border-border-dark shrink-0">
+                <a id="news-modal-link" href="#" target="_blank" class="flex items-center justify-center gap-2 w-full py-3 bg-primary/10 border border-primary/30 text-primary text-center font-bold rounded-xl hover:bg-primary hover:text-white transition-colors text-xs uppercase tracking-wider">
+                    <span class="material-symbols-outlined text-[16px]">open_in_new</span> อ่านข่าวต้นฉบับ
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div id="bottom-nav-container"></div>   
+    <script src="js/nav.js"></script>
+    <script src="js/ai-helper.js"></script>
+    <script src="js/stock-detail.js"></script>
+    <script src="js/asset-insights.js"></script>
+</div>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(() => {
+      console.log('Service Worker Registered');
+    });
+  }
+</script>
+</body>
+</html>

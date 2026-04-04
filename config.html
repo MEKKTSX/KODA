@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>KODA - Settings</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0e17">
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#34a8eb", 
+                        "success": "#00c076", 
+                        "danger": "#ff4d4d", 
+                        "background-dark": "#0a0e17", 
+                        "surface-dark": "#161c2b", 
+                        "border-dark": "#232b3e",
+                    },
+                    fontFamily: { "display": ["Inter", "sans-serif"] },
+                },
+            },
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        ::-webkit-scrollbar { display: none; }
+        body { min-height: max(884px, 100dvh); }
+        .toggle-checkbox:checked { right: 0; border-color: #34a8eb; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #34a8eb; }
+    </style>
+</head>
+<body class="bg-background-dark text-slate-100 min-h-screen font-display flex flex-col">
+<div class="max-w-md mx-auto flex flex-col min-h-screen w-full border-x border-border-dark/30 relative">
+    
+    <header class="flex items-center p-4 pb-3 justify-center sticky top-0 bg-background-dark/95 backdrop-blur-md z-20 border-b border-border-dark/30">
+        <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight">Settings</h2>
+    </header>
+
+    <main class="flex-1 overflow-y-auto pb-28 px-4 pt-6 space-y-6">
+        
+        <section id="profile-section" class="bg-surface-dark border border-border-dark rounded-2xl p-4 flex items-center gap-4">
+            <div class="relative">
+                <div class="size-16 rounded-full bg-gradient-to-tr from-slate-500 to-slate-700 p-0.5">
+                    <div class="size-full bg-background-dark rounded-full flex items-center justify-center overflow-hidden">
+                        <span class="material-symbols-outlined text-3xl text-slate-300">person</span>
+                    </div>
+                </div>
+                <div class="absolute bottom-0 right-0 size-4 bg-success border-2 border-surface-dark rounded-full"></div>
+            </div>
+            <div class="flex-1">
+                <h3 class="text-white text-lg font-bold">USER LOCAL</h3>
+            </div>
+        </section>
+
+        <section>
+            <h4 class="text-slate-500 text-xs font-bold uppercase tracking-widest mb-3 px-1">General Preferences</h4>
+            <div class="bg-surface-dark border border-border-dark rounded-2xl overflow-hidden">
+                
+                <div class="flex items-center justify-between p-4 border-b border-border-dark/50">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-slate-400">notifications_active</span>
+                        <div>
+                            <p class="text-slate-200 text-sm font-medium">Push Notifications</p>
+                            <p class="text-slate-500 text-[10px]">Alerts for anomalies and catalysts</p>
+                        </div>
+                    </div>
+                    <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                        <input type="checkbox" id="toggle-notify" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-surface-dark appearance-none cursor-pointer z-10 top-0 transition-transform duration-200 ease-in-out translate-x-5" checked/>
+                        <label for="toggle-notify" class="toggle-label block overflow-hidden h-5 rounded-full bg-primary cursor-pointer transition-colors duration-200 ease-in-out"></label>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between p-4 border-b border-border-dark/50 hover:bg-slate-800 transition-colors">
+                    <div class="flex items-center gap-3 text-slate-200">
+                        <span class="material-symbols-outlined text-slate-400">payments</span>
+                        <div>
+                            <p class="text-slate-200 text-sm font-medium">Currency Display</p>
+                            <p class="text-slate-500 text-[10px]" id="currency-desc">Show portfolio in USD</p>
+                        </div>
+                    </div>
+                    <div class="relative inline-block w-12 mr-1 align-middle select-none transition duration-200 ease-in">
+                        <input type="checkbox" id="toggle-currency" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-surface-dark appearance-none cursor-pointer z-20 top-0 transition-transform duration-200 ease-in-out translate-x-0"/>
+                        <label for="toggle-currency" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-600 cursor-pointer transition-colors duration-200 ease-in-out"></label>
+                        <span class="absolute right-1.5 top-0.5 text-[9px] font-bold text-white pointer-events-none z-10">THB</span>
+                        <span class="absolute left-1 top-0.5 text-[9px] font-bold text-white pointer-events-none z-10 opacity-60">USD</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between p-4 opacity-60">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-slate-400">dark_mode</span>
+                        <div>
+                            <p class="text-slate-200 text-sm font-medium">Dark Mode</p>
+                            <p class="text-slate-500 text-[10px]">System default (Locked)</p>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-success">check_circle</span>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h4 class="text-slate-500 text-xs font-bold uppercase tracking-widest mb-3 px-1">Account & Data</h4>
+            <div class="bg-surface-dark border border-border-dark rounded-2xl overflow-hidden">
+                
+                <div class="flex items-center justify-between p-4 border-b border-border-dark/50 hover:bg-slate-800 transition-colors">
+                    <div class="flex items-center gap-3 text-slate-200">
+                        <span class="material-symbols-outlined text-slate-400">translate</span>
+                        <div>
+                            <p class="text-slate-200 text-sm font-medium">Translate EN to TH</p>
+                            <p class="text-slate-500 text-[10px]">Auto-translate news & insights</p>
+                        </div>
+                    </div>
+                    <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                        <input type="checkbox" id="toggle-translate" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-surface-dark appearance-none cursor-pointer z-10 top-0 transition-transform duration-200 ease-in-out translate-x-0"/>
+                        <label for="toggle-translate" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-600 cursor-pointer transition-colors duration-200 ease-in-out"></label>
+                    </div>
+                </div>
+
+                <input type="file" id="file-import-portfolio" accept="image/*" class="hidden">
+                <button id="btn-import-portfolio" class="w-full flex items-center justify-between p-4 border-b border-border-dark/50 hover:bg-slate-800 transition-colors">
+                    <div class="flex items-center gap-3 text-slate-200">
+                        <span class="material-symbols-outlined text-slate-400">add_photo_alternate</span>
+                        <div class="text-left">
+                            <p class="text-sm font-medium">Import Portfolio</p>
+                            <p class="text-slate-500 text-[10px]">Upload image to import data</p>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-500 text-sm">upload</span>
+                </button>
+
+                <button id="btn-reset-portfolio" class="w-full flex items-center justify-between p-4 hover:bg-slate-800 transition-colors group">
+                    <div class="flex items-center gap-3 text-danger">
+                        <span class="material-symbols-outlined group-hover:animate-pulse">delete_forever</span>
+                        <div class="text-left">
+                            <span class="text-sm font-bold">Reset Portfolio Data</span>
+                            <p class="text-danger/60 text-[10px]">Clear all holdings and watchlist</p>
+                        </div>
+                    </div>
+                </button>
+            </div>
+        </section>
+
+        <div class="text-center pt-4 pb-8">
+            <p class="text-slate-600 text-xs font-medium">KODA App v1.1.0</p>
+            <p class="text-slate-700 text-[10px] mt-1">Modular Extension Enabled</p>
+        </div>
+    </main>
+
+    <div id="modal-reset" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-surface-dark border border-danger/50 w-[300px] rounded-2xl p-5 shadow-2xl">
+            <div class="flex items-center gap-3 mb-3">
+                <span class="material-symbols-outlined text-danger text-3xl">warning</span>
+                <h3 class="text-white text-lg font-bold">Reset Data?</h3>
+            </div>
+            <p class="text-slate-400 text-sm mb-6">This will permanently delete all your Portfolio and Watchlist data. This action cannot be undone.</p>
+            <div class="flex gap-3">
+                <button id="btn-cancel-reset" class="flex-1 py-2.5 rounded-xl font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors">Cancel</button>
+                <button id="btn-confirm-reset" class="flex-1 py-2.5 rounded-xl font-bold text-white bg-danger hover:bg-danger/80 transition-colors shadow-lg shadow-danger/20">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="bottom-nav-container"></div>
+</div>
+
+<script src="js/nav.js"></script>
+
+<script src="js/market-plus.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        
+        // 📌 ระบบ Multi-Currency (แก้ไข Key ให้ตรงกับ api.js และล็อคไม่ให้กระพริบ)
+        const currencyToggle = document.getElementById('toggle-currency');
+        const currencyDesc = document.getElementById('currency-desc');
+        if (currencyToggle) {
+            // 1. ดึงค่าใช้ชื่อ 'koda_currency' ให้ตรงกับระบบหลัก
+            const isTHB = localStorage.getItem('koda_currency') === 'THB';
+            
+            // 2. ปิด Transition ชั่วคราวตอนโหลด เพื่อไม่ให้เห็นมันกระพริบเลื่อนไปมา
+            currencyToggle.style.transition = 'none';
+            currencyToggle.nextElementSibling.style.transition = 'none';
+            
+            currencyToggle.checked = isTHB;
+            
+            if (isTHB) {
+                currencyToggle.classList.add('translate-x-7');
+                currencyToggle.classList.remove('translate-x-0');
+                currencyToggle.nextElementSibling.style.backgroundColor = '#34a8eb';
+                currencyDesc.textContent = "Show portfolio in THB (฿)";
+            } else {
+                currencyToggle.classList.remove('translate-x-7');
+                currencyToggle.classList.add('translate-x-0');
+                currencyToggle.nextElementSibling.style.backgroundColor = '#475569';
+                currencyDesc.textContent = "Show portfolio in USD ($)";
+            }
+
+            // 3. เปิด Transition กลับมาใช้งานตามปกติ หลังเซ็ตภาพนิ่งเสร็จ (รอ 50ms)
+            setTimeout(() => {
+                currencyToggle.style.transition = '';
+                currencyToggle.nextElementSibling.style.transition = '';
+            }, 50);
+
+            // เมื่อกดสลับค่าเงิน
+            currencyToggle.addEventListener('change', function() {
+                localStorage.setItem('koda_currency', this.checked ? 'THB' : 'USD');
+                this.nextElementSibling.style.backgroundColor = this.checked ? '#34a8eb' : '#475569';
+                currencyDesc.textContent = this.checked ? "Show portfolio in THB (฿)" : "Show portfolio in USD ($)";
+                
+                if(this.checked) {
+                    this.classList.add('translate-x-7');
+                    this.classList.remove('translate-x-0');
+                } else {
+                    this.classList.remove('translate-x-7');
+                    this.classList.add('translate-x-0');
+                }
+            });
+        }
+
+        // ระบบ Toggle อื่นๆ (ของเดิม)
+        document.querySelectorAll('.toggle-checkbox:not(#toggle-currency)').forEach(toggle => {
+            toggle.addEventListener('change', function() {
+                if(this.checked) {
+                    this.classList.add('translate-x-5');
+                    this.classList.remove('translate-x-0');
+                } else {
+                    this.classList.remove('translate-x-5');
+                    this.classList.add('translate-x-0');
+                }
+            });
+        });
+
+        const translateToggle = document.getElementById('toggle-translate');
+        if (translateToggle) {
+            const isTranslateOn = localStorage.getItem('koda_translate_th') === 'true';
+            translateToggle.checked = isTranslateOn;
+            
+            if (isTranslateOn) {
+                translateToggle.classList.add('translate-x-5');
+                translateToggle.classList.remove('translate-x-0');
+                translateToggle.nextElementSibling.style.backgroundColor = '#34a8eb';
+            }
+
+            translateToggle.addEventListener('change', function() {
+                localStorage.setItem('koda_translate_th', this.checked ? 'true' : 'false');
+                this.nextElementSibling.style.backgroundColor = this.checked ? '#34a8eb' : '#475569';
+            });
+        }
+
+        const btnImport = document.getElementById('btn-import-portfolio');
+        const fileImport = document.getElementById('file-import-portfolio');
+        if (btnImport && fileImport) {
+            btnImport.addEventListener('click', () => fileImport.click());
+        }
+
+        const btnReset = document.getElementById('btn-reset-portfolio');
+        const modalReset = document.getElementById('modal-reset');
+
+        btnReset.addEventListener('click', () => {
+            modalReset.classList.remove('hidden');
+            modalReset.classList.add('flex');
+            setTimeout(() => { modalReset.classList.remove('opacity-0'); }, 10);
+        });
+
+        document.getElementById('btn-cancel-reset').addEventListener('click', () => {
+            modalReset.classList.add('opacity-0');
+            setTimeout(() => { modalReset.classList.add('hidden'); modalReset.classList.remove('flex'); }, 200);
+        });
+
+        document.getElementById('btn-confirm-reset').addEventListener('click', () => {
+            localStorage.removeItem('koda_portfolio_data');
+            window.location.reload();
+        });
+
+    });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(() => {
+      console.log('Service Worker Registered');
+    });
+  }
+</script>
+</body>
+</html>
