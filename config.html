@@ -153,6 +153,27 @@
             <p class="text-slate-600 text-xs font-medium">KODA App v1.1.0</p>
             <p class="text-slate-700 text-[10px] mt-1">Modular Extension Enabled</p>
         </div>
+        
+        <div class="mt-6">
+            <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3 px-2">Data Management</h3>
+            <div class="bg-surface-dark border border-border-dark rounded-2xl p-4">
+                <div class="flex items-center justify-between">
+                    <div class="pr-4">
+                        <p class="text-white text-sm font-bold">Backup & Restore</p>
+                        <p class="text-slate-500 text-[10px] mt-1 leading-snug">Export your Portfolio & Watchlist to a secure JSON file, or import to restore data.</p>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <button id="btn-export-data" class="bg-primary/20 text-primary hover:bg-primary hover:text-white size-9 rounded-xl transition-colors flex items-center justify-center active:scale-95" title="Export Data">
+                            <span class="material-symbols-outlined text-[18px]">download</span>
+                        </button>
+                        <label for="input-import-data" class="bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white size-9 rounded-xl transition-colors flex items-center justify-center cursor-pointer active:scale-95" title="Import Data">
+                            <span class="material-symbols-outlined text-[18px]">upload</span>
+                        </label>
+                        <input type="file" id="input-import-data" accept=".json" class="hidden">
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <div id="modal-reset" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0">
@@ -289,6 +310,116 @@
       console.log('Service Worker Registered');
     });
   }
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // ==========================================
+    // 📌 ระบบ Backup & Restore Data (รองรับมือถือ 100%)
+    // ==========================================
+    const btnExport = document.getElementById('btn-export-data');
+    const inputImport = document.getElementById('input-import-data');
+
+    // ฟังก์ชันเปลี่ยนปุ่มเป็นสีเขียวเมื่อสำเร็จ
+    const showSuccess = () => {
+        if(!btnExport) return;
+        const originalHTML = btnExport.innerHTML;
+        btnExport.innerHTML = `<span class="material-symbols-outlined text-[18px]">check</span>`;
+        btnExport.classList.replace('text-primary', 'text-success');
+        btnExport.classList.replace('bg-primary/20', 'bg-success/20');
+        setTimeout(() => {
+            btnExport.innerHTML = originalHTML;
+            btnExport.classList.replace('text-success', 'text-primary');
+            btnExport.classList.replace('bg-success/20', 'bg-primary/20');
+        }, 2000);
+    };
+
+    // ฟังก์ชันดาวน์โหลดแบบคอมพิวเตอร์ (Fallback)
+    const downloadForDesktop = (data, fileName) => {
+        try {
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showSuccess();
+        } catch (e) {
+            // ถ้าพังทุกทางจริงๆ จะใช้วิธี Copy ลง Clipboard ให้แทน
+            navigator.clipboard.writeText(data);
+            alert("อุปกรณ์ของคุณบล็อกการเซฟไฟล์ ระบบได้ 'คัดลอก' (Copy) ข้อมูลพอร์ตไว้แล้ว คุณสามารถนำไปวาง (Paste) ในแอปสมุดโน้ตได้เลยครับ!");
+            showSuccess();
+        }
+    };
+
+    // ฟังก์ชัน Export (กดปุ่ม)
+    if (btnExport) {
+        btnExport.addEventListener('click', async () => {
+            const data = localStorage.getItem('koda_portfolio_data');
+            
+            // เช็คว่าพอร์ตว่างไหม
+            if (!data || data === '{}' || (JSON.parse(data).holdings?.length === 0 && JSON.parse(data).watchlist?.length === 0)) {
+                alert("Portfolio is empty. Nothing to export.");
+                return;
+            }
+            
+            const dateStr = new Date().toISOString().split('T')[0];
+            const fileName = `koda_backup_${dateStr}.json`;
+            const file = new File([data], fileName, { type: 'application/json' });
+
+            try {
+                // 📱 ตรวจสอบว่าเป็นมือถือ และรองรับระบบ Share ไฟล์ไหม
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: 'KODA Portfolio Backup',
+                        text: 'Here is your KODA app backup data.'
+                    });
+                    showSuccess();
+                } else {
+                    // 💻 ถ้าไม่ใช่ระบบมือถือ ให้รันคำสั่งดาวน์โหลดปกติ
+                    downloadForDesktop(data, fileName);
+                }
+            } catch (err) {
+                // ถ้าผู้ใช้กดยกเลิกหน้าต่างแชร์ หรือมือถือเอ๋อ ให้สลับไปใช้วิธีโหลดปกติ
+                console.warn("Share failed or cancelled:", err);
+                downloadForDesktop(data, fileName);
+            }
+        });
+    }
+
+    // ฟังก์ชัน Import (โหลดไฟล์เข้าแอป)
+    if (inputImport) {
+        inputImport.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const importedData = JSON.parse(event.target.result);
+                    
+                    if (importedData.holdings !== undefined || importedData.watchlist !== undefined) {
+                        if (confirm("Warning: Importing data will overwrite your current Portfolio and Watchlist. Proceed?")) {
+                            localStorage.setItem('koda_portfolio_data', JSON.stringify(importedData));
+                            alert('Data restored successfully! The app will now reload.');
+                            window.location.reload();
+                        }
+                    } else {
+                        alert('Invalid file format. Please select a valid KODA backup file.');
+                    }
+                } catch (error) {
+                    alert('Error reading the JSON file. It might be corrupted.');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+    }
+});
 </script>
 </body>
 </html>
