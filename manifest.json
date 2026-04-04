@@ -1,0 +1,17 @@
+{
+  "name": "KODA Intelligence",
+  "short_name": "KODA",
+  "description": "AI-Powered Market & Portfolio Tracker",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0a0e17",
+  "theme_color": "#34a8eb",
+  "icons": [
+    {
+      "src": "KODA.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
