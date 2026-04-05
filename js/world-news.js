@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         while (retries > 0) {
             try {
                 const activeKey = GEMINI_API_KEYS[currentKeyIdx];
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${activeKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${activeKey}`;
                 
                 const response = await fetch(url, {
                     method: 'POST',
