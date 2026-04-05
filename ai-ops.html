@@ -121,8 +121,9 @@
 <script src="js/ai-helper.js"></script>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
+    await window.loadKodaConfig();
     // 🔑 1. ระบบ 3 API Keys สลับกันเมื่อโควต้าเต็ม (แก้บัคค้าง)
     const GEMINI_API_KEYS = window.ENV_KEYS.GEMINI;
     

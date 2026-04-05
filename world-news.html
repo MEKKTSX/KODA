@@ -91,8 +91,17 @@
 </div>
 
 <script src="js/nav.js"></script>
-<script src="js/ai-helper.js"></script>
-<script src="js/world-news.js"></script>
+<script>
+    window.loadKodaConfig().then(() => {
+        const scripts = ["js/ai-helper.js", "js/world-news.js"];
+        scripts.forEach(src => {
+            const s = document.createElement('script');
+            s.src = src;
+            document.body.appendChild(s);
+        });
+    });
+</script>
+
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(() => {

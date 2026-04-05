@@ -173,14 +173,20 @@
 </div>
 
     <script src="js/nav.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/drag-drop.js"></script>
-    <script src="js/search.js"></script>
-    <script src="js/markets.js"></script>
-    <script src="js/ai-helper.js"></script>
-    
-    <script src="js/market-plus.js"></script>
-    <script src="js/ai-pro.js"></script>
+<script>
+    window.loadKodaConfig().then(() => {
+        const scripts = [
+            "js/api.js", "js/drag-drop.js", "js/search.js", 
+            "js/markets.js", "js/ai-helper.js", "js/market-plus.js", "js/ai-pro.js"
+        ];
+        scripts.forEach(src => {
+            const s = document.createElement('script');
+            s.src = src;
+            document.body.appendChild(s);
+        });
+    });
+</script>
+
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {

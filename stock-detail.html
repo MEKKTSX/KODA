@@ -202,9 +202,18 @@
 
     <div id="bottom-nav-container"></div>   
     <script src="js/nav.js"></script>
-    <script src="js/ai-helper.js"></script>
-    <script src="js/stock-detail.js"></script>
-    <script src="js/asset-insights.js"></script>
+<script>
+    window.loadKodaConfig().then(() => {
+        const scripts = ["js/ai-helper.js", "js/stock-detail.js", "js/asset-insights.js"];
+        scripts.forEach(src => {
+            const s = document.createElement('script');
+            s.src = src;
+            document.body.appendChild(s);
+        });
+    });
+</script>
+
+    
 </div>
 <script>
   if ('serviceWorker' in navigator) {
