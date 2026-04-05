@@ -4,6 +4,7 @@
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>KODA - AI Operations</title>
+    <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -123,11 +124,8 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // 🔑 1. ระบบ 3 API Keys สลับกันเมื่อโควต้าเต็ม (แก้บัคค้าง)
-    const GEMINI_API_KEYS = [
-        'AIzaSyDFOnO00yIXiuYYcJJp5TJlkUKaihWnLxs',
-        'AIzaSyCeXmhGxm3eAFjgkykDoo0ZSZCsd4srG6w',
-        'AIzaSyBbA0rpSyA7VarA4eZS2fXFOxLHRo0CHRY'
-    ];
+    const GEMINI_API_KEYS = window.ENV_KEYS.GEMINI;
+    
     let currentKeyIdx = 0;
 
     const chatForm = document.getElementById('chat-form');
