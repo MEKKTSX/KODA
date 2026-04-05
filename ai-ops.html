@@ -158,9 +158,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     renderMorningBrief();
 
-    // ========================================================
-    // 📌 ระบบเลื่อนจอ (Scroll) 
-    // ========================================================
     const scrollToBottom = () => {
         requestAnimationFrame(() => {
             setTimeout(() => {
@@ -331,9 +328,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         chatInput.value = '';
         sendBtn.disabled = true;
 
-        // 📌 แก้บัคประวัติแชทเหลื่อมกัน (Unbalanced History) ที่ทำให้ API Error 400
         if (currentHistory.length > 0 && currentHistory[currentHistory.length - 1].role === 'user') {
-            currentHistory.pop(); // ถ้ารอบที่แล้ว AI พัง ไม่ได้ตอบ ให้ดึงของเก่าออกก่อนส่งใหม่
+            currentHistory.pop(); 
         }
 
         currentHistory.push({ role: "user", parts: [{ text: text }] });
@@ -344,15 +340,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const isTranslateOn = localStorage.getItem('koda_translate_th') === 'true';
             
-            // 📌 สแกนพอร์ตและ Watchlist เพื่อป้อนข้อมูลให้ AI เข้าใจบริบทผู้ใช้
             const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
             const wl = (savedData.watchlist || []).map(w => w.symbol).join(', ');
             const port = (savedData.holdings || []).map(h => `${h.symbol} (${h.shares} sh)`).join(', ');
 
-            // 📌 แก้ไขให้เป็นชื่อเครื่องมือที่ถูกต้องสำหรับ Google AI Studio (Grounding)
+            // 📌 กลับมาใช้ camelCase ตามมาตรฐาน Google REST API (fetch)
             const payload = {
                 contents: currentHistory,
-                system_instruction: {
+                systemInstruction: {
                     parts: [{ 
                         text: `You are KODA, a highly intelligent and professional AI financial assistant. 
                         Provide concise, accurate, and insightful market analysis. 
@@ -362,26 +357,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ${isTranslateOn ? "IMPORTANT: You MUST reply entirely in Thai language, translating financial terms clearly while keeping stock tickers (e.g. AAPL, TSLA) in English." : "Please reply in English."}` 
                     }]
                 },
-                // ✅ แก้จาก google_search_retrieval เป็น google_search
-                tools: [{ google_search: {} }], 
-                generation_config: {
+                // 📌 ใช้ googleSearch
+                tools: [{ googleSearch: {} }], 
+                generationConfig: {
                     temperature: 0.7,
-                    max_output_tokens: 1500,
+                    maxOutputTokens: 1500,
                 }
             };
 
             let retries = 3;
             let aiResponseText = null;
 
-            // 📌 ระบบป้องกันแอปพังกรณีไม่มี API Key
             if (!GEMINI_API_KEYS || GEMINI_API_KEYS.length === 0) {
-                throw new Error("No API Keys found in Config");
+                throw new Error("No API Keys found. Please check Vercel Environment Variables.");
             }
 
-            // 📌 ระบบสลับ API Keys อัตโนมัติเมื่อคีย์เต็ม (Limit Reached)
             while (retries > 0) {
                 try {
-                    const activeKey = GEMINI_API_KEYS[currentKeyIdx];
+                    const activeKey = GEMINI_API_KEYS[currentKeyIdx].trim();
+                    
+                    // 📌 กลับมาใช้ gemini-1.5-flash เพื่อโควต้าที่เยอะและรองรับ Search
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${activeKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -403,7 +398,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } else if (data.error) {
                         throw new Error(data.error.message);
                     } else {
-                        throw new Error("Invalid format");
+                        throw new Error("Invalid format from API");
                     }
                 } catch(err) {
                     retries--;
@@ -420,8 +415,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
                 saveSession();
             } else {
-                appendAIMessage("ขออภัยครับ ระบบประมวลผลขัดข้อง กรุณาลองใหม่อีกครั้ง");
-                currentHistory.pop(); // ถอยคำถามออก เพื่อไม่ให้ประวัติพัง
+                appendAIMessage("⚠️ ขออภัยครับ โควต้าเต็มหรือระบบขัดข้อง");
+                currentHistory.pop(); 
                 saveSession();
             }
 
@@ -429,8 +424,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error("Gemini API Error:", error);
             const typingElement = document.getElementById(typingId);
             if (typingElement) typingElement.remove();
-            appendAIMessage("ขาดการเชื่อมต่อ API กรุณาลองใหม่อีกครั้ง หรือเช็คโควต้าอินเทอร์เน็ตครับ");
-            currentHistory.pop(); // ถอยคำถามออก เพื่อไม่ให้ประวัติพัง
+            
+            // 📌 แสดง Error จริงๆ ออกมาให้เห็นบนหน้าจอ จะได้แก้ถูกจุด!
+            appendAIMessage(`🚨 ระบบขัดข้อง: ${error.message}`);
+            currentHistory.pop(); 
             saveSession();
         }
     });
