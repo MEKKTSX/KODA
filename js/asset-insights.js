@@ -2,8 +2,8 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    const FINNHUB_API_KEY = 'd6t95b9r01qj6cm3ori0d6t95b9r01qj6cm3orig';
-    const GEMINI_API_KEY = 'AIzaSyDFOnO00yIXiuYYcJJp5TJlkUKaihWnLxs';
+    const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB;
+    const GEMINI_API_KEY = window.ENV_KEYS.GEMINI[0];
     
     const urlParams = new URLSearchParams(window.location.search);
     const symbol = (urlParams.get('symbol') || 'TSLA').toUpperCase();

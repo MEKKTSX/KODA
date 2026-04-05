@@ -336,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!localStorage.getItem(cacheKeyAI)) {
                     summaryEl.textContent = "KODA AI is analyzing metrics...";
                     try {
-                        const GEMINI_API_KEY = 'AIzaSyDFOnO00yIXiuYYcJJp5TJlkUKaihWnLxs';
+                        const GEMINI_API_KEY = window.ENV_KEYS.GEMINI[0];
                         const prompt = `ในฐานะนักวิเคราะห์การเงิน โปรดสรุปข้อมูลหุ้น ${symbol} เป็นภาษาไทย 2-3 บรรทัดให้เข้าใจง่าย อิงจากข้อมูลนี้: PE: ${formatNum(m.peExclExtraTTM)}, EPS: ${formatNum(m.epsTTM)}, Rev Growth: ${formatNum(m.revenueGrowthTTMYoy, '%')}, Margin: ${formatNum(m.netProfitMarginTTM, '%')}, Consensus: ${consensusSummaryText || 'N/A'}`;
                         
                         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
@@ -448,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         try {
-            const GEMINI_API_KEY = 'AIzaSyDFOnO00yIXiuYYcJJp5TJlkUKaihWnLxs'; 
+            const GEMINI_API_KEY = window.ENV_KEYS.GEMINI[0]; 
             
             const prompt = `ในฐานะนักวิเคราะห์การเงิน โปรดอ่านหัวข้อข่าวและเนื้อหาย่อต่อไปนี้:
             Headline: ${headline}
