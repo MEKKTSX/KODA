@@ -349,7 +349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const wl = (savedData.watchlist || []).map(w => w.symbol).join(', ');
             const port = (savedData.holdings || []).map(h => `${h.symbol} (${h.shares} sh)`).join(', ');
 
-                        // 📌 แก้ไขให้เป็นชื่อเครื่องมือที่ถูกต้องสำหรับ Google AI Studio (Grounding)
+            // 📌 แก้ไขให้เป็นชื่อเครื่องมือที่ถูกต้องสำหรับ Google AI Studio (Grounding)
             const payload = {
                 contents: currentHistory,
                 system_instruction: {
@@ -377,10 +377,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!GEMINI_API_KEYS || GEMINI_API_KEYS.length === 0) {
                 throw new Error("No API Keys found in Config");
             }
-
-
-            let retries = 3;
-            let aiResponseText = null;
 
             // 📌 ระบบสลับ API Keys อัตโนมัติเมื่อคีย์เต็ม (Limit Reached)
             while (retries > 0) {
