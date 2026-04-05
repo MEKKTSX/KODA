@@ -1,9 +1,8 @@
 // ไฟล์: js/keys.js
 
-// 📌 1. โค้ดตัวแก้บัค (Hack) ที่ผมเขียนชดใช้กรรม ช่วยให้สคริปต์ที่โหลดช้าทำงานได้ปกติ
+// ตัวช่วยให้สคริปต์โหลดทัน
 const originalAddEventListener = document.addEventListener;
 document.addEventListener = function(type, listener, options) {
-    // ถ้าหน้าเว็บโหลดเสร็จไปแล้ว แต่มีไฟล์ JS มารอจังหวะ DOMContentLoaded ให้สั่งรันทันที!
     if (type === 'DOMContentLoaded' && (document.readyState === 'interactive' || document.readyState === 'complete')) {
         setTimeout(listener, 1);
         return;
@@ -11,14 +10,24 @@ document.addEventListener = function(type, listener, options) {
     originalAddEventListener.call(this, type, listener, options);
 };
 
-// 📌 2. ฟังก์ชันดึงกุญแจจาก Vercel (ตัวเดิม)
 window.loadKodaConfig = async () => {
+    // 📌 1. เช็ก Cache ใน Session ก่อน (แก้ปัญหาเว็บโหลดช้า)
+    const cachedKeys = sessionStorage.getItem('koda_secure_keys');
+    if (cachedKeys) {
+        window.ENV_KEYS = JSON.parse(cachedKeys);
+        return true;
+    }
+
     try {
+        // 📌 2. ถ้าเข้าเว็บครั้งแรก ค่อยวิ่งไปขอ Key จาก Vercel
         const response = await fetch('/api/keys');
         if (!response.ok) throw new Error('Failed to fetch config');
         const data = await response.json();
         
         window.ENV_KEYS = data;
+        // เซฟจำไว้ใน Session (ปิดแท็บเบราว์เซอร์ถึงจะหายไป ปลอดภัยแน่นอน)
+        sessionStorage.setItem('koda_secure_keys', JSON.stringify(data)); 
+        
         console.log("✅ KODA Config Loaded via Vercel Bridge");
         return true;
     } catch (error) {
