@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     
-    const FINNHUB_API_KEY = 'd6t95b9r01qj6cm3ori0d6t95b9r01qj6cm3orig'; 
+    const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB; 
 
     const SECTOR_ETFS = [
         { name: 'Technology', symbol: 'XLK', icon: 'memory', change: 0 },

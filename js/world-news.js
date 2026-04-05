@@ -1,11 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // 🔑 1. ระบบ API Key Pool (สลับอัตโนมัติเมื่อติด Limit)
-    const GEMINI_API_KEYS = [
-        'AIzaSyDFOnO00yIXiuYYcJJp5TJlkUKaihWnLxs',
-        'AIzaSyCeXmhGxm3eAFjgkykDoo0ZSZCsd4srG6w',
-        'AIzaSyBbA0rpSyA7VarA4eZS2fXFOxLHRo0CHRY'
-    ];
+    const GEMINI_API_KEYS = window.ENV_KEYS.GEMINI;
+    
     let currentKeyIdx = 0; 
 
     // UI Elements
@@ -40,34 +37,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const politicalKeywords = /war|conflict|missile|attack|military|explosion|bomb|soldier|invasion|israel|gaza|russia|ukraine|iran|hormuz|china|taiwan|tariff|sanction|election|biden|trump|putin|xi|geopolitical|สงคราม|ทหาร|อิหร่าน|สหรัฐ|จีน|รัสเซีย|ขีปนาวุธ|ผู้นำ|คว่ำบาตร|เศรษฐกิจ|วิกฤต|เจรจา|น้ำมัน/i;
 
     // ==========================================
-    // 📌 2. ฟังก์ชันดึง AI แบบฉลาด (สลับ Key อัตโนมัติเมื่อติด Limit)
+    // 📌 2. ฟังก์ชันดึง AI แบบฉลาด (ล้างข้อจำกัดที่ทำให้เกิด Error 400)
     // ==========================================
     const fetchGeminiAPI = async (prompt, isJson = false) => {
-        let retries = 4;
+        let retries = 3;
 
         while (retries > 0) {
             try {
                 const activeKey = GEMINI_API_KEYS[currentKeyIdx];
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`;
                 
-                const config = { temperature: 0.5 };
-                if (isJson) config.responseMimeType = "application/json";
-
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ role: "user", parts: [{ text: prompt }] }],
-                        generationConfig: config
+                        generationConfig: { 
+                            temperature: 0.6 
+                        }
                     })
                 });
 
-                if (response.status === 429) {
-                    console.warn(`[AI Pool] Key ${currentKeyIdx} Limit Reached. Switching...`);
-                    currentKeyIdx = (currentKeyIdx + 1) % GEMINI_API_KEYS.length;
-                    retries--;
-                    await new Promise(r => setTimeout(r, 2000));
-                    continue;
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    console.error(`[AI API Error ${response.status}]:`, errData);
+
+                    // ถ้าเป็น 429 (Limit) หรือ 503 (Server Down) ค่อยสลับ Key
+                    if (response.status === 429 || response.status === 503) {
+                        currentKeyIdx = (currentKeyIdx + 1) % GEMINI_API_KEYS.length;
+                        retries--;
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    }
+                    // ถ้า Error อื่นๆ ให้โยน Error ออกไปเลย
+                    throw new Error(`API Error ${response.status}: ${errData.error?.message || 'Unknown Error'}`);
                 }
 
                 const data = await response.json();
@@ -76,11 +79,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 throw new Error("Empty AI Response");
             } catch (e) {
+                console.warn("[AI Fetch Failed]:", e.message);
                 retries--;
                 if (retries === 0) throw e;
                 await new Promise(r => setTimeout(r, 1500));
             }
         }
+    };
+
+    // 📌 ฟังก์ชันสุ่มดึงรูปภาพเท่ๆ มาแทนที่จรวด กรณีข่าวไม่มีภาพแนบมา
+    const getFallbackTechImage = (titleText) => {
+        const fallbacks = [
+            'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=400', // AI Eye
+            'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=400', // Microchip
+            'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=400', // Cyber Security / Code
+            'https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?q=80&w=400', // Programmer
+            'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=400', // Matrix Code
+            'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=400', // Server Network
+            'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=400', // Abstract AI Brain
+            'https://images.unsplash.com/photo-1531297172864-45d448408930?q=80&w=400'  // Digital Tech Space
+        ];
+        const hash = titleText.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        return fallbacks[hash % fallbacks.length];
     };
 
     // ==========================================
@@ -246,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (parsedData.headlines[i]) n.title = parsedData.headlines[i];
                         });
                     }
-                } catch (e) { console.warn("AI Headline rewrite failed"); }
+                } catch (e) { console.warn("AI Headline rewrite failed", e); }
 
                 localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: topNews }));
                 renderTimeline(topNews);
@@ -286,26 +306,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ==========================================
-    // 📌 4. ระบบสแกนนวัตกรรมและเทคโนโลยีใหม่ (Tech & AI Innovations) อัปเกรด
+    // 📌 4. ระบบสแกนนวัตกรรมและเทคโนโลยีใหม่ (Tech & AI Innovations)
     // ==========================================
-    
-    // 📌 ฟังก์ชันสุ่มดึงรูปภาพเท่ๆ มาแทนที่จรวด กรณีข่าวไม่มีภาพแนบมา
-    const getFallbackTechImage = (titleText) => {
-        const fallbacks = [
-            'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=400', // AI Eye
-            'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=400', // Microchip
-            'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=400', // Cyber Security / Code
-            'https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?q=80&w=400', // Programmer
-            'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=400', // Matrix Code
-            'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=400', // Server Network
-            'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=400', // Abstract AI Brain
-            'https://images.unsplash.com/photo-1531297172864-45d448408930?q=80&w=400'  // Digital Tech Space
-        ];
-        // ใช้จำนวนตัวอักษรของหัวข่าวในการเลือกรูป เพื่อให้ข่าวเดิมได้รูปเดิมเสมอ ไม่สุ่มมั่วไปมา
-        const hash = titleText.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        return fallbacks[hash % fallbacks.length];
-    };
-
     const fetchTechInnovations = async (forceRefresh = false) => {
         const cacheKey = 'koda_tech_innovations_v2';
         const cached = JSON.parse(localStorage.getItem(cacheKey));
@@ -321,10 +323,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             let allTechNews = [];
 
-            // ดึงข่าวจาก TechCrunch และ The Verge ผ่าน rss2json
             const techSources = [
                 'https://techcrunch.com/feed/',
-                'https://search.cnbc.com/api/v1/search/rss/outbound/rss/content?nodeId=19854910' // CNBC Tech
+                'https://search.cnbc.com/api/v1/search/rss/outbound/rss/content?nodeId=19854910' 
             ];
 
             for (let url of techSources) {
@@ -376,7 +377,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (uniqueTech.length > 0) {
-                // 📌 เปลี่ยนเป็นดึง 20 ข่าว
                 const topTech = uniqueTech.slice(0, 20);
                 
                 videoContainer.innerHTML = `<div class="flex flex-col items-center justify-center py-10 gap-3"><div class="size-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div><p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest animate-pulse">AI is rewriting tech headlines...</p></div>`;
@@ -395,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (parsedData.headlines[i]) n.title = parsedData.headlines[i];
                         });
                     }
-                } catch (e) { console.warn("AI Tech Headline rewrite failed"); }
+                } catch (e) { console.warn("AI Tech Headline rewrite failed", e); }
 
                 localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: topTech }));
                 renderTechInnovations(topTech);
@@ -410,14 +410,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderTechInnovations = (newsList) => {
         videoContainer.innerHTML = newsList.map((n, i) => {
-            // 📌 เช็คว่าเป็นข่าวเด่นไหม (ติด Top 2 ข่าวล่าสุด หรือมีคีย์เวิร์ดระดับโลก)
             const hotKeywords = /openai|gpt|gemini|nvidia|apple|google|breakthrough|revolution|launch|announce|ai|robot|meta|microsoft/i;
             const isHot = i < 2 || hotKeywords.test(n.originalTitle);
 
-            // 📌 จัดการรูปภาพ (ถ้าไม่มี ส่งให้ AI Fallback สุ่มให้)
             let finalImgUrl = n.imgUrl || getFallbackTechImage(n.originalTitle);
 
-            // 📌 ดีไซน์: ถ้าเป็นข่าว Hot จะใส่กรอบสีรุ้งไล่เฉด (Pink -> Purple -> Blue) 
             const borderWrapClass = isHot 
                 ? 'bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 p-[1.5px] rounded-[18px] shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)]'
                 : 'bg-border-dark p-[1px] rounded-[18px] hover:border-blue-500/50';
@@ -450,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ==========================================
-    // 📌 5. ระบบ AI Summary (ประมวลผลธีมตามประเภทข่าว)
+    // 📌 5. ระบบ AI Summary (ซ่อม Try-Catch ให้ถูกต้องแล้ว)
     // ==========================================
     const runAiAnalysis = async (title, summary, newsType, cacheKey, visualHtml, sourceBadgeHtml, dateStr, modalBody) => {
         let accentColor = 'danger';
@@ -501,6 +498,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="text-slate-300 text-sm leading-relaxed space-y-4 font-medium">${aiResponse}</div>
             `;
         } catch (e) {
+            console.error("[runAiAnalysis Error]:", e);
+            const errorTitle = e.message.includes('429') ? 'โควต้า API เต็ม (Limit Reached)' : 
+                               e.message.includes('400') ? 'คำสั่งถูกปฏิเสธ (Bad Request)' : 
+                               'เกิดข้อผิดพลาดจาก AI';
+
             modalBody.innerHTML = `
                 ${visualHtml}
                 <h4 class="text-white text-lg font-bold leading-snug mb-2">${title}</h4>
@@ -509,8 +511,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="text-slate-500 text-[10px]">${dateStr}</span>
                 </div>
                 <div class="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 mb-4">
-                    <p class="text-orange-400 text-[11px] font-bold flex items-center gap-1 mb-1"><span class="material-symbols-outlined text-[14px]">warning</span> ระบบ AI กำลังยุ่ง (Limit Reached)</p>
-                    <p class="text-orange-500/70 text-[10px] leading-tight">แสดงผลเนื้อหาต้นฉบับชั่วคราว คุณสามารถอ่านรายละเอียดได้ด้านล่าง หรือกดปุ่มลองให้ AI วิเคราะห์ใหม่อีกครั้ง</p>
+                    <p class="text-orange-400 text-[11px] font-bold flex items-center gap-1 mb-1"><span class="material-symbols-outlined text-[14px]">warning</span> ${errorTitle}</p>
+                    <p class="text-orange-500/70 text-[10px] leading-tight mb-2">แสดงผลเนื้อหาต้นฉบับชั่วคราว</p>
+                    <code class="text-orange-300/50 text-[8px] bg-black/50 p-1 rounded block break-all">${e.message}</code>
                 </div>
                 <div class="text-slate-300 text-sm leading-relaxed space-y-4 font-medium bg-background-dark/50 p-4 rounded-xl border border-border-dark">
                     ${summary || 'No further description available.'}
@@ -519,9 +522,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="material-symbols-outlined text-[16px] text-primary">refresh</span> ลองให้ AI วิเคราะห์ใหม่อีกครั้ง
                 </button>
             `;
-            document.getElementById('btn-retry-ai-fallback').addEventListener('click', () => {
-                runAiAnalysis(title, summary, newsType, cacheKey, visualHtml, sourceBadgeHtml, dateStr, modalBody);
-            });
+            
+            // รอให้ปุ่มถูกสร้างใน DOM ก่อนค่อยใส่ Event Listener
+            setTimeout(() => {
+                const retryBtn = document.getElementById('btn-retry-ai-fallback');
+                if(retryBtn) {
+                    retryBtn.addEventListener('click', () => {
+                        runAiAnalysis(title, summary, newsType, cacheKey, visualHtml, sourceBadgeHtml, dateStr, modalBody);
+                    });
+                }
+            }, 100);
         }
     };
 
@@ -545,7 +555,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const cacheKey = 'koda_ai_world_v18_' + title.replace(/[^a-zA-Z0-9\u0E00-\u0E7F]/g, '').substring(0, 40);
         const cachedContent = localStorage.getItem(cacheKey);
 
-        // 📌 ตั้งค่า UI ของหน้าต่าง Modal
         let visualHtml = `<div class="size-14 bg-danger/20 rounded-full flex items-center justify-center mb-4"><span class="material-symbols-outlined text-danger text-3xl">public</span></div>`;
         let sourceBadgeHtml = `<span class="bg-danger/20 text-danger text-[10px] px-2 py-0.5 rounded font-bold uppercase">${source}</span>`;
         let btnClass = 'bg-danger/80 hover:bg-danger border border-danger/60 text-white';
@@ -555,7 +564,6 @@ document.addEventListener('DOMContentLoaded', () => {
             sourceBadgeHtml = `<span class="bg-purple-500/20 text-purple-400 text-[10px] px-2 py-0.5 rounded font-black uppercase border border-purple-500/30">@realDonaldTrump</span>`;
             btnClass = 'bg-purple-600/80 hover:bg-purple-500 border border-purple-500/60 text-white';
         } else if (newsType === 'tech') {
-            // 📌 สำหรับ Tech News ใน Modal ก็จะโชว์รูปเหมือนกัน!
             let modalImg = getFallbackTechImage(title);
             visualHtml = `<img src="${modalImg}" class="w-full h-40 object-cover rounded-xl border border-border-dark/50 shadow-inner mb-3">`;
             sourceBadgeHtml = `<span class="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded font-black uppercase border border-blue-500/30">${source}</span>`;

@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
-    const FINNHUB_API_KEY = 'd6t95b9r01qj6cm3ori0d6t95b9r01qj6cm3orig';
-    const AV_API_KEY = '92M3XRZ7F6AO0YRR'; 
+    const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB;
+    const AV_API_KEY = window.ENV_KEYS.ALPHAVANTAGE;
 
     const urlParams = new URLSearchParams(window.location.search);
     const symbol = urlParams.get('symbol') || 'TSLA'; 

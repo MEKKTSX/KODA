@@ -115,7 +115,7 @@ window.KodaAnalytics = {
             let highs = [], lows = [], closes = [];
             let fetched = false;
             
-            const FINNHUB_API_KEY = 'd6t95b9r01qj6cm3ori0d6t95b9r01qj6cm3orig';
+            const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB;
 
             // 🚀 STEP 1: Crypto ดึงตรงจาก Binance
             if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';

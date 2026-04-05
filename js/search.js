@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     
-    const FINNHUB_API_KEY = 'd6t95b9r01qj6cm3ori0d6t95b9r01qj6cm3orig'; 
+    const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB;
 
     const searchHTML = `
     <div id="koda-search-modal" class="fixed inset-0 z-[100] hidden bg-background-dark/95 backdrop-blur-md flex-col opacity-0 transition-opacity duration-200">
