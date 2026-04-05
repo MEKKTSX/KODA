@@ -349,10 +349,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const wl = (savedData.watchlist || []).map(w => w.symbol).join(', ');
             const port = (savedData.holdings || []).map(h => `${h.symbol} (${h.shares} sh)`).join(', ');
 
-            // 📌 ปลดล็อก: ใส่ tools: googleSearch เพื่อเปิดโหมด Real-time Data
+            // 📌 แก้ไขชื่อตัวแปรให้เป็น snake_case ตามมาตรฐาน Google REST API
             const payload = {
                 contents: currentHistory,
-                systemInstruction: {
+                // 1. เปลี่ยนจาก systemInstruction เป็น system_instruction
+                system_instruction: {
                     parts: [{ 
                         text: `You are KODA, a highly intelligent and professional AI financial assistant. 
                         Provide concise, accurate, and insightful market analysis. 
@@ -362,10 +363,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ${isTranslateOn ? "IMPORTANT: You MUST reply entirely in Thai language, translating financial terms clearly while keeping stock tickers (e.g. AAPL, TSLA) in English." : "Please reply in English."}` 
                     }]
                 },
-                tools: [{ google_search_retrieval: {} }], // <--- ตัวแปรวิเศษ ที่ให้ AI ดูดข้อมูลสดจาก Google
-                generationConfig: {
+                // 2. ใช้ google_search_retrieval ตัวเล็กทั้งหมด
+                tools: [{ google_search_retrieval: {} }], 
+                // 3. เปลี่ยนจาก generationConfig เป็น generation_config
+                generation_config: {
                     temperature: 0.7,
-                    maxOutputTokens: 1500,
+                    // 4. เปลี่ยนจาก maxOutputTokens เป็น max_output_tokens
+                    max_output_tokens: 1500,
                 }
             };
 
