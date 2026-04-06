@@ -102,7 +102,6 @@ window.KodaAnalytics = {
         }
     },
 
-    // 📌 ดึงข้อมูล Multi-API 4 ท่อ ป้องกันการค้นหาหุ้นใหม่ไม่เจอ
     fetchRealSR: async (symbol) => {
         const loading = document.getElementById('matrix-loading');
         if(loading) {
@@ -115,7 +114,7 @@ window.KodaAnalytics = {
             let highs = [], lows = [], closes = [];
             let fetched = false;
             
-            const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB;
+            const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
             // 🚀 STEP 1: Crypto ดึงตรงจาก Binance
             if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';
@@ -129,7 +128,23 @@ window.KodaAnalytics = {
                     fetched = true;
                 }
             } 
-            // 🚀 STEP 2: หุ้นทั่วไป / IPO ใหม่ สแกน Yahoo Finance ย้อนหลัง 6 เดือน
+            
+            // 📌 แก้ไขที่ 1: ดัน Finnhub ขึ้นมาเป็นท่อหลักก่อน (เร็วกว่า Proxy) *ยกเว้นหุ้นไทย
+            if (!fetched && !sym.includes('.BK')) {
+                try {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - (180 * 24 * 60 * 60); 
+                    const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
+                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                    const fhData = await fhRes.json();
+                    if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
+                        highs = fhData.h; lows = fhData.l; closes = fhData.c;
+                        fetched = true;
+                    }
+                } catch(e) {}
+            }
+
+            // 📌 แก้ไขที่ 2: Yahoo Finance Fallback เพิ่มการตัดจบ (Timeout) ป้องกันแอปหมุนค้าง
             if (!fetched) {
                 let yfSym = sym;
                 if (sym === 'XAUUSD') yfSym = 'GC=F';
@@ -151,7 +166,11 @@ window.KodaAnalytics = {
                     if (fetched) break;
                     for (let proxy of proxies) {
                         try {
-                            const res = await fetch(proxy(url));
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 5000); // 📌 5 วิ ตัดจบ ไม่รอค้าง
+                            const res = await fetch(proxy(url), { signal: controller.signal });
+                            clearTimeout(timeoutId);
+                            
                             if (!res.ok) continue;
                             const rawData = await res.json();
                             const data = rawData.contents ? JSON.parse(rawData.contents) : rawData;
@@ -170,21 +189,6 @@ window.KodaAnalytics = {
                 }
             }
 
-            // 🚀 STEP 3: ท่อสำรองดึงข้อมูลจาก Finnhub
-            if (!fetched && !sym.includes('.BK')) {
-                try {
-                    const to = Math.floor(Date.now() / 1000);
-                    const from = to - (180 * 24 * 60 * 60); 
-                    const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
-                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
-                    const fhData = await fhRes.json();
-                    if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
-                        highs = fhData.h; lows = fhData.l; closes = fhData.c;
-                        fetched = true;
-                    }
-                } catch(e) {}
-            }
-
             if (!fetched || closes.length === 0) throw new Error("No Data Found");
             const lastClose = closes[closes.length - 1];
 
@@ -195,13 +199,11 @@ window.KodaAnalytics = {
             const macroLow = Math.min(...lows);
             const range = macroHigh - macroLow;
             
-            // 1. สร้างตาราง Fibonacci Retracement ระดับมหภาค (สัดส่วนที่เทรดเดอร์ใช้จริง)
             const fibRatios = [-0.618, -0.236, 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618];
             const fibLevels = fibRatios.map(r => macroLow + (range * r));
 
-            // 2. สแกนหาจุดสวิง (Swing High / Swing Low) จากกราฟจริงย้อนหลัง
             let pivots = [];
-            const windowSize = 5; // ตรวจสอบยอดกราฟ 5 วันซ้ายขวา
+            const windowSize = 5; 
             for (let i = windowSize; i < closes.length - windowSize; i++) {
                 let isHigh = true, isLow = true;
                 for (let j = 1; j <= windowSize; j++) {
@@ -212,11 +214,9 @@ window.KodaAnalytics = {
                 if (isLow) pivots.push(lows[i]);
             }
 
-            // 3. นำ Fibonacci มารวมกับรอยหยักกราฟ (Pivots) เพื่อหา "คลัสเตอร์" แนวรับแนวต้านที่แข็งแกร่ง
             let allLevels = [...fibLevels, ...pivots, macroHigh, macroLow];
             allLevels.sort((a, b) => a - b);
 
-            // ล้างจุดที่ซ้อนทับกัน (ห่างกันไม่เกิน 1.5% ให้ยุบรวมเป็นเส้นเดียว)
             let uniqueLevels = [];
             allLevels.forEach(lvl => {
                 if (uniqueLevels.length === 0) uniqueLevels.push(lvl);
@@ -225,16 +225,14 @@ window.KodaAnalytics = {
                     if (Math.abs(lvl - last) / last > 0.015) {
                         uniqueLevels.push(lvl);
                     } else {
-                        uniqueLevels[uniqueLevels.length - 1] = (last + lvl) / 2; // หาค่าเฉลี่ย
+                        uniqueLevels[uniqueLevels.length - 1] = (last + lvl) / 2; 
                     }
                 }
             });
 
-            // 4. แยกแนวรับ (ต่ำกว่าราคาปิด) และแนวต้าน (สูงกว่าราคาปิด)
             let resist = uniqueLevels.filter(l => l > lastClose * 1.005); 
-            let supp = uniqueLevels.filter(l => l < lastClose * 0.995).reverse(); // เรียงจากใกล้สุดไปไกลสุด
+            let supp = uniqueLevels.filter(l => l < lastClose * 0.995).reverse(); 
 
-            // เผื่อกรณีกราฟสั้นเกินไป ใช้ ATR เสริมแนวรับแนวต้านให้ครบช่อง
             let atrSum = 0;
             for(let i = closes.length-14; i<closes.length; i++) {
                 if(i>0) atrSum += Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));
@@ -248,7 +246,6 @@ window.KodaAnalytics = {
             const decimals = lastClose < 0.1 ? 5 : (lastClose < 10 ? 3 : 2);
             const format = (v) => parseFloat(v.toFixed(decimals));
             
-            // ส่งข้อมูลกลับไปที่ UI (เป๊ะเหมือนรูปต้นฉบับ)
             window.KodaAnalytics.tradeMatrixData.resistances = resist.slice(0, 4).map(format);
             window.KodaAnalytics.tradeMatrixData.supports = supp.slice(0, 5).map(format);
             
@@ -258,7 +255,7 @@ window.KodaAnalytics = {
             if (symInput) symInput.value = sym;
 
         } catch(e) {
-            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (อาจเป็นหุ้นใหม่ที่เพิ่ง IPO)\nกรุณาตรวจสอบชื่อย่ออีกครั้ง (เช่น RBRK, TSLA, BTC)`);
+            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (อาจเป็นหุ้นใหม่ที่เพิ่ง IPO หรือเซิร์ฟเวอร์ขัดข้อง)\nกรุณาตรวจสอบชื่อย่ออีกครั้ง (เช่น TSLA, BTC)`);
         } finally {
             if(loading) {
                 loading.classList.remove('flex');
@@ -303,7 +300,6 @@ window.KodaAnalytics = {
             </td>`;
 
             resistances.forEach((r) => {
-                // 📌 สูตรคำนวณกำไรเป๊ะๆ แบบตาราง Trade Matrix
                 const pct = s > 0 ? ((r - s) / s) * 100 : 0;
                 const profit = (pct / 100) * capital;
                 
@@ -486,8 +482,49 @@ window.KodaAnalytics = {
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        if (cached && (now - cached.timestamp < 3600000)) return cached.data;
+        // 📌 แก้ไขที่ 3: เพิ่มเวลา Cache เป็น 12 ชม. (43200000 ms) ป้องกันหน้า Benchmark โหลดช้า
+        if (cached && (now - cached.timestamp < 43200000) && cached.data && cached.data.length > 0) return cached.data;
 
+        const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+
+        // 📌 แก้ไขที่ 4: Bypass Proxy ดึงตรงจากแหล่งที่น่าเชื่อถือ
+        if (sym === 'BTC-USD') {
+            try {
+                let limit = 30; let interval = '1d';
+                if (range === '6mo') limit = 180;
+                else if (range === '1y') limit = 365;
+                else if (range === '5y') { limit = 260; interval = '1w'; }
+                
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    const cleanData = data.map(k => ({ t: k[0], c: parseFloat(k[4]) }));
+                    localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
+                    return cleanData;
+                }
+            } catch(e) {}
+        }
+
+        if ((sym === 'SPY' || sym === 'QQQ') && FINNHUB_API_KEY) {
+            try {
+                const to = Math.floor(Date.now() / 1000);
+                let days = 30; let resType = 'D';
+                if (range === '6mo') days = 180;
+                else if (range === '1y') days = 365;
+                else if (range === '5y') { days = 1825; resType = 'W'; }
+                const from = to - (days * 24 * 60 * 60);
+
+                const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=${resType}&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                const fhData = await fhRes.json();
+                if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
+                    const cleanData = fhData.c.map((price, idx) => ({ t: fhData.t[idx] * 1000, c: price }));
+                    localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
+                    return cleanData;
+                }
+            } catch(e) {}
+        }
+
+        // 📌 แก้ไขที่ 5: Fallback กลับไปใช้ Proxy พร้อม Timeout
         const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${range === '5y' ? '1wk' : '1d'}`;
         const proxies = [
             `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
@@ -496,7 +533,11 @@ window.KodaAnalytics = {
         
         for (let proxy of proxies) {
             try {
-                const res = await fetch(proxy);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 📌 5 วิ ตัดจบ ไม่รอค้าง
+                const res = await fetch(proxy, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (!res.ok) continue;
                 
                 const rawData = await res.json();
@@ -517,7 +558,7 @@ window.KodaAnalytics = {
                         return cleanData;
                     }
                 }
-            } catch(e) { console.warn("Proxy fallback triggered"); }
+            } catch(e) { console.warn("Proxy fallback triggered/failed"); }
         }
         return null;
     },
