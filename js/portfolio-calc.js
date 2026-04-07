@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const loadData = () => JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
     
-    // 📌 แก้ไขที่ 1: เพิ่ม Timestamp และ Event บังคับ Cloud Sync ไม่ให้ดึงของเก่ามาทับ
     const saveData = (data) => {
         data.lastUpdated = Date.now(); 
         localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
@@ -15,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.dispatchEvent(new Event('portfolioUpdated'));
     };
 
-    // --- 2. Equity Curve History Builder ---
     const updateEquityHistory = (currentTotal) => {
         let history = JSON.parse(localStorage.getItem('koda_equity_history') || '[]');
         const today = new Date().toISOString().split('T')[0];
@@ -256,11 +254,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const whatIfAssetBtn = document.getElementById('whatif-asset-btn');
     const whatIfAssetMenu = document.getElementById('whatif-asset-menu');
     
-    whatIfAssetBtn?.addEventListener('click', (e) => { e.stopPropagation(); whatIfAssetMenu.classList.toggle('hidden'); });
-    document.getElementById('mode-whatif')?.addEventListener('click', () => {
+    // 📌 แก้ไขที่ 1: ดึงรายชื่อหุ้นใส่ Dropdown ทันทีที่กดปุ่ม "Select asset..." ในหน้า Simulator (ไม่รอผูกกับปุ่มเปิด Modal มั่วๆ แล้ว)
+    whatIfAssetBtn?.addEventListener('click', (e) => { 
+        e.stopPropagation(); 
+        whatIfAssetMenu.classList.toggle('hidden'); 
+        
         const holdings = loadData().holdings || [];
-        if (holdings.length === 0) { alert("Your portfolio is empty."); return; }
         whatIfAssetMenu.innerHTML = '';
+        if (holdings.length === 0) { 
+            whatIfAssetMenu.innerHTML = '<div class="px-4 py-3 text-slate-500 text-sm font-bold">Your portfolio is empty.</div>';
+            return; 
+        }
+
         holdings.forEach(h => {
             const item = document.createElement('div');
             item.className = 'px-4 py-3 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white font-bold text-sm transition-colors flex justify-between items-center';
@@ -268,6 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.addEventListener('click', () => {
                 document.getElementById('whatif-asset-label').textContent = `${h.symbol} (${h.shares} sh)`;
                 document.getElementById('whatif-asset-label').classList.remove('text-slate-400');
+                document.getElementById('whatif-asset-label').classList.add('text-white');
                 whatIfAssetMenu.classList.add('hidden');
                 selectedWhatIfAsset = { symbol: h.symbol, shares: h.shares, cost: h.avgCost };
                 document.getElementById('whatif-avg-cost').value = `$${h.avgCost.toFixed(2)}`;
@@ -277,8 +283,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             whatIfAssetMenu.appendChild(item);
         });
-        modalWhatIf.classList.remove('hidden'); modalWhatIf.classList.add('flex');
-        setTimeout(() => { modalWhatIf.classList.remove('opacity-0'); modalWhatIfContent.classList.remove('translate-y-full'); }, 10);
     });
 
     document.getElementById('btn-close-whatif')?.addEventListener('click', () => {
@@ -318,7 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalSell = document.getElementById('modal-sell-stock');
     const modalSellContent = document.getElementById('modal-sell-content');
     
-    // 📌 แก้ไขที่ 2: ใช้ชื่อหุ้น (Symbol) แทน Index ในการล็อกเป้าตอนกดขาย
     const openSellModal = (idx, sym, maxSh, pr) => {
         document.getElementById('sell-index').value = sym; 
         document.getElementById('sell-stock-info').textContent = `${sym} • Available: ${maxSh} Shares`;
@@ -330,7 +333,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     document.getElementById('btn-close-sell-modal')?.addEventListener('click', () => { modalSell.classList.add('opacity-0'); modalSellContent.classList.add('translate-y-full'); setTimeout(() => { modalSell.classList.add('hidden'); modalSell.classList.remove('flex'); }, 300); });
 
-    // 📌 แก้ไขที่ 3: หุ้นที่จะถูกลบ จะถูกค้นหาด้วยชื่อ Symbol ทำให้ไม่มีวันลบผิดตัว 100%
     document.getElementById('sell-stock-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const sym = document.getElementById('sell-index').value; 
