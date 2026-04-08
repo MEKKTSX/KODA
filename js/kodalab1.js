@@ -1,5 +1,5 @@
 // 🚀 KODA Lab Extension: AI Hedge Fund & Manual Mock Portfolio
-// แยกระบบอิสระ ไม่แตะต้องโค้ดหลัก (เวอร์ชันแก้บัค UI & 3 Gemini Keys)
+// แยกระบบอิสระ ไม่แตะต้องโค้ดหลัก
 
 window.KodaLabAI = {
     chartInstance: null,
@@ -7,9 +7,8 @@ window.KodaLabAI = {
     activeBench: 'SPY', 
     activeTF: '1mo', 
     finnhubKeyIdx: 0,
-    geminiKeyIdx: 0, // 📌 เพิ่มตัวแปรจำว่ากำลังใช้ Gemini Key ตัวไหนอยู่
+    geminiKeyIdx: 0, 
 
-    // 📌 ดึงข่าวสดจาก Serper API
     fetchSerperContext: async (query) => {
         const keys = window.ENV_KEYS?.SERPER || [];
         if (!keys || keys.length === 0) return "ไม่มีข้อมูลข่าวแบบ Real-time";
@@ -58,17 +57,18 @@ window.KodaLabAI = {
         window.KodaLabAI.renderUI();
     },
 
-    // 📌 ฟังก์ชันล้างบัคสีปุ่มค้าง (Sync UI)
+    // 📌 แก้บัค UI สีปุ่มค้าง
     syncUIButtons: () => {
         document.querySelectorAll('.mock-bench-btn').forEach(b => {
             if (b.dataset.bench === window.KodaLabAI.activeBench) {
                 b.classList.add('bg-primary', 'text-white');
-                b.classList.remove('text-slate-500', 'border', 'border-border-dark');
+                b.classList.remove('text-slate-500', 'border', 'border-border-dark', 'bg-slate-700');
             } else {
-                b.classList.remove('bg-primary', 'text-white');
-                b.classList.add('text-slate-500');
+                b.classList.remove('bg-primary', 'text-white', 'bg-slate-700');
+                b.classList.add('text-slate-500', 'border', 'border-border-dark');
             }
         });
+        
         document.querySelectorAll('.mock-tf-btn').forEach(b => {
             if (b.dataset.tf === window.KodaLabAI.activeTF) {
                 b.classList.add('bg-slate-700', 'text-white');
@@ -82,10 +82,10 @@ window.KodaLabAI = {
         const btnAi = document.getElementById('btn-base-ai');
         const btnMan = document.getElementById('btn-base-manual');
         if(window.KodaLabAI.baseChartMode === 'AI') {
-            btnAi?.classList.add('bg-primary', 'text-white'); btnAi?.classList.remove('text-slate-500');
+            btnAi?.classList.add('bg-primary', 'text-white'); btnAi?.classList.remove('text-slate-500', 'bg-background-dark');
             btnMan?.classList.remove('bg-primary', 'text-white'); btnMan?.classList.add('text-slate-500');
         } else {
-            btnMan?.classList.add('bg-primary', 'text-white'); btnMan?.classList.remove('text-slate-500');
+            btnMan?.classList.add('bg-primary', 'text-white'); btnMan?.classList.remove('text-slate-500', 'bg-background-dark');
             btnAi?.classList.remove('bg-primary', 'text-white'); btnAi?.classList.add('text-slate-500');
         }
     },
@@ -186,7 +186,7 @@ window.KodaLabAI = {
 
         document.querySelectorAll('.mock-bench-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                window.KodaLabAI.activeBench = e.currentTarget.dataset.bench; // ใช้ currentTarget กันพลาดโดน span ข้างใน
+                window.KodaLabAI.activeBench = e.currentTarget.dataset.bench; 
                 window.KodaLabAI.syncUIButtons();
                 window.KodaLabAI.renderChart();
             });
@@ -200,7 +200,7 @@ window.KodaLabAI = {
             });
         });
 
-        window.KodaLabAI.syncUIButtons(); // ซิงค์สีปุ่มตอนเริ่ม
+        window.KodaLabAI.syncUIButtons();
         window.KodaLabAI.recordDailyHistory();
     },
 
@@ -365,7 +365,7 @@ window.KodaLabAI = {
 
             คำสั่ง: จงพิจารณาข่าวสารด้านบน และจัดสัดส่วนพอร์ตใหม่ (Rebalance) การซื้อ/ขายจะคำนวณจากสัดส่วน (Weight %) ของมูลค่าพอร์ตรวม
             
-            ตอบกลับเป็น JSON STRICT ONLY ห้ามมีตัวหนังสืออื่นนอกเหนือจากโครงสร้างนี้:
+            รูปแบบการตอบกลับต้องเป็น JSON เท่านั้น (ตามโครงสร้างด้านล่างเป๊ะๆ) ห้ามมีข้อความอธิบายใดๆ นอกเหนือจาก JSON:
             {
                 "allocations": [
                     {"symbol": "ชื่อหุ้น", "weight_pct": 40, "reason": "เหตุผลสั้นๆว่าทำไมถึงเลือกซื้อ/ถือต่อ"},
@@ -375,9 +375,9 @@ window.KodaLabAI = {
             }`;
 
             const geminiKeys = window.ENV_KEYS?.GEMINI || [];
-            if(geminiKeys.length === 0) throw new Error("No Gemini API Keys found");
+            if(geminiKeys.length === 0) throw new Error("ไม่พบ Gemini API Keys ในระบบ");
 
-            // 📌 อัปเกรดความฉลาดเป็น `gemini-2.5-flash` ตามที่ตกลงไว้ (และลูป 3 คีย์)
+            // 📌 เปลี่ยนมาใช้ gemini-2.5-flash-lite ตามคำสั่งที่เสถียรที่สุดใน ai-ops.html
             let retries = geminiKeys.length;
             let aiPlan = null;
             let lastError = null;
@@ -385,12 +385,12 @@ window.KodaLabAI = {
             while (retries > 0) {
                 try {
                     const currentKey = geminiKeys[window.KodaLabAI.geminiKeyIdx];
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentKey}`, {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${currentKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            contents: [{ parts: [{ text: prompt }] }],
-                            generationConfig: { temperature: 0.2 }
+                            contents: [{ role: "user", parts: [{ text: prompt }] }],
+                            generationConfig: { temperature: 0.2 } // 📌 เอา responseMimeType ออก ป้องกัน Error API Not Supported
                         })
                     });
 
@@ -402,17 +402,23 @@ window.KodaLabAI = {
                     }
 
                     if (!response.ok) {
-                        const errData = await response.json();
-                        throw new Error(errData.error?.message || "API Error");
+                        let errorText = `HTTP Error ${response.status}`;
+                        try { const errJson = await response.json(); errorText = errJson.error?.message || errorText; } catch(e){}
+                        throw new Error(errorText);
                     }
 
                     const resData = await response.json();
-                    const rawText = resData.candidates[0].content.parts[0].text;
-                    
-                    const match = rawText.match(/\{[\s\S]*\}/);
-                    const cleanJson = match ? match[0] : rawText;
-                    aiPlan = JSON.parse(cleanJson);
-                    break; // ถ้ายิงผ่านให้ออกจาก Loop
+                    if (resData.candidates && resData.candidates[0].content.parts[0].text) {
+                        const rawText = resData.candidates[0].content.parts[0].text;
+                        
+                        // 📌 ใช้ Regex เพื่อดึงเฉพาะ JSON ออกมาป้องกัน AI พูดน้ำท่วมทุ่ง
+                        const match = rawText.match(/\{[\s\S]*\}/);
+                        const cleanJson = match ? match[0] : rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                        aiPlan = JSON.parse(cleanJson);
+                        break; 
+                    } else {
+                        throw new Error("Invalid response format from AI");
+                    }
 
                 } catch(e) {
                     lastError = e;
@@ -421,7 +427,7 @@ window.KodaLabAI = {
                 }
             }
 
-            if (!aiPlan) throw new Error(`ไม่สามารถเชื่อมต่อ AI ได้หลังจากลองสลับคีย์แล้ว (${lastError?.message})`);
+            if (!aiPlan) throw new Error(`ไม่สามารถเชื่อมต่อ AI ได้ (${lastError?.message || 'Unknown Error'})`);
 
             const dateStr = new Date().toLocaleDateString('en-GB');
             const newHoldings = [];
@@ -469,9 +475,9 @@ window.KodaLabAI = {
                 if (!newSymbols.includes(old.symbol)) {
                     let sellPrice = old.avgCost;
                     try {
-                        const p = await window.KodaLabAI.safeFetch(`https://finnhub.io/api/v1/quote?symbol=${old.symbol}`);
-                        const pJson = await p.json();
-                        if(pJson && pJson.c > 0) sellPrice = pJson.c;
+                        const keys = window.ENV_KEYS?.FINNHUB_ARRAY || [window.ENV_KEYS?.FINNHUB].filter(Boolean);
+                        const p = await fetch(`https://finnhub.io/api/v1/quote?symbol=${old.symbol}&token=${keys[0]}`).then(r=>r.json());
+                        if(p && p.c > 0) sellPrice = p.c;
                     } catch(e){}
                     data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: old.symbol, shares: old.shares, price: sellPrice, reason: "AI Cut / Removed from port" });
                 }
