@@ -3,13 +3,34 @@
 
 window.KodaLabAI = {
     chartInstance: null,
-    baseChartMode: 'AI', // 'AI' หรือ 'MANUAL'
-    activeBench: 'SPY', // 📌 Default เป็นการเปรียบเทียบกับ SPY
-    activeTF: '1mo', // 📌 Default timeframe 1M 
+    baseChartMode: 'AI', 
+    activeBench: 'SPY', 
+    activeTF: '1mo', 
     finnhubKeyIdx: 0,
 
+    // 📌 ดึงข่าวสดจาก Serper API (แก้บัค Gemini Search Tool)
+    fetchSerperContext: async (query) => {
+        const keys = window.ENV_KEYS?.SERPER || [];
+        if (!keys || keys.length === 0) return "ไม่มีข้อมูลข่าวแบบ Real-time";
+        
+        for (let key of keys) {
+            try {
+                const res = await fetch('https://google.serper.dev/search', {
+                    method: 'POST', headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q: query, gl: 'us', hl: 'en' }) 
+                });
+                if (!res.ok) continue;
+                const data = await res.json();
+                let snippet = "";
+                if(data.answerBox && data.answerBox.snippet) snippet += `- ${data.answerBox.snippet}\n`;
+                if(data.organic) { data.organic.slice(0, 4).forEach(r => snippet += `- ${r.title}: ${r.snippet}\n`); }
+                return snippet;
+            } catch(e) { continue; }
+        }
+        return "ไม่สามารถดึงข่าวได้ในขณะนี้";
+    },
+
     safeFetch: async (url) => {
-        // 📌 ใช้ FINNHUB_ARRAY ตามระบบ keys.js ใหม่
         const keys = window.ENV_KEYS?.FINNHUB_ARRAY || [window.ENV_KEYS?.FINNHUB].filter(Boolean);
         if (!keys || !keys.length) return fetch(url);
         let attempts = keys.length;
@@ -27,15 +48,7 @@ window.KodaLabAI = {
     },
 
     loadData: () => {
-        const defaultData = { 
-            capital: 0, 
-            unallocatedCash: 0, 
-            aiHoldings: [], 
-            aiHistoryLog: [], 
-            aiChartHistory: [], 
-            manualHoldings: [], 
-            manualChartHistory: [] 
-        };
+        const defaultData = { capital: 0, unallocatedCash: 0, aiHoldings: [], aiHistoryLog: [], aiChartHistory: [], manualHoldings: [], manualChartHistory: [] };
         return JSON.parse(localStorage.getItem('koda_hedge_fund') || JSON.stringify(defaultData));
     },
     
@@ -144,8 +157,8 @@ window.KodaLabAI = {
 
         document.querySelectorAll('.mock-bench-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.mock-bench-btn').forEach(b => { b.classList.remove('bg-primary', 'text-white'); b.classList.add('text-slate-500'); });
-                e.target.classList.add('bg-primary', 'text-white'); e.target.classList.remove('text-slate-500');
+                document.querySelectorAll('.mock-bench-btn').forEach(b => { b.classList.remove('bg-slate-700', 'text-white'); b.classList.add('text-slate-500', 'border'); });
+                e.target.classList.add('bg-slate-700', 'text-white'); e.target.classList.remove('text-slate-500', 'border');
                 window.KodaLabAI.activeBench = e.target.dataset.bench;
                 window.KodaLabAI.renderChart();
             });
@@ -166,7 +179,6 @@ window.KodaLabAI = {
     renderUI: async () => {
         const data = window.KodaLabAI.loadData();
         
-        // ---------------- AI SECTION ----------------
         document.getElementById('ai-capital-val').textContent = `$${data.capital.toLocaleString(undefined, {minimumFractionDigits:2})}`;
         document.getElementById('ai-unallocated-cash').textContent = `Unallocated: $${data.unallocatedCash.toLocaleString(undefined, {minimumFractionDigits:2})}`;
         
@@ -224,7 +236,6 @@ window.KodaLabAI = {
             }).join('');
         }
 
-        // ---------------- MANUAL SECTION ----------------
         let manualTotalVal = 0;
         let manualHtml = '';
 
@@ -314,38 +325,52 @@ window.KodaLabAI = {
                 } catch(e) { currentAIFundValue += (h.shares * h.avgCost); }
             }
 
+            // 📌 1. ดึงข่าวสดจาก Serper มาป้อนใส่ Prompt แทนการใช้ googleSearch tool (ป้องกัน Error 400 ฟรี Tier)
+            const marketContext = await window.KodaLabAI.fetchSerperContext("Stock market latest significant news OR " + wl);
+
             const prompt = `คุณคือ KODA AI Hedge Fund Manager หน้าที่คือบริหารพอร์ตให้เติบโตทะลุ 40% ต่อปี ชนะ S&P500
             [สถานะพอร์ต AI ตอนนี้]: มูลค่ารวม $${currentAIFundValue.toFixed(2)}, ถือหุ้น: ${JSON.stringify(data.aiHoldings)}
             [หุ้นเด่นที่น่าสนใจ (Universe)]: ${wl || 'AAPL, TSLA, MSFT, NVDA, GOOGL'}
+            
+            [🚨 ข้อมูลข่าวสารล่าสุดของตลาด (Real-time Context)]:
+            ${marketContext}
 
-            คำสั่ง: จงค้นหาข่าวลบ/ข่าวดี, การประกาศงบ, เงินเฟ้อ, สงคราม (ใช้ความรู้ล่าสุดของคุณ) 
-            เพื่อพิจารณาจัดสัดส่วนพอร์ตใหม่ (Rebalance) การซื้อ/ขายจะคำนวณจากสัดส่วน (Weight %) ของมูลค่าพอร์ตรวม
+            คำสั่ง: จงพิจารณาข่าวสารด้านบน และจัดสัดส่วนพอร์ตใหม่ (Rebalance) การซื้อ/ขายจะคำนวณจากสัดส่วน (Weight %) ของมูลค่าพอร์ตรวม
             
             ตอบกลับเป็น JSON STRICT ONLY ห้ามมีตัวหนังสืออื่นนอกเหนือจากโครงสร้างนี้:
             {
                 "allocations": [
                     {"symbol": "ชื่อหุ้น", "weight_pct": 40, "reason": "เหตุผลสั้นๆว่าทำไมถึงเลือกซื้อ/ถือต่อ"},
                     {"symbol": "CASH", "weight_pct": 20, "reason": "เก็บเงินสดไว้เพราะตลาดเสี่ยง"}
-                ]
+                ],
+                "learning_note": "บันทึกสิ่งที่เรียนรู้จากการวิเคราะห์ครั้งนี้"
             }`;
 
             const GEMINI_KEY = window.ENV_KEYS?.GEMINI[0];
             if(!GEMINI_KEY) throw new Error("No Gemini Key");
 
-            // 📌 อัปเกรดโมเดล: แม้ชื่อเล่นผมจะคือ 3.1 Pro แต่ในระบบ API รหัสที่ต้องใช้เพื่อดึงความฉลาดระดับโปรคือ gemini-1.5-pro ครับ 
+            // 📌 2. ใช้ gemini-1.5-pro ตามสั่ง (ตัว Top สุดของ Google API ปัจจุบัน)
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     contents: [{ parts: [{ text: prompt }] }],
-                    tools: [{ googleSearch: {} }],
+                    // 🚨 ถอด tools: [{ googleSearch: {} }] ออก เพื่อกัน Error API จาก Free Tier
                     generationConfig: { temperature: 0.2 }
                 })
             });
 
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || "API Error");
+            }
+
             const resData = await response.json();
             const rawText = resData.candidates[0].content.parts[0].text;
-            const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            // 📌 3. Parse JSON แบบป้องกันข้อผิดพลาด
+            const match = rawText.match(/\{[\s\S]*\}/);
+            const cleanJson = match ? match[0] : rawText;
             const aiPlan = JSON.parse(cleanJson);
 
             const dateStr = new Date().toLocaleDateString('en-GB');
@@ -386,7 +411,7 @@ window.KodaLabAI = {
                         newHoldings.push({ symbol: alloc.symbol, shares: targetShares, avgCost: finalAvgCost });
                     }
 
-                } catch(e) { console.warn("Failed to fetch quote for AI Rebalance", alloc.symbol); }
+                } catch(e) { console.warn("Failed to fetch quote", alloc.symbol); }
             }
 
             const newSymbols = aiPlan.allocations.map(a => a.symbol);
@@ -411,8 +436,8 @@ window.KodaLabAI = {
             alert("✅ AI วิเคราะห์ตลาดและปรับพอร์ตเรียบร้อยแล้ว!");
 
         } catch(e) {
-            console.error(e);
-            alert("เกิดข้อผิดพลาดในการเรียก AI กรุณาลองใหม่ครับ (ตรวจเช็ค API Key หรือรอสักครู่)");
+            console.error("AI Error:", e);
+            alert(`เกิดข้อผิดพลาดในการเรียก AI กรุณาลองใหม่ครับ\n(${e.message})`);
         } finally {
             btn.disabled = false;
             btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">auto_awesome</span> Rebalance`;
@@ -458,20 +483,38 @@ window.KodaLabAI = {
         localStorage.setItem('koda_hedge_fund', JSON.stringify(data));
     },
 
-    // 📌 ข้อมูล Benchmark ใช้ Proxy ทะลุทะลวงของ Yahoo Finance
+    // 📌 ระบบ Cache 1 วัน (ดัชนี) และ 12 ชั่วโมง (พอร์ตหลัก)
     getBenchmarkData: async (symbol, days) => {
+        const now = Date.now();
+
+        // 📌 Cache พอร์ตหลัก (MAIN) 12 ชั่วโมง
         if (symbol === 'MAIN') {
+            const cacheKey = `koda_bench_MAIN_${days}`;
+            const cached = JSON.parse(localStorage.getItem(cacheKey));
+            if (cached && (now - cached.timestamp < 43200000)) { // 12 Hours
+                return cached.data;
+            }
+
             const mainHis = JSON.parse(localStorage.getItem('koda_equity_history') || '[]');
-            return mainHis.slice(-days).map(h => h.value);
+            const data = mainHis.slice(-days).map(h => h.value);
+            
+            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data }));
+            return data;
         }
         
+        // 📌 Cache ดัชนีหลัก (SPY, QQQ) 24 ชั่วโมง (1 วัน)
+        const cacheKey = `koda_bench_${symbol}_${days}`;
+        const cached = JSON.parse(localStorage.getItem(cacheKey));
+        if (cached && (now - cached.timestamp < 86400000)) { // 24 Hours
+            return cached.data;
+        }
+
         let range = '1mo';
         if (days > 30 && days <= 90) range = '3mo';
         else if (days > 90 && days <= 180) range = '6mo';
         else if (days > 180 && days <= 365) range = '1y';
         else if (days > 365) range = '5y';
 
-        // 📌 แก้บัคกราฟ SPY/QQQ: Finnhub บล็อกดัชนี จึงต้องใช้ Yahoo Finance แทรกผ่าน proxy
         let yfSym = symbol;
         if (symbol === 'SPY' || symbol === 'QQQ') {
             const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${range}&interval=1d`;
@@ -489,19 +532,24 @@ window.KodaLabAI = {
                     
                     if (yfData?.chart?.result?.[0]) {
                         const closes = yfData.chart.result[0].indicators.quote[0].close.filter(c => c !== null);
+                        // Save to Cache 1 Day
+                        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: closes }));
                         return closes;
                     }
                 } catch(e) { console.warn("Proxy failed", e); }
             }
             return [];
         } else {
-            // สำหรับหุ้นทั่วไป (BTC, etc.) วิ่งตรงหา Finnhub
             const to = Math.floor(Date.now() / 1000);
             const from = to - (days * 24 * 60 * 60);
             try {
                 const res = await window.KodaLabAI.safeFetch(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}`);
                 const data = await res.json();
-                if (data.s === 'ok') return data.c;
+                if (data.s === 'ok') {
+                    // Save to Cache 1 Day
+                    localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: data.c }));
+                    return data.c;
+                }
             } catch(e) {}
             return [];
         }
@@ -512,9 +560,8 @@ window.KodaLabAI = {
         if (!ctx) return;
 
         const data = window.KodaLabAI.loadData();
-        // 📌 กำหนดขนาดแท่งตามกรอบเวลา (7D = 7 วัน, 1M = 30 วัน, ฯลฯ)
         const tfMap = { '7D': 7, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '5y': 1825 };
-        const days = tfMap[window.KodaLabAI.activeTF] || 30; // fallback to 30
+        const days = tfMap[window.KodaLabAI.activeTF] || 30; 
         
         const isAI = window.KodaLabAI.baseChartMode === 'AI';
         const baseHistory = isAI ? data.aiChartHistory : data.manualChartHistory;
@@ -522,11 +569,9 @@ window.KodaLabAI = {
         let portData = baseHistory.slice(-days).map(h => h.val);
         let labels = baseHistory.slice(-days).map(h => h.date.substring(5)); 
         
-        // 📌 ดักจับกรณีผู้ใช้ยังไม่ได้เลือกให้เปลี่ยนเป็น Compare ตลอด
         const isComparing = true; 
         let datasets = [];
 
-        // คำนวณเป็นเปอร์เซ็นต์ (บังคับเป็นโหมด Compare ตลอดเวลาตามภาพ UI Benchmark)
         const firstValidVal = portData.find(v => v > 0) || 1;
         let portPct = portData.map(v => v === 0 ? 0 : ((v - firstValidVal) / firstValidVal) * 100);
         
@@ -534,16 +579,40 @@ window.KodaLabAI = {
             label: isAI ? 'AI Port' : 'Manual Port', data: portPct, borderColor: isAI ? '#34a8eb' : '#f97316', borderWidth: 2.5, tension: 0.3, pointRadius: 0
         });
 
-        // ดึงข้อมูลกราฟเทียบ (SPY, QQQ, MAIN)
-        let benchPct = [];
-        const benchVals = await window.KodaLabAI.getBenchmarkData(window.KodaLabAI.activeBench, days);
-        if (benchVals && benchVals.length > 0) {
-            const alignedBench = benchVals.slice(-portData.length);
-            const benchStart = alignedBench[0] || 1;
-            benchPct = alignedBench.map(v => ((v - benchStart) / benchStart) * 100);
-            datasets.push({
-                label: window.KodaLabAI.activeBench, data: benchPct, borderColor: '#64748b', borderWidth: 2, borderDash: [5, 5], tension: 0.3, pointRadius: 0
-            });
+        // 📌 แก้บัคกราฟเทียบ: เช็กว่ามีของก่อนวาด และขยับเส้นให้ยาวเท่าพอร์ตหลัก
+        if (window.KodaLabAI.activeBench !== 'NONE') {
+            let benchPct = [];
+            const benchVals = await window.KodaLabAI.getBenchmarkData(window.KodaLabAI.activeBench, days);
+            
+            if (benchVals && benchVals.length > 0) {
+                const alignedBench = benchVals.slice(-portData.length);
+                const benchStart = alignedBench[0] || 1;
+                benchPct = alignedBench.map(v => ((v - benchStart) / benchStart) * 100);
+                datasets.push({
+                    label: window.KodaLabAI.activeBench, data: benchPct, borderColor: '#64748b', borderWidth: 2, borderDash: [5, 5], tension: 0.3, pointRadius: 0
+                });
+            }
+
+            // Update UI สรุปตัวเลขใต้กราฟ
+            const rangeNameMap = { '7D': '7D', '1mo': '1M', '3mo': '3M', '6mo': '6M', '1y': '1Y', '5y': '5Y' };
+            const benchNameMap = { 'SPY': 'S&P 500', 'QQQ': 'NASDAQ', 'MAIN': 'Main Port', 'BTC-USD': 'Bitcoin' };
+            const tfLabel = rangeNameMap[window.KodaLabAI.activeTF] || '1M';
+            const benchLabel = benchNameMap[window.KodaLabAI.activeBench] || 'S&P 500';
+
+            const nameEl = document.getElementById('ai-bench-index-name');
+            if(nameEl) nameEl.textContent = `${benchLabel} (${tfLabel})`;
+
+            const iEl = document.getElementById('ai-bench-index-val');
+            if (iEl) {
+                if (benchPct.length > 0) {
+                    const indexFinalPct = benchPct[benchPct.length - 1] || 0;
+                    iEl.textContent = `${indexFinalPct >= 0 ? '+' : ''}${indexFinalPct.toFixed(2)}%`;
+                    iEl.className = `text-lg font-black ${indexFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
+                } else {
+                    iEl.textContent = '--';
+                    iEl.className = 'text-lg font-black text-white';
+                }
+            }
         }
 
         if (window.KodaLabAI.chartInstance) window.KodaLabAI.chartInstance.destroy();
@@ -554,38 +623,20 @@ window.KodaLabAI = {
                 responsive: true, maintainAspectRatio: false,
                 plugins: { 
                     legend: { display: false },
-                    tooltip: { mode: 'index', intersect: false, callbacks: { label: c => `${c.dataset.label}: ${c.raw.toFixed(2)}%` } }
+                    tooltip: { mode: 'index', intersect: false, callbacks: { label: c => `${c.dataset.label}: ${isComparing ? c.raw.toFixed(2)+'%' : '$'+c.raw.toLocaleString()}` } }
                 },
                 scales: { 
                     x: { display: false }, 
-                    y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8', callback: v => v + '%' } } 
+                    y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8', callback: v => isComparing ? v + '%' : '$' + v.toLocaleString() } } 
                 }
             }
         });
 
-        // 📌 อัปเดต Summary Cards ใต้กราฟให้เหมือนภาพ
-        const rangeNameMap = { '7D': '7D', '1mo': '1M', '3mo': '3M', '6mo': '6M', '1y': '1Y', '5y': '5Y' };
-        const benchNameMap = { 'SPY': 'S&P 500', 'QQQ': 'NASDAQ', 'MAIN': 'Main Port', 'BTC-USD': 'Bitcoin' };
-        
-        const tfLabel = rangeNameMap[window.KodaLabAI.activeTF] || '1M';
-        const benchLabel = benchNameMap[window.KodaLabAI.activeBench] || 'S&P 500';
-
-        document.getElementById('ai-bench-port-name').textContent = `${isAI ? 'AI Port' : 'Manual'} (${tfLabel})`;
-        document.getElementById('ai-bench-index-name').textContent = `${benchLabel} (${tfLabel})`;
-
         const portFinalPct = portPct[portPct.length - 1] || 0;
         const pEl = document.getElementById('ai-bench-port-val');
-        pEl.textContent = `${portFinalPct >= 0 ? '+' : ''}${portFinalPct.toFixed(2)}%`;
-        pEl.className = `text-lg font-black ${portFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
-
-        const iEl = document.getElementById('ai-bench-index-val');
-        if (benchPct && benchPct.length > 0) {
-            const indexFinalPct = benchPct[benchPct.length - 1] || 0;
-            iEl.textContent = `${indexFinalPct >= 0 ? '+' : ''}${indexFinalPct.toFixed(2)}%`;
-            iEl.className = `text-lg font-black ${indexFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
-        } else {
-            iEl.textContent = '--';
-            iEl.className = 'text-lg font-black text-white';
+        if(pEl) {
+            pEl.textContent = `${portFinalPct >= 0 ? '+' : ''}${portFinalPct.toFixed(2)}%`;
+            pEl.className = `text-lg font-black ${portFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
         }
     }
 };
