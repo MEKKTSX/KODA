@@ -1,4 +1,4 @@
-const CACHE_NAME = 'koda-app-v1.13-beta';
+const CACHE_NAME = 'koda-app-v1.2.1-beta';
 const urlsToCache = [
   '/',
   '/index.html',
