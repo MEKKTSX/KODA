@@ -41,24 +41,19 @@
         ::-webkit-scrollbar { display: none; }
         body { min-height: max(884px, 100dvh); }
         
-        /* Typing Dots Animation */
         .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes typing {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         
-        /* Markdown Styles for Gemini Output */
         .ai-message-content b, .ai-message-content strong { color: #fff; font-weight: 700; }
         .ai-message-content p { margin-bottom: 0.5rem; }
         .ai-message-content ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
         .ai-message-content li { margin-bottom: 0.25rem; }
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen font-display flex flex-col">
-<div class="max-w-md mx-auto flex flex-col min-h-screen w-full border-x border-border-dark/30 relative overflow-hidden">
+<body class="bg-background-dark text-slate-100 min-h-screen font-display flex flex-col relative">
+<div class="max-w-md mx-auto flex flex-col min-h-screen w-full border-x border-border-dark/30 relative overflow-x-hidden">
     
     <header class="flex items-center p-4 pb-3 justify-between sticky top-0 bg-background-dark/95 backdrop-blur-md z-20 border-b border-border-dark/30 shrink-0">
         <div class="flex size-10 items-center justify-center rounded-full bg-primary/20 border border-primary/30">
@@ -66,8 +61,8 @@
         </div>
         <div class="flex flex-col items-center flex-1">
             <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight">KODA Copilot</h2>
-            <p class="text-success text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
-                <span class="size-1.5 bg-success rounded-full"></span> Online
+            <p class="text-success text-[10px] uppercase font-bold tracking-wider flex items-center gap-1" id="header-status">
+                <span class="size-1.5 bg-success rounded-full animate-pulse"></span> Online
             </p>
         </div>
         <button id="btn-new-chat" class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors">
@@ -106,15 +101,74 @@
     </main>
 
     <div class="fixed bottom-[68px] left-1/2 -translate-x-1/2 w-full max-w-md bg-background-dark/95 backdrop-blur-lg border-t border-border-dark z-20 px-4 py-3">
-        <form id="chat-form" class="relative flex items-center bg-surface-dark border border-border-dark rounded-xl focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all p-1">
-            <input type="text" id="chat-input" class="w-full bg-transparent border-none text-sm text-slate-100 placeholder:text-slate-500 focus:ring-0 px-3 py-2 outline-none" placeholder="Ask KODA about markets..." autocomplete="off"/>
-            <button type="submit" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-white hover:bg-blue-500 transition-colors mr-1 disabled:opacity-50 disabled:cursor-not-allowed" id="send-btn" disabled>
-                <span class="material-symbols-outlined text-lg">send</span>
+        <div class="relative flex items-end bg-surface-dark border border-border-dark rounded-2xl focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all p-2 gap-2 shadow-inner">
+            
+            <button type="button" id="btn-model-picker" class="flex items-center gap-1 px-3 py-2 rounded-xl bg-background-dark border border-border-dark text-slate-300 hover:text-white transition-colors text-xs font-bold shrink-0 mb-0.5 outline-none">
+                <span id="active-model-icon" class="material-symbols-outlined text-[16px] text-slate-500">expand_less</span>
+                <span id="active-model-label">Pro</span>
             </button>
-        </form>
+
+            <textarea id="chat-input" rows="1" class="flex-1 min-w-0 bg-transparent border-none text-sm text-slate-100 placeholder:text-slate-500 focus:ring-0 p-0 py-2 outline-none resize-none max-h-32 overflow-y-auto no-scrollbar" placeholder="Ask KODA about markets..."></textarea>
+            
+            <button type="button" id="send-btn" class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-0.5 outline-none" disabled>
+                <span class="material-symbols-outlined text-lg ml-0.5">send</span>
+            </button>
+            
+            <div id="model-popup" class="absolute bottom-full left-0 mb-2 w-[300px] bg-surface-dark border border-border-dark rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 p-2 hidden transition-all opacity-0 scale-95 origin-bottom-left">
+                <h4 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest px-3 pt-2 pb-2">Select Model & Usage</h4>
+                
+                <button type="button" class="model-opt flex w-full items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors text-left relative group" data-model="flash">
+                    <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary group-hover:scale-110 transition-transform"><span class="material-symbols-outlined text-[16px]">bolt</span></div>
+                    <div class="flex-1 pr-6">
+                        <div class="flex justify-between items-center"><p class="text-white text-sm font-bold">Pro (SOTA)</p><p id="limit-flash" class="text-success text-[10px] font-bold tracking-wider">--/-- RPD</p></div>
+                        <p class="text-slate-400 text-[10px] mt-0.5">Gemini 2.5 Flash + Native Search</p>
+                    </div>
+                    <span class="check-icon material-symbols-outlined text-primary text-lg absolute right-3 hidden">check_circle</span>
+                </button>
+                
+                <div class="border-t border-border-dark/50 my-1"></div>
+                
+                <button type="button" class="model-opt flex w-full items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors text-left relative group" data-model="lite">
+                    <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-slate-300 group-hover:scale-110 transition-transform"><span class="material-symbols-outlined text-[16px]">flash_on</span></div>
+                    <div class="flex-1 pr-6">
+                        <div class="flex justify-between items-center"><p class="text-white text-sm font-bold">Flash Lite</p><p id="limit-lite" class="text-primary text-[10px] font-bold tracking-wider">--/-- RPD</p></div>
+                        <p class="text-slate-400 text-[10px] mt-0.5">Fast & Concise (No Live Search)</p>
+                    </div>
+                    <span class="check-icon material-symbols-outlined text-primary text-lg absolute right-3 hidden">check_circle</span>
+                </button>
+                
+                <div class="border-t border-border-dark/50 my-1"></div>
+
+                <button type="button" class="model-opt flex w-full items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors text-left relative group" data-model="serper">
+                    <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-yellow-500/20 text-yellow-400 group-hover:scale-110 transition-transform"><span class="material-symbols-outlined text-[16px]">travel_explore</span></div>
+                    <div class="flex-1 pr-6">
+                        <div class="flex justify-between items-center"><p class="text-white text-sm font-bold">Serper</p><p id="limit-serper" class="text-yellow-500 text-[10px] font-bold tracking-wider">--/-- CRD</p></div>
+                        <p class="text-slate-400 text-[10px] mt-0.5">Flash Lite + Serper.dev Live Info</p>
+                    </div>
+                    <span class="check-icon material-symbols-outlined text-primary text-lg absolute right-3 hidden">check_circle</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <div id="bottom-nav-container"></div>
+    
+    <div id="modal-clear-chat" class="fixed inset-0 bg-background-dark/90 backdrop-blur-sm z-[100] hidden flex-col justify-center items-center transition-opacity opacity-0 px-4">
+        <div class="bg-surface-dark border border-border-dark rounded-3xl p-6 w-full max-sm shadow-[0_10px_40px_rgba(0,0,0,0.5)] transform scale-95 transition-transform" id="modal-clear-content">
+            <div class="flex justify-center mb-4">
+                <div class="size-12 rounded-full bg-danger/20 text-danger flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl">delete_sweep</span>
+                </div>
+            </div>
+            <h3 class="text-white text-lg font-bold text-center mb-2">Clear Chat History</h3>
+            <p class="text-slate-400 text-sm text-center mb-6">คุณต้องการลบเฉพาะแชทหน้านี้ หรือล้างประวัติทั้งหมด?</p>
+            <div class="flex flex-col gap-3">
+                <button id="btn-clear-current" class="w-full bg-surface-dark border border-border-dark text-white font-bold rounded-xl py-3 hover:bg-slate-800 transition-colors">Clear This Chat Only</button>
+                <button id="btn-clear-all" class="w-full bg-danger/10 border border-danger/30 text-danger font-bold rounded-xl py-3 hover:bg-danger hover:text-white transition-colors">Clear All Chats</button>
+                <button id="btn-cancel-clear" class="w-full bg-transparent text-slate-500 font-bold rounded-xl py-2 mt-1 hover:text-white transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="js/nav.js"></script>
@@ -124,12 +178,14 @@
 document.addEventListener('DOMContentLoaded', async () => {
 
     await window.loadKodaConfig();
-    // 🔑 1. ระบบ 3 API Keys สลับกันเมื่อโควต้าเต็ม (แก้บัคค้าง)
+    
     const GEMINI_API_KEYS = window.ENV_KEYS.GEMINI;
+    const SERPER_KEYS = window.ENV_KEYS.SERPER || []; 
     
     let currentKeyIdx = 0;
+    let currentSerperIdx = 0;
+    let activeModel = localStorage.getItem('koda_active_model') || 'flash';
 
-    const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-btn');
     const chatMessages = document.getElementById('chat-messages');
@@ -137,18 +193,150 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnNewChat = document.getElementById('btn-new-chat');
     const recentChatsWrapper = document.getElementById('recent-chats-wrapper');
     const recentChatsContainer = document.getElementById('recent-chats-container');
-    const btnClearChats = document.getElementById('btn-clear-chats');
     const morningBriefContent = document.getElementById('morning-brief-content');
+
+    const btnModelPicker = document.getElementById('btn-model-picker');
+    const modelPopup = document.getElementById('model-popup');
+    const activeModelLabel = document.getElementById('active-model-label');
 
     let kodaSessions = JSON.parse(localStorage.getItem('koda_chat_sessions') || '{}');
     let currentSessionId = null;
     let currentHistory = []; 
 
+    // ระบบติดตามโควต้า
+    const getUsage = () => {
+        const today = new Date().toISOString().split('T')[0];
+        let usage = JSON.parse(localStorage.getItem('koda_api_usage')) || {};
+        if (usage.date !== today) usage = { date: today, flash: 0, lite: 0, serper: 0 };
+        return usage;
+    };
+    const incrementUsage = (model) => {
+        const usage = getUsage();
+        usage[model] += 1;
+        localStorage.setItem('koda_api_usage', JSON.stringify(usage));
+        updateModelUI();
+    };
+
+    // 📌 อัปเดต UI ปุ่ม Model และ Limit ภายใน Popup (📌 และ Header Status)
+    const updateModelUI = () => {
+        const usage = getUsage();
+        const headerStatus = document.getElementById('header-status'); // <--- 📌 กลับมาโชว์ Online/Limit Reached
+        
+        const MAX_FLASH = (GEMINI_API_KEYS?.length || 1) * 20; 
+        const MAX_LITE = 14400; 
+        const MAX_SERPER = (SERPER_KEYS?.length || 0) * 2500; 
+
+        const remainFlash = Math.max(0, MAX_FLASH - usage.flash);
+        const remainLite = Math.max(0, MAX_LITE - usage.lite);
+        const remainSerper = Math.max(0, MAX_SERPER - usage.serper);
+
+        document.getElementById('limit-flash').textContent = `${remainFlash}/${MAX_FLASH} RPD`;
+        document.getElementById('limit-flash').className = `text-[10px] font-bold tracking-wider ${remainFlash > 0 ? 'text-success' : 'text-danger'}`;
+        
+        document.getElementById('limit-lite').textContent = `${remainLite.toLocaleString()}/${MAX_LITE.toLocaleString()} RPD`;
+        document.getElementById('limit-lite').className = `text-[10px] font-bold tracking-wider ${remainLite > 0 ? 'text-primary' : 'text-danger'}`;
+        
+        document.getElementById('limit-serper').textContent = `${remainSerper.toLocaleString()}/${MAX_SERPER.toLocaleString()} CRD`;
+        document.getElementById('limit-serper').className = `text-[10px] font-bold tracking-wider ${remainSerper > 0 ? 'text-yellow-500' : 'text-danger'}`;
+
+        document.querySelectorAll('.model-opt').forEach(opt => {
+            const check = opt.querySelector('.check-icon');
+            if (opt.dataset.model === activeModel) {
+                opt.classList.add('bg-primary/10', 'border', 'border-primary/30');
+                check.classList.remove('hidden');
+            } else {
+                opt.classList.remove('bg-primary/10', 'border', 'border-primary/30');
+                check.classList.add('hidden');
+            }
+        });
+
+        // อัปเดตป้ายชื่อบนปุ่มแคปซูล
+        if (activeModel === 'flash') activeModelLabel.textContent = "Pro";
+        else if (activeModel === 'lite') activeModelLabel.textContent = "Lite";
+        else if (activeModel === 'serper') activeModelLabel.textContent = "Serper";
+
+        // 📌 อัปเดต Header Status (ให้สอดคล้องกับ Model ที่เลือก)
+        if (activeModel === 'flash') {
+            headerStatus.innerHTML = `<span class="size-1.5 ${remainFlash > 0 ? 'bg-success animate-pulse' : 'bg-danger'} rounded-full"></span> ${remainFlash > 0 ? 'Online' : 'Limit Reached'}`;
+            headerStatus.className = `text-[10px] uppercase font-bold tracking-wider flex items-center gap-1 ${remainFlash > 0 ? 'text-success' : 'text-danger'}`;
+        } else if (activeModel === 'lite') {
+            headerStatus.innerHTML = `<span class="size-1.5 ${remainLite > 0 ? 'bg-primary animate-pulse' : 'bg-danger'} rounded-full"></span> ${remainLite > 0 ? 'Online' : 'Limit Reached'}`;
+            headerStatus.className = `text-[10px] uppercase font-bold tracking-wider flex items-center gap-1 ${remainLite > 0 ? 'text-primary' : 'text-danger'}`;
+        } else if (activeModel === 'serper') {
+            headerStatus.innerHTML = `<span class="size-1.5 ${remainSerper > 0 ? 'bg-yellow-500 animate-pulse' : 'bg-danger'} rounded-full"></span> ${remainSerper > 0 ? 'Online' : 'Limit Reached'}`;
+            headerStatus.className = `text-[10px] uppercase font-bold tracking-wider flex items-center gap-1 ${remainSerper > 0 ? 'text-yellow-500' : 'text-danger'}`;
+        }
+
+        localStorage.setItem('koda_active_model', activeModel);
+    };
+
+    // ควบคุมการเปิด/ปิด Model Popup
+    const toggleModelPopup = () => {
+        modelPopup.classList.toggle('hidden');
+        const icon = btnModelPicker.querySelector('.material-symbols-outlined');
+        if (!modelPopup.classList.contains('hidden')) {
+            setTimeout(() => { modelPopup.classList.remove('opacity-0', 'scale-95'); }, 10);
+            icon.textContent = 'expand_more'; // หมุนลูกศรลง
+        } else {
+            modelPopup.classList.add('opacity-0', 'scale-95');
+            icon.textContent = 'expand_less'; // หมุนลูกศรขึ้น
+        }
+    };
+
+    btnModelPicker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleModelPopup();
+    });
+
+    document.querySelectorAll('.model-opt').forEach(opt => {
+        opt.addEventListener('click', (e) => {
+            activeModel = e.currentTarget.dataset.model;
+            updateModelUI();
+            toggleModelPopup();
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        if (modelPopup && !modelPopup.classList.contains('hidden') && !btnModelPicker.contains(e.target) && !modelPopup.contains(e.target)) {
+            toggleModelPopup();
+        }
+    });
+    
+    updateModelUI();
+
+    // 📌 Textarea Auto-expand (พิมพ์ขยายกล่องอัตโนมัติ)
+    chatInput.addEventListener('input', function() {
+        this.style.height = 'auto'; // Reset ความสูง
+        this.style.height = (this.scrollHeight) + 'px'; // ปรับตาม content
+        if(this.value.trim() === '') this.style.height = 'auto'; // ถ้าลบหมด กลับเป็น 1 บรรทัด
+        sendBtn.disabled = this.value.trim() === '';
+    });
+
+    const fetchSerperData = async (query) => {
+        if (!SERPER_KEYS || SERPER_KEYS.length === 0) return "No Serper API Keys available.";
+        let attempts = SERPER_KEYS.length;
+        while(attempts > 0) {
+            const key = SERPER_KEYS[currentSerperIdx];
+            try {
+                const res = await fetch('https://google.serper.dev/search', {
+                    method: 'POST', headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q: query, gl: 'th', hl: 'th' })
+                });
+                if (res.status === 403 || res.status === 429) { currentSerperIdx = (currentSerperIdx + 1) % SERPER_KEYS.length; attempts--; continue; }
+                const data = await res.json();
+                incrementUsage('serper');
+                let snippet = "Google Search Results:\n";
+                if(data.answerBox && data.answerBox.snippet) snippet += `- [Highlight]: ${data.answerBox.snippet}\n`;
+                if(data.organic) { data.organic.slice(0, 4).forEach(r => snippet += `- [News]: ${r.title} - ${r.snippet}\n`); }
+                return snippet;
+            } catch(e) { attempts--; }
+        }
+        return "Failed to fetch Live Data.";
+    };
+
     const renderMorningBrief = async () => {
         const baseBrief = "The US market closed mixed last night. Tech stocks rallied due to strong AI chip demand, while the energy sector pulled back slightly on oil inventory reports. Overall sentiment remains cautiously optimistic. Watch for upcoming CPI data.";
-        
         const isTranslateOn = localStorage.getItem('koda_translate_th') === 'true';
-        
         if (isTranslateOn && window.KodaAI && typeof window.KodaAI.translateText === 'function') {
             const translatedText = await window.KodaAI.translateText(baseBrief);
             morningBriefContent.innerHTML = `<p class="text-slate-300 text-sm leading-relaxed">${translatedText}</p>`;
@@ -158,20 +346,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     renderMorningBrief();
 
-    // ========================================================
-    // 📌 ระบบเลื่อนจอ (Scroll) 
-    // ========================================================
     const scrollToBottom = () => {
         requestAnimationFrame(() => {
             setTimeout(() => {
                 const anchor = document.getElementById('scroll-anchor');
                 if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                
                 window.scrollTo({ top: document.body.scrollHeight || document.documentElement.scrollHeight, behavior: 'smooth' });
-                
-                if (chatContainer) {
-                    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
-                }
+                if (chatContainer) chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
             }, 100); 
         });
     };
@@ -179,23 +360,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatInput.addEventListener('focus', () => setTimeout(scrollToBottom, 300));
     window.addEventListener('resize', scrollToBottom);
 
-    chatInput.addEventListener('input', () => {
-        sendBtn.disabled = chatInput.value.trim() === '';
-    });
-
     const appendUserMessage = (text) => {
         const html = `
             <div class="flex justify-end w-full">
                 <div class="bg-primary text-white rounded-2xl rounded-br-sm p-3 shadow-sm max-w-[85%]">
-                    <p class="text-sm leading-relaxed">${text}</p>
+                    <p class="text-sm leading-relaxed whitespace-pre-wrap">${text}</p>
                 </div>
-            </div>
-        `;
+            </div>`;
         chatMessages.insertAdjacentHTML('beforeend', html);
         scrollToBottom(); 
     };
 
-    const appendAIMessage = (text, isWelcome = false) => {
+    const appendAIMessage = (text) => {
         const html = `
             <div class="flex items-end gap-2 w-full max-w-[90%]">
                 <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/20 border border-primary/30 mb-1">
@@ -204,8 +380,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="bg-surface-dark border border-border-dark rounded-2xl rounded-bl-sm p-3 shadow-sm ai-message-content text-slate-200 text-sm leading-relaxed">
                     ${markedToHtml(text)}
                 </div>
-            </div>
-        `;
+            </div>`;
         chatMessages.insertAdjacentHTML('beforeend', html);
         scrollToBottom(); 
     };
@@ -222,8 +397,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="size-2 bg-slate-500 rounded-full typing-dot"></div>
                     <div class="size-2 bg-slate-500 rounded-full typing-dot"></div>
                 </div>
-            </div>
-        `;
+            </div>`;
         chatMessages.insertAdjacentHTML('beforeend', html);
         scrollToBottom(); 
         return id;
@@ -241,12 +415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const saveSession = () => {
         if (!currentSessionId || currentHistory.length === 0) return;
-        kodaSessions[currentSessionId] = {
-            id: currentSessionId,
-            timestamp: Date.now(),
-            title: currentHistory.find(m => m.role === 'user')?.parts[0].text.substring(0, 25) + '...' || 'New Chat',
-            history: currentHistory
-        };
+        kodaSessions[currentSessionId] = { id: currentSessionId, timestamp: Date.now(), title: currentHistory.find(m => m.role === 'user')?.parts[0].text.substring(0, 25) + '...' || 'New Chat', history: currentHistory };
         localStorage.setItem('koda_chat_sessions', JSON.stringify(kodaSessions));
         renderRecentChats();
     };
@@ -256,15 +425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentSessionId = sessionId;
         currentHistory = kodaSessions[sessionId].history;
         chatMessages.innerHTML = ''; 
-        
-        currentHistory.forEach(msg => {
-            if (msg.role === 'user') {
-                appendUserMessage(msg.parts[0].text);
-            } else {
-                appendAIMessage(msg.parts[0].text);
-            }
-        });
-        
+        currentHistory.forEach(msg => { if (msg.role === 'user') appendUserMessage(msg.parts[0].text); else appendAIMessage(msg.parts[0].text); });
         scrollToBottom();
     };
 
@@ -272,46 +433,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentSessionId = 'session_' + Date.now();
         currentHistory = [];
         chatMessages.innerHTML = '';
-        
         const isTranslateOn = localStorage.getItem('koda_translate_th') === 'true';
-        const welcomeText = isTranslateOn 
-            ? "สวัสดีครับ! ผม KODA พร้อมวิเคราะห์ตลาดให้คุณแล้ว วันนี้อยากให้ผมช่วยดูหุ้นตัวไหน อัปเดตข่าวสดๆ หรือเช็คพอร์ตของคุณไหมครับ?"
-            : "Hello! I'm KODA, ready to analyze the markets. What would you like to check today?";
-        
-        appendAIMessage(welcomeText, true);
+        const welcomeText = isTranslateOn ? "สวัสดีครับ! ผม KODA พร้อมวิเคราะห์ตลาดให้คุณแล้ว วันนี้อยากให้ผมช่วยดูหุ้นตัวไหน หรือเช็คพอร์ตของคุณไหมครับ?" : "Hello! I'm KODA, ready to analyze the markets. What would you like to check today?";
+        appendAIMessage(welcomeText);
     };
 
     const renderRecentChats = () => {
         const sessionsArray = Object.values(kodaSessions).sort((a, b) => b.timestamp - a.timestamp);
-        if (sessionsArray.length === 0) {
-            recentChatsWrapper.style.display = 'none';
-            return;
-        }
+        if (sessionsArray.length === 0) { recentChatsWrapper.style.display = 'none'; return; }
         recentChatsWrapper.style.display = 'block';
-        recentChatsContainer.innerHTML = sessionsArray.map(session => `
-            <button class="shrink-0 bg-surface-dark border ${session.id === currentSessionId ? 'border-primary text-primary' : 'border-border-dark text-slate-300'} text-[10px] font-medium px-4 py-2 rounded-full hover:border-primary hover:text-primary transition-colors snap-start flex items-center gap-1" onclick="window.switchKodaChat('${session.id}')">
-                <span class="material-symbols-outlined text-[12px]">chat_bubble</span> ${session.title}
-            </button>
-        `).join('');
+        recentChatsContainer.innerHTML = sessionsArray.map(session => `<button class="shrink-0 bg-surface-dark border ${session.id === currentSessionId ? 'border-primary text-primary' : 'border-border-dark text-slate-300'} text-[10px] font-medium px-4 py-2 rounded-full hover:border-primary hover:text-primary transition-colors snap-start flex items-center gap-1" onclick="window.switchKodaChat('${session.id}')"><span class="material-symbols-outlined text-[12px]">chat_bubble</span> ${session.title}</button>`).join('');
     };
 
-    window.switchKodaChat = (sessionId) => {
-        loadSession(sessionId);
-        renderRecentChats(); 
-    };
+    window.switchKodaChat = (sessionId) => { loadSession(sessionId); renderRecentChats(); };
 
-    btnNewChat.addEventListener('click', () => {
-        createNewSession();
-        renderRecentChats();
+    btnNewChat.addEventListener('click', () => { createNewSession(); renderRecentChats(); });
+
+    // ระบบ Modal Clear History
+    const modalClear = document.getElementById('modal-clear-chat');
+    const contentClear = document.getElementById('modal-clear-content');
+
+    document.getElementById('btn-clear-chats').addEventListener('click', () => {
+        modalClear.classList.remove('hidden'); modalClear.classList.add('flex');
+        setTimeout(() => { modalClear.classList.remove('opacity-0'); contentClear.classList.remove('scale-95'); }, 10);
     });
 
-    btnClearChats.addEventListener('click', () => {
-        if(confirm("Are you sure you want to clear all chat history?")) {
-            kodaSessions = {};
-            localStorage.removeItem('koda_chat_sessions');
-            createNewSession();
+    document.getElementById('btn-cancel-clear').addEventListener('click', () => {
+        modalClear.classList.add('opacity-0'); contentClear.classList.add('scale-95');
+        setTimeout(() => { modalClear.classList.add('hidden'); modalClear.classList.remove('flex'); }, 300);
+    });
+
+    document.getElementById('btn-clear-current').addEventListener('click', () => {
+        if(currentSessionId && kodaSessions[currentSessionId]) {
+            delete kodaSessions[currentSessionId]; localStorage.setItem('koda_chat_sessions', JSON.stringify(kodaSessions));
+            const keys = Object.keys(kodaSessions);
+            if(keys.length > 0) loadSession(kodaSessions[keys[keys.length-1]].id);
+            else createNewSession();
             renderRecentChats();
         }
+        document.getElementById('btn-cancel-clear').click();
+    });
+
+    document.getElementById('btn-clear-all').addEventListener('click', () => {
+        kodaSessions = {}; localStorage.removeItem('koda_chat_sessions'); createNewSession(); renderRecentChats();
+        document.getElementById('btn-cancel-clear').click();
     });
 
     if (Object.keys(kodaSessions).length > 0) {
@@ -322,19 +487,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         createNewSession();
     }
 
-    chatForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    // 📌 [NEW LOGIC] ส่งแชทด้วยการกดปุ่ม Send เท่านั้น
+    const processMessage = async () => {
         const text = chatInput.value.trim();
         if (!text) return;
 
         appendUserMessage(text);
+        
+        // Reset Textarea กลับเป็นขนาดเดิมหลังส่ง
         chatInput.value = '';
+        chatInput.style.height = 'auto';
         sendBtn.disabled = true;
 
-        // 📌 แก้บัคประวัติแชทเหลื่อมกัน (Unbalanced History) ที่ทำให้ API Error 400
-        if (currentHistory.length > 0 && currentHistory[currentHistory.length - 1].role === 'user') {
-            currentHistory.pop(); // ถ้ารอบที่แล้ว AI พัง ไม่ได้ตอบ ให้ดึงของเก่าออกก่อนส่งใหม่
-        }
+        if (currentHistory.length > 0 && currentHistory[currentHistory.length - 1].role === 'user') { currentHistory.pop(); }
 
         currentHistory.push({ role: "user", parts: [{ text: text }] });
         saveSession();
@@ -343,67 +508,55 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const isTranslateOn = localStorage.getItem('koda_translate_th') === 'true';
-            
-            // 📌 สแกนพอร์ตและ Watchlist เพื่อป้อนข้อมูลให้ AI เข้าใจบริบทผู้ใช้
             const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
             const wl = (savedData.watchlist || []).map(w => w.symbol).join(', ');
             const port = (savedData.holdings || []).map(h => `${h.symbol} (${h.shares} sh)`).join(', ');
 
-            // 📌 ปลดล็อก: ใส่ tools: googleSearch เพื่อเปิดโหมด Real-time Data
-            const payload = {
-                contents: currentHistory,
-                systemInstruction: {
-                    parts: [{ 
-                        text: `You are KODA, a highly intelligent and professional AI financial assistant. 
-                        Provide concise, accurate, and insightful market analysis. 
-                        You have access to Google Search to find the latest, real-time data, news, and stock prices. ALWAYS use the latest data if asked about current prices, news, or recent events.
-                        User's Context: They are currently tracking these stocks in their Watchlist: [${wl || 'None'}]. 
-                        They hold these assets in their Portfolio: [${port || 'Empty'}]. 
-                        ${isTranslateOn ? "IMPORTANT: You MUST reply entirely in Thai language, translating financial terms clearly while keeping stock tickers (e.g. AAPL, TSLA) in English." : "Please reply in English."}` 
-                    }]
-                },
-                tools: [{ googleSearch: {} }], // <--- ตัวแปรวิเศษ ที่ให้ AI ดูดข้อมูลสดจาก Google
-                generationConfig: {
-                    temperature: 0.3, // 📌 ปรับจาก 0.7 เป็น 0.3 เน้นความแม่นยำ ตรงคำถาม ไม่มั่วออกทะเล
-                    maxOutputTokens: 8192, // 📌 ปรับจาก 1500 เป็น 8192 เพื่อรองรับภาษาไทยยาวๆ ป้องกันข้อความขาดกุด
-                }
+            let modifiedHistory = [...currentHistory];
+            
+            if (activeModel === 'serper') {
+                const searchResults = await fetchSerperData(text);
+                modifiedHistory[modifiedHistory.length - 1] = {
+                    role: "user",
+                    parts: [{ text: text + `\n\n[Live Search Data:\n${searchResults}]` }]
+                };
+            }
+
+            let payload = {
+                contents: modifiedHistory,
+                systemInstruction: { parts: [{ text: `You are KODA, a professional AI financial assistant. Provide concise analysis. Context: Watchlist: [${wl || 'None'}], Portfolio: [${port || 'Empty'}]. ${isTranslateOn ? "Reply entirely in Thai, keeping stock tickers in English." : "Reply in English."}` }] },
+                generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
             };
+
+            let targetModelUrl = '';
+            
+            if (activeModel === 'flash') {
+                payload.tools = [{ googleSearch: {} }];
+                targetModelUrl = 'gemini-2.5-flash';
+            } else {
+                targetModelUrl = 'gemini-2.5-flash-lite';
+            }
 
             let retries = 3;
             let aiResponseText = null;
 
-            // 📌 ระบบสลับ API Keys อัตโนมัติเมื่อคีย์เต็ม (Limit Reached)
             while (retries > 0) {
                 try {
                     const activeKey = GEMINI_API_KEYS[currentKeyIdx];
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${targetModelUrl}:generateContent?key=${activeKey}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
                     });
 
-                    if (response.status === 429) {
-                        currentKeyIdx = (currentKeyIdx + 1) % GEMINI_API_KEYS.length;
-                        retries--;
-                        await new Promise(r => setTimeout(r, 2000));
-                        continue;
-                    }
+                    if (response.status === 429) { currentKeyIdx = (currentKeyIdx + 1) % GEMINI_API_KEYS.length; retries--; await new Promise(r => setTimeout(r, 2000)); continue; }
 
                     const data = await response.json();
                     
                     if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts[0].text) {
                         aiResponseText = data.candidates[0].content.parts[0].text;
+                        incrementUsage(activeModel === 'serper' ? 'lite' : activeModel);
                         break;
-                    } else if (data.error) {
-                        throw new Error(data.error.message);
-                    } else {
-                        throw new Error("Invalid format");
-                    }
-                } catch(err) {
-                    retries--;
-                    if(retries === 0) throw err;
-                    await new Promise(r => setTimeout(r, 1500));
-                }
+                    } else if (data.error) { throw new Error(data.error.message); } else { throw new Error("Invalid format"); }
+                } catch(err) { retries--; if(retries === 0) throw err; await new Promise(r => setTimeout(r, 1500)); }
             }
 
             const typingElement = document.getElementById(typingId);
@@ -414,21 +567,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
                 saveSession();
             } else {
-                appendAIMessage("ขออภัยครับ ระบบประมวลผลขัดข้อง กรุณาลองใหม่อีกครั้ง");
-                currentHistory.pop(); // ถอยคำถามออก เพื่อไม่ให้ประวัติพัง
-                saveSession();
+                appendAIMessage("ขออภัยครับ โควต้าเต็มหรือระบบขัดข้อง กรุณาลองใหม่หรือเปลี่ยน Model ครับ");
+                currentHistory.pop(); saveSession();
             }
 
         } catch (error) {
-            console.error("Gemini API Error:", error);
+            console.error("API Error:", error);
             const typingElement = document.getElementById(typingId);
             if (typingElement) typingElement.remove();
-            appendAIMessage("ขาดการเชื่อมต่อ API กรุณาลองใหม่อีกครั้ง หรือเช็คโควต้าอินเทอร์เน็ตครับ");
-            currentHistory.pop(); // ถอยคำถามออก เพื่อไม่ให้ประวัติพัง
-            saveSession();
+            appendAIMessage("ขาดการเชื่อมต่อ กรุณาเช็คอินเทอร์เน็ตหรือโควต้า API ครับ");
+            currentHistory.pop(); saveSession();
         }
-    });
+    };
 
+    // ส่งข้อความเมื่อกดปุ่ม Send เท่านั้น
+    sendBtn.addEventListener('click', processMessage);
 });
 </script>
 <script>
