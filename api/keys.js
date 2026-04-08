@@ -7,8 +7,8 @@ export default function handler(req, res) {
     res.status(200).json({
         GEMINI: process.env.GEMINI_API_KEYS || "",
         SERPER: process.env.SERPER_API_KEYS || "",
-        // 📌 รองรับทั้งแบบคีย์เดียว (เผื่อลืมแก้ Vercel) และแบบหลายคีย์
-        FINNHUB: process.env.FINNHUB_API_KEYS || process.env.FINNHUB_API_KEY || "",
+        // 📌 ดักจับทุกชื่อเผื่อพิมพ์ผิดใน Vercel รับรองว่าคีย์ไม่หายชัวร์
+        FINNHUB: process.env.FINNHUB_API_KEYS || process.env.FINNHUB_KEY_KEYS || process.env.FINNHUB_API_KEY || "",
         ALPHAVANTAGE: process.env.ALPHAVANTAGE_API_KEY || ""
     });
 }
