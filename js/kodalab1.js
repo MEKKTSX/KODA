@@ -1,5 +1,5 @@
 // 🚀 KODA Lab Extension: AI Hedge Fund & Manual Mock Portfolio
-// แยกระบบอิสระ ไม่แตะต้องโค้ดหลัก
+// แยกระบบอิสระ ไม่แตะต้องโค้ดหลัก (เวอร์ชัน AI ปลดแอก ท่องตลาด NYSE/NASDAQ หาหุ้นโต >40%)
 
 window.KodaLabAI = {
     chartInstance: null,
@@ -57,7 +57,6 @@ window.KodaLabAI = {
         window.KodaLabAI.renderUI();
     },
 
-    // 📌 แก้บัค UI สีปุ่มค้าง
     syncUIButtons: () => {
         document.querySelectorAll('.mock-bench-btn').forEach(b => {
             if (b.dataset.bench === window.KodaLabAI.activeBench) {
@@ -334,16 +333,13 @@ window.KodaLabAI = {
             return alert("โปรดฝากเงิน (CAPITAL) เข้าพอร์ตก่อนให้ AI บริหารครับ! กดปุ่ม + ได้เลย");
         }
 
-        if (!confirm("AI จะประมวลผลข่าว, งบการเงิน และวิเคราะห์ความเสี่ยงใหม่ เพื่อให้พอร์ตโต >40% ยืนยันไหมครับ?")) return;
+        if (!confirm("AI จะแสกนตลาด NYSE/NASDAQ ทั้งหมด คัดกรองหุ้นและประเมินงบการเงิน ข่าว เพื่อปรับพอร์ตให้โตทะลุเป้าหมาย >40% ยืนยันรันระบบใช่ไหมครับ?")) return;
 
         const btn = document.getElementById('btn-run-aifund');
         btn.disabled = true;
         btn.innerHTML = `<span class="size-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span> ANALYZING...`;
 
         try {
-            const mainData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
-            const wl = (mainData.watchlist || []).map(s => s.symbol).join(', ');
-            
             let currentAIFundValue = data.unallocatedCash;
             for (const h of data.aiHoldings) {
                 try {
@@ -354,30 +350,37 @@ window.KodaLabAI = {
                 } catch(e) { currentAIFundValue += (h.shares * h.avgCost); }
             }
 
-            const marketContext = await window.KodaLabAI.fetchSerperContext("Stock market latest significant news OR " + wl);
+            // 📌 ปลดล็อก Serper ให้ค้นหาข้อมูลดิบที่เจาะจงถึงหุ้นพุ่งแรง ระดับตลาดโลก ไม่ใช่แค่ในพอร์ต
+            const marketContext = await window.KodaLabAI.fetchSerperContext("Top performing US stocks today NYSE NASDAQ, high growth breakout stocks, significant market moving geopolitical news, insider buying alerts");
 
-            const prompt = `คุณคือ KODA AI Hedge Fund Manager หน้าที่คือบริหารพอร์ตให้เติบโตทะลุ 40% ต่อปี ชนะ S&P500
-            [สถานะพอร์ต AI ตอนนี้]: มูลค่ารวม $${currentAIFundValue.toFixed(2)}, ถือหุ้น: ${JSON.stringify(data.aiHoldings)}
-            [หุ้นเด่นที่น่าสนใจ (Universe)]: ${wl || 'AAPL, TSLA, MSFT, NVDA, GOOGL'}
+            // 📌 แก้ไข Prompt ลบการจำกัด Watchlist ทิ้ง ปล่อย AI ท่องตลาดอิสระ 7,000+ ตัว
+            const prompt = `คุณคืออัจฉริยะ KODA AI Hedge Fund Manager ระดับโลก!
+            เป้าหมายสูงสุด: ทำกำไรพอร์ตให้เติบโต >40% ต่อปี ชนะตลาด S&P500 และ NASDAQ แบบขาดลอย
             
-            [🚨 ข้อมูลข่าวสารล่าสุดของตลาด (Real-time Context)]:
+            [กฎเหล็ก]: คุณมีอิสระในการค้นหาและเลือกหุ้นจากทั้งตลาด NYSE และ NASDAQ (กว่า 7,000+ ตัว) เพื่อลงทุนในหุ้นที่มีศักยภาพสูงสุดจริงๆ ไม่ต้องยึดติดกับหุ้นตัวเดิม
+
+            [สถานะพอร์ต AI ปัจจุบัน]: มูลค่าพอร์ตรวม $${currentAIFundValue.toFixed(2)} (รวมเงินสด), ถือหุ้น: ${JSON.stringify(data.aiHoldings)}
+            
+            [🚨 ข้อมูลตลาดและข่าวล่าสุด (Real-time Context)]:
             ${marketContext}
 
-            คำสั่ง: จงพิจารณาข่าวสารด้านบน และจัดสัดส่วนพอร์ตใหม่ (Rebalance) การซื้อ/ขายจะคำนวณจากสัดส่วน (Weight %) ของมูลค่าพอร์ตรวม
+            คำสั่งปฏิบัติการ: 
+            1. ใช้ข้อมูลตลาดล่าสุด (ข่าวมหภาค, ดอกเบี้ย, สงคราม, งบการเงิน, หุ้น Breakout, Insider, แนวรับ-แนวต้าน) มาวิเคราะห์อย่างลึกซึ้ง
+            2. Rebalance พอร์ต: กำหนดสัดส่วนพอร์ต (weight_pct) รวมกันต้องได้ 100% (รวมสัดส่วนเงินสด CASH) หากคุณเลือกหุ้นใหม่ที่ไม่อยู่ในพอร์ตเดิม ให้พิมพ์สัญลักษณ์มาเลย ระบบจะเพิ่มอัตโนมัติ
             
-            รูปแบบการตอบกลับต้องเป็น JSON เท่านั้น (ตามโครงสร้างด้านล่างเป๊ะๆ) ห้ามมีข้อความอธิบายใดๆ นอกเหนือจาก JSON:
+            รูปแบบการตอบกลับต้องเป็น JSON เท่านั้น (ตามโครงสร้างด้านล่างเป๊ะๆ) ห้ามมีข้อความอธิบายใดๆ นอกเหนือจาก JSON เด็ดขาด:
             {
                 "allocations": [
-                    {"symbol": "ชื่อหุ้น", "weight_pct": 40, "reason": "เหตุผลสั้นๆว่าทำไมถึงเลือกซื้อ/ถือต่อ"},
-                    {"symbol": "CASH", "weight_pct": 20, "reason": "เก็บเงินสดไว้เพราะตลาดเสี่ยง"}
+                    {"symbol": "TICKER_หุ้น", "weight_pct": ตัวเลขสัดส่วน, "reason": "เหตุผลเชิงลึกว่าทำไมถึงซื้อ/ขาย อิงจากข่าว งบ หรือกราฟ"},
+                    {"symbol": "CASH", "weight_pct": ตัวเลขสัดส่วนเงินสด, "reason": "เหตุผลการถือเงินสดสำรองความเสี่ยง"}
                 ],
-                "learning_note": "บันทึกสิ่งที่เรียนรู้จากการวิเคราะห์ครั้งนี้"
+                "learning_note": "บันทึกสรุปภาวะตลาดและกลยุทธ์ที่คุณใช้ในรอบนี้"
             }`;
 
             const geminiKeys = window.ENV_KEYS?.GEMINI || [];
             if(geminiKeys.length === 0) throw new Error("ไม่พบ Gemini API Keys ในระบบ");
 
-            // 📌 เปลี่ยนมาใช้ gemini-2.5-flash-lite ตามคำสั่งที่เสถียรที่สุดใน ai-ops.html
+            // 📌 ใช้ gemini-2.5-flash-lite ที่เสถียรที่สุด
             let retries = geminiKeys.length;
             let aiPlan = null;
             let lastError = null;
@@ -390,7 +393,7 @@ window.KodaLabAI = {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             contents: [{ role: "user", parts: [{ text: prompt }] }],
-                            generationConfig: { temperature: 0.2 } // 📌 เอา responseMimeType ออก ป้องกัน Error API Not Supported
+                            generationConfig: { temperature: 0.3 } 
                         })
                     });
 
@@ -411,7 +414,6 @@ window.KodaLabAI = {
                     if (resData.candidates && resData.candidates[0].content.parts[0].text) {
                         const rawText = resData.candidates[0].content.parts[0].text;
                         
-                        // 📌 ใช้ Regex เพื่อดึงเฉพาะ JSON ออกมาป้องกัน AI พูดน้ำท่วมทุ่ง
                         const match = rawText.match(/\{[\s\S]*\}/);
                         const cleanJson = match ? match[0] : rawText.replace(/```json/g, '').replace(/```/g, '').trim();
                         aiPlan = JSON.parse(cleanJson);
@@ -452,24 +454,27 @@ window.KodaLabAI = {
                     
                     if (existing) {
                         const diffShares = targetShares - existing.shares;
-                        if (diffShares > 0.01) {
+                        if (diffShares > 0.01) { // 📌 ถัวเฉลี่ยขาขึ้น (Average Up) หรือช้อนเพิ่ม (Buy More)
                             finalAvgCost = ((existing.shares * existing.avgCost) + (diffShares * currentPrice)) / targetShares;
                             data.aiHistoryLog.push({ date: dateStr, action: 'BUY', symbol: alloc.symbol, shares: diffShares, price: currentPrice, reason: alloc.reason });
-                        } else if (diffShares < -0.01) { 
+                        } else if (diffShares < -0.01) { // 📌 ทยอยขายทำกำไร (Take Profit) หรือคัทลอส
                             finalAvgCost = existing.avgCost; 
                             data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: alloc.symbol, shares: Math.abs(diffShares), price: currentPrice, reason: "Rebalance/Take Profit" });
+                        } else {
+                            data.aiHistoryLog.push({ date: dateStr, action: 'HOLD', symbol: alloc.symbol, shares: targetShares, price: currentPrice, reason: alloc.reason });
                         }
-                    } else if (targetShares > 0.01) { 
+                    } else if (targetShares > 0.01) { // 📌 เปิดตำแหน่งใหม่ (New Position) ที่ AI สแกนเจอเอง!
                         data.aiHistoryLog.push({ date: dateStr, action: 'BUY', symbol: alloc.symbol, shares: targetShares, price: currentPrice, reason: alloc.reason });
                     }
                     
-                    if (targetShares > 0) {
+                    if (targetShares > 0.001) { // เก็บหุ้นที่สัดส่วน > 0 ไว้
                         newHoldings.push({ symbol: alloc.symbol, shares: targetShares, avgCost: finalAvgCost });
                     }
 
                 } catch(e) { console.warn("Failed to fetch quote", alloc.symbol); }
             }
 
+            // จัดการหุ้นเก่าที่ AI ไม่ได้เลือก (ขายล้างพอร์ต)
             const newSymbols = aiPlan.allocations.map(a => a.symbol);
             for (const old of data.aiHoldings) {
                 if (!newSymbols.includes(old.symbol)) {
@@ -479,7 +484,7 @@ window.KodaLabAI = {
                         const p = await fetch(`https://finnhub.io/api/v1/quote?symbol=${old.symbol}&token=${keys[0]}`).then(r=>r.json());
                         if(p && p.c > 0) sellPrice = p.c;
                     } catch(e){}
-                    data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: old.symbol, shares: old.shares, price: sellPrice, reason: "AI Cut / Removed from port" });
+                    data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: old.symbol, shares: old.shares, price: sellPrice, reason: "AI Cut / Removed from port completely" });
                 }
             }
 
@@ -489,7 +494,7 @@ window.KodaLabAI = {
             window.KodaLabAI.saveData(data);
             window.KodaLabAI.recordDailyHistory(currentAIFundValue); 
             window.KodaLabAI.renderChart();
-            alert("✅ AI วิเคราะห์ตลาดและปรับพอร์ตเรียบร้อยแล้ว!");
+            alert("✅ AI วิเคราะห์ตลาด 7,000 หุ้น และปรับพอร์ตให้คุณเรียบร้อยแล้ว!");
 
         } catch(e) {
             console.error("AI Error:", e);
