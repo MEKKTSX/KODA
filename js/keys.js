@@ -1,4 +1,4 @@
-// ตัวช่วยให้สคริปต์โหลดทัน (คงเดิมไว้ตามคำสั่ง)
+// ตัวช่วยให้สคริปต์โหลดทัน
 const originalAddEventListener = document.addEventListener;
 document.addEventListener = function(type, listener, options) {
     if (type === 'DOMContentLoaded' && (document.readyState === 'interactive' || document.readyState === 'complete')) {
@@ -8,9 +8,9 @@ document.addEventListener = function(type, listener, options) {
     originalAddEventListener.call(this, type, listener, options);
 };
 
-// ไฟล์: js/keys.js (ฉบับอัปเดต รองรับ 3 Serper Keys)
+// KODA Config Loader
 window.loadKodaConfig = async () => {
-    // เช็ก Cache ก่อนเพื่อความเร็ว
+    // เช็ก Cache ใน sessionStorage ก่อนเพื่อความเร็ว
     const cachedKeys = sessionStorage.getItem('koda_secure_keys');
     if (cachedKeys) {
         window.ENV_KEYS = JSON.parse(cachedKeys);
@@ -19,26 +19,32 @@ window.loadKodaConfig = async () => {
 
     try {
         const response = await fetch('/api/keys');
+        if (!response.ok) throw new Error('Network response was not ok');
+        
         const data = await response.json();
         
-        // 📌 จัดการคีย์ GEMINI (ถ้ามาเป็น String ให้แตกเป็น Array)
-        if (typeof data.GEMINI === 'string') {
+        // 📌 จัดการคีย์ GEMINI ให้เป็น Array
+        if (typeof data.GEMINI === 'string' && data.GEMINI.trim() !== '') {
             data.GEMINI = data.GEMINI.split(',').map(k => k.trim());
+        } else {
+            data.GEMINI = [];
         }
 
-        // 📌 จัดการคีย์ SERPER (เพิ่มใหม่: เพื่อให้รองรับ 3 คีย์สลับกัน)
-        if (typeof data.SERPER === 'string') {
+        // 📌 จัดการคีย์ SERPER ให้เป็น Array
+        if (typeof data.SERPER === 'string' && data.SERPER.trim() !== '') {
             data.SERPER = data.SERPER.split(',').map(k => k.trim());
-        } else if (!data.SERPER) {
-            data.SERPER = []; // ป้องกันกรณี Error ถ้าไม่มีคีย์ส่งมา
+        } else {
+            data.SERPER = [];
         }
         
+        // เซฟลง Global Variable และ Cache
         window.ENV_KEYS = data;
         sessionStorage.setItem('koda_secure_keys', JSON.stringify(data));
         return true;
+
     } catch (error) {
-        console.error("Config Load Error:", error);
-        // Fallback กรณีพัง ให้มี Array ว่างรอไว้ไม่ให้แอปค้าง
+        console.error("KODA API Keys fetch error:", error);
+        // Fallback กันแอปค้างกรณีเน็ตพัง
         window.ENV_KEYS = { GEMINI: [], SERPER: [], FINNHUB: '', ALPHAVANTAGE: '' };
         return false;
     }
