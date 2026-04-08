@@ -129,7 +129,7 @@ window.KodaAnalytics = {
                 }
             } 
             
-            // 🚀 STEP 2: Finnhub เป็นท่อหลัก
+            // 📌 แก้ไขที่ 1: ดัน Finnhub ขึ้นมาเป็นท่อหลักก่อน (เร็วกว่า Proxy) *ยกเว้นหุ้นไทย
             if (!fetched && !sym.includes('.BK')) {
                 try {
                     const to = Math.floor(Date.now() / 1000);
@@ -144,7 +144,7 @@ window.KodaAnalytics = {
                 } catch(e) {}
             }
 
-            // 🚀 STEP 3: 📌 อัปเกรดท่อ Proxy ของ Yahoo Finance ให้ทะลุทะลวง (ดึง ASML ได้แน่นอน)
+            // 📌 แก้ไขที่ 2: Yahoo Finance Fallback เพิ่มการตัดจบ (Timeout) ป้องกันแอปหมุนค้าง
             if (!fetched) {
                 let yfSym = sym;
                 if (sym === 'XAUUSD') yfSym = 'GC=F';
@@ -157,8 +157,9 @@ window.KodaAnalytics = {
                 ];
 
                 const proxies = [
-                    url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, // ใช้ /get จะเสถียรกว่า raw
-                    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+                    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+                    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url + '&_=' + Date.now())}`,
+                    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`
                 ];
 
                 for (let url of yfUrls) {
@@ -166,20 +167,13 @@ window.KodaAnalytics = {
                     for (let proxy of proxies) {
                         try {
                             const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 6000); 
+                            const timeoutId = setTimeout(() => controller.abort(), 5000); // 📌 5 วิ ตัดจบ ไม่รอค้าง
                             const res = await fetch(proxy(url), { signal: controller.signal });
                             clearTimeout(timeoutId);
                             
                             if (!res.ok) continue;
                             const rawData = await res.json();
-                            
-                            // จัดการฟอร์แมตข้อมูลจาก Proxy
-                            let data;
-                            if (rawData.contents) {
-                                try { data = JSON.parse(rawData.contents); } catch(e) { data = rawData.contents; }
-                            } else {
-                                data = rawData;
-                            }
+                            const data = rawData.contents ? JSON.parse(rawData.contents) : rawData;
                             
                             if (data?.chart?.result?.[0]) {
                                 const quote = data.chart.result[0].indicators.quote[0];
@@ -261,7 +255,7 @@ window.KodaAnalytics = {
             if (symInput) symInput.value = sym;
 
         } catch(e) {
-            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (อาจเป็นหุ้นที่ระบบ API ยังไม่รองรับ หรือเซิร์ฟเวอร์ขัดข้อง)\nกรุณาตรวจสอบชื่อย่ออีกครั้ง (เช่น TSLA, BTC)`);
+            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (อาจเป็นหุ้นใหม่ที่เพิ่ง IPO หรือเซิร์ฟเวอร์ขัดข้อง)\nกรุณาตรวจสอบชื่อย่ออีกครั้ง (เช่น TSLA, BTC)`);
         } finally {
             if(loading) {
                 loading.classList.remove('flex');
@@ -488,10 +482,12 @@ window.KodaAnalytics = {
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
+        // 📌 แก้ไขที่ 3: เพิ่มเวลา Cache เป็น 12 ชม. (43200000 ms) ป้องกันหน้า Benchmark โหลดช้า
         if (cached && (now - cached.timestamp < 43200000) && cached.data && cached.data.length > 0) return cached.data;
 
         const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
+        // 📌 แก้ไขที่ 4: Bypass Proxy ดึงตรงจากแหล่งที่น่าเชื่อถือ
         if (sym === 'BTC-USD') {
             try {
                 let limit = 30; let interval = '1d';
@@ -528,28 +524,24 @@ window.KodaAnalytics = {
             } catch(e) {}
         }
 
+        // 📌 แก้ไขที่ 5: Fallback กลับไปใช้ Proxy พร้อม Timeout
         const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${range === '5y' ? '1wk' : '1d'}`;
         const proxies = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+            `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
         ];
         
         for (let proxy of proxies) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); 
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 📌 5 วิ ตัดจบ ไม่รอค้าง
                 const res = await fetch(proxy, { signal: controller.signal });
                 clearTimeout(timeoutId);
 
                 if (!res.ok) continue;
                 
                 const rawData = await res.json();
-                let yfData;
-                if (rawData.contents) {
-                    try { yfData = JSON.parse(rawData.contents); } catch(e) { yfData = rawData.contents; }
-                } else {
-                    yfData = rawData;
-                }
+                const yfData = rawData.contents ? JSON.parse(rawData.contents) : rawData;
 
                 if (yfData && yfData.chart && yfData.chart.result && yfData.chart.result[0]) {
                     const result = yfData.chart.result[0];
