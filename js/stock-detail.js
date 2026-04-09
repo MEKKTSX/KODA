@@ -131,13 +131,57 @@ document.addEventListener('DOMContentLoaded', () => {
                     changeEl.style.display = 'flex';
 
                     const labels = timestamps.map(t => new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                    const validCloses = closes.filter(v => v !== null && !Number.isNaN(v));
+                    const lastClose = validCloses[validCloses.length - 1] || cPrice || 0;
+                    const highs = (result.indicators.quote[0].high || []).filter(v => v !== null && !Number.isNaN(v));
+                    const lows = (result.indicators.quote[0].low || []).filter(v => v !== null && !Number.isNaN(v));
+                    const swingHigh = highs.length ? Math.max(...highs) : lastClose;
+                    const swingLow = lows.length ? Math.min(...lows) : lastClose;
+                    const range = Math.max(swingHigh - swingLow, lastClose * 0.02);
+
+                    const fibUps = [0.236, 0.382, 0.5, 0.618, 0.786];
+                    const fibDowns = [0.236, 0.382, 0.5, 0.618, 0.786];
+                    const resistances = fibUps.map(r => lastClose + (range * r));
+                    const supports = fibDowns.map(r => lastClose - (range * r));
+
+                    const constLine = (value, color, label) => ({
+                        label,
+                        data: labels.map(() => value),
+                        borderColor: color,
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        tension: 0,
+                        borderDash: [6, 5]
+                    });
+
                     new Chart(document.getElementById('thai-chart'), {
                         type: 'line',
                         data: {
                             labels: labels,
-                            datasets: [{ data: closes, borderColor: change >= 0 ? '#00c076' : '#ff4d4d', borderWidth: 2, pointRadius: 0, tension: 0.1 }]
+                            datasets: [
+                                { label: 'Price', data: closes, borderColor: change >= 0 ? '#00c076' : '#ff4d4d', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+                                ...resistances.map((v, i) => constLine(v, '#ff6b6b', `R${i+1} ${v.toFixed(2)}`)),
+                                ...supports.map((v, i) => constLine(v, '#34d399', `S${i+1} ${v.toFixed(2)}`))
+                            ]
                         },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8' } } } }
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}`
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { display: false },
+                                y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8' } }
+                            }
+                        }
                     });
                 } catch(e) { container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`; }
             };
@@ -170,8 +214,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     "container_id": containerId,
                     "allow_symbol_change": false,  // ไม่ให้เปลี่ยนหุ้นมั่ว
                     "withdateranges": true,        // โชว์กรอบเวลาด้านล่าง
-                    "studies": [                   // ใส่ Volume ให้เป็นค่าเริ่มต้น
-                        "Volume@tv-basicstudies"
+                    "studies": [                   // ใส่ Volume + Pivot (S/R) ให้เป็นค่าเริ่มต้น
+                        "Volume@tv-basicstudies",
+                        "PivotPointsStandard@tv-basicstudies"
                     ]
                 });
             };
@@ -456,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             โปรดวิเคราะห์ข่าวนี้เป็น "ภาษาไทย" ให้เห็นภาพชัดเจน โดยบังคับใช้โครงสร้าง HTML ดังนี้:
             <p>📝 <strong style="color:#fff;">สรุปเหตุการณ์:</strong> (สรุปเหตุการณ์ที่เกิดขึ้นสั้นๆ)</p>
-            <p>🌍 <strong style="color:#fff;">ผลกระทบ:</strong> (วิเคราะห์ผลกระทบต่อบริษัท อุตสาหกรรม หรือราคาหุ้น)</p>
+            <p>🌍 <strong style="color:#fff;">ผลกระทบ:</strong> (วิเคราะห์ผลกระทต่อบริษัท อุตสาหกรรม หรือราคาหุ้น)</p>
             <div style="background: rgba(52,168,235,0.1); border: 1px solid rgba(52,168,235,0.3); padding: 12px; border-radius: 8px; margin-top: 16px;">
                 💡 <strong style="color:#34a8eb;">สรุปย่อ (TL;DR):</strong> (เขียนสรุปใจความสำคัญทั้งหมดใน 1-2 ประโยคสั้นๆ เพื่อให้อ่านปุ๊บเข้าใจทันที)
             </div>
