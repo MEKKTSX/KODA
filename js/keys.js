@@ -12,8 +12,8 @@ document.addEventListener = function(type, listener, options) {
 
 // 📌 2. KODA Config Loader
 window.loadKodaConfig = async () => {
-    // 🚨 เปลี่ยนชื่อ Cache เป็น v3 เพื่อบังคับล้างค่าเก่าที่พังอยู่ทิ้ง!
-    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v3');
+    // 🚨 เปลี่ยนชื่อ Cache เป็น v4 เพื่อบังคับล้างค่าเก่าที่พังอยู่ทิ้ง!
+    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v4');
     if (cachedKeys) {
         window.ENV_KEYS = JSON.parse(cachedKeys);
         return true;
@@ -39,8 +39,8 @@ window.loadKodaConfig = async () => {
         }
         
         window.ENV_KEYS = data;
-        // 🚨 เซฟลงชื่อใหม่ v3
-        sessionStorage.setItem('koda_secure_keys_v3', JSON.stringify(data));
+        // 🚨 เซฟลงชื่อใหม่ v4
+        sessionStorage.setItem('koda_secure_keys_v4', JSON.stringify(data));
         return true;
 
     } catch (error) {
