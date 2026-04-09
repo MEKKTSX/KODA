@@ -107,86 +107,167 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
 
         const renderTradingViewFallback = () => {
-    container.innerHTML = '';
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = 'https://s3.tradingview.com/tv.js';
-    script.async = true;
-    script.onload = () => {
-        let tvSym = symbol;
-        if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
-        else if (symbol.includes(':')) tvSym = symbol;
+            container.innerHTML = '';
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'https://s3.tradingview.com/tv.js';
+            script.async = true;
+            script.onload = () => {
+                let tvSym = symbol;
+                if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
+                else if (symbol.includes(':')) tvSym = symbol;
 
-        new TradingView.widget({
-            "autosize": true,
-            "symbol": tvSym,
-            "interval": "D",
-            "timezone": "Etc/UTC",
-            "theme": "dark",
-            "style": "1",
-            "locale": "en",
-            "enable_publishing": false,
-            "backgroundColor": "#0a0e17",
-            "gridColor": "#161c2b",
-            "hide_top_toolbar": false,
-            "hide_legend": false,
-            "save_image": false,
-            "container_id": containerId,
-            "allow_symbol_change": false,
-            "withdateranges": true,
-            "studies": [
-                "Volume@tv-basicstudies"
-            ]
-        });
-    };
-    container.appendChild(script);
-};
-
-        // ✅ หุ้นส่วนใหญ่ (US/HK/Crypto/Forex) ใช้ TradingView โดยตรงเพื่อความเสถียร
-        // และให้แสดงกราฟได้ชัวร์บน mobile webview
-        if (!isThaiStock) {
-            renderTradingViewFallback();
-            return;
-        }
-
-        const loadChartJs = async () => {
-            if (window.Chart) return;
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
+                new TradingView.widget({
+                    "autosize": true,
+                    "symbol": tvSym,
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "enable_publishing": false,
+                    "backgroundColor": "#0a0e17",
+                    "gridColor": "#161c2b",
+                    "hide_top_toolbar": false,
+                    "hide_legend": false,
+                    "save_image": false,
+                    "container_id": containerId,
+                    "allow_symbol_change": false,
+                    "withdateranges": true,
+                    "studies": [
+                        "Volume@tv-basicstudies"
+                    ]
+                });
+            };
+            container.appendChild(script);
         };
 
-        const buildSMA = (values, period) => values.map((_, i) => {
-            if (i < period - 1) return null;
-            const win = values.slice(i - period + 1, i + 1).filter(v => v !== null && !Number.isNaN(v));
-            if (win.length < period) return null;
-            return win.reduce((a, b) => a + b, 0) / win.length;
+        // หมายเหตุ: ใช้ Advanced SR กับทุกตลาดก่อน เพื่อให้เห็นแนวรับ/แนวต้านจริงบนกราฟ
+        // หากโหลดข้อมูลไม่สำเร็จสำหรับ non-Thai ให้ fallback ไป TradingView เพื่อคงความเสถียร
+
+        let srChartInstance = null;
+
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
         });
 
-        const pivotSwing = (highs, lows, left = 3, right = 3) => {
-            const pivHigh = [];
-            const pivLow = [];
+        const loadChartJs = async () => {
+            if (!window.Chart) await loadScript('https://cdn.jsdelivr.net/npm/chart.js');
+            if (!window.Hammer) await loadScript('https://cdn.jsdelivr.net/npm/hammerjs');
+            if (!window.ChartZoom) await loadScript('https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js');
+            if (window.Chart && window.ChartZoom && !window.__kodaZoomRegistered) {
+                Chart.register(window.ChartZoom);
+                window.__kodaZoomRegistered = true;
+            }
+        };
+
+        const detectSwingPoints = (highs, lows, left = 4, right = 4) => {
+            const swings = [];
             for (let i = left; i < highs.length - right; i++) {
                 const h = highs[i];
                 const l = lows[i];
-                if (h === null || l === null) continue;
-                let isHigh = true, isLow = true;
+                if (h === null || l === null || Number.isNaN(h) || Number.isNaN(l)) continue;
+
+                let isSwingHigh = true;
+                let isSwingLow = true;
                 for (let j = 1; j <= left; j++) {
-                    if (highs[i - j] !== null && highs[i - j] >= h) isHigh = false;
-                    if (lows[i - j] !== null && lows[i - j] <= l) isLow = false;
+                    if (highs[i - j] !== null && highs[i - j] >= h) isSwingHigh = false;
+                    if (lows[i - j] !== null && lows[i - j] <= l) isSwingLow = false;
                 }
                 for (let j = 1; j <= right; j++) {
-                    if (highs[i + j] !== null && highs[i + j] > h) isHigh = false;
-                    if (lows[i + j] !== null && lows[i + j] < l) isLow = false;
+                    if (highs[i + j] !== null && highs[i + j] > h) isSwingHigh = false;
+                    if (lows[i + j] !== null && lows[i + j] < l) isSwingLow = false;
                 }
-                if (isHigh) pivHigh.push({ idx: i, value: h });
-                if (isLow) pivLow.push({ idx: i, value: l });
+
+                if (isSwingHigh) swings.push({ idx: i, price: h, type: 'resistance', method: 'swing-high' });
+                if (isSwingLow) swings.push({ idx: i, price: l, type: 'support', method: 'swing-low' });
             }
-            return { pivHigh, pivLow };
+            return swings;
+        };
+
+        const scoreLevel = (point, highs, lows, closes, currentPrice) => {
+            const i = point.idx;
+            const isSupport = point.type === 'support';
+            const price = point.price;
+
+            const left = Math.max(0, i - 6);
+            const right = Math.min(closes.length - 1, i + 6);
+            let touchCount = 0;
+            let rejectionPower = 0;
+            const touchBand = Math.max(currentPrice * 0.003, price * 0.003);
+
+            for (let k = left; k <= right; k++) {
+                const hk = highs[k];
+                const lk = lows[k];
+                if (hk === null || lk === null || Number.isNaN(hk) || Number.isNaN(lk)) continue;
+                if (Math.abs(hk - price) <= touchBand || Math.abs(lk - price) <= touchBand) touchCount++;
+            }
+
+            const prevClose = closes[i - 1] ?? closes[i];
+            const nextClose = closes[i + 1] ?? closes[i];
+            if (isSupport) {
+                rejectionPower = Math.max(0, (nextClose - price) / Math.max(price, 1));
+                if (prevClose < price) rejectionPower += 0.2;
+            } else {
+                rejectionPower = Math.max(0, (price - nextClose) / Math.max(price, 1));
+                if (prevClose > price) rejectionPower += 0.2;
+            }
+
+            const recency = (i + 1) / closes.length;
+            const proximity = 1 - Math.min(Math.abs(price - currentPrice) / Math.max(currentPrice, 1), 1);
+            const strength = (touchCount * 1.2) + (rejectionPower * 120) + (recency * 2.5) + (proximity * 1.5);
+
+            return {
+                price,
+                type: point.type,
+                strength,
+                method: point.method,
+                idx: i
+            };
+        };
+
+        const dedupeCloseLevels = (levels, mergeThresholdPct = 0.008) => {
+            const groupedByType = {
+                support: levels.filter(l => l.type === 'support').sort((a, b) => a.price - b.price),
+                resistance: levels.filter(l => l.type === 'resistance').sort((a, b) => a.price - b.price)
+            };
+
+            const merged = [];
+            ['support', 'resistance'].forEach(type => {
+                let bucket = [];
+                groupedByType[type].forEach(level => {
+                    if (!bucket.length) {
+                        bucket.push(level);
+                        return;
+                    }
+                    const anchor = bucket[bucket.length - 1];
+                    const threshold = Math.max(anchor.price, level.price) * mergeThresholdPct;
+                    if (Math.abs(level.price - anchor.price) <= threshold) {
+                        bucket.push(level);
+                    } else {
+                        const best = bucket.sort((a, b) => b.strength - a.strength)[0];
+                        merged.push(best);
+                        bucket = [level];
+                    }
+                });
+                if (bucket.length) {
+                    const best = bucket.sort((a, b) => b.strength - a.strength)[0];
+                    merged.push(best);
+                }
+            });
+            return merged;
+        };
+
+        const pickTopLevels = (levels, type, limit = 5) => {
+            return levels
+                .filter(l => l.type === type)
+                .sort((a, b) => b.strength - a.strength)
+                .slice(0, limit)
+                .sort((a, b) => a.price - b.price);
         };
 
         const renderAdvancedSR = async () => {
@@ -235,90 +316,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 const validLow = lows.filter(v => v !== null && !Number.isNaN(v));
                 const cLast = validClose[validClose.length - 1] || latestPrice || 0;
 
-                // Classic Pivot Points (ใช้แท่งก่อนหน้าล่าสุด)
-                const ph = validHigh[validHigh.length - 2] ?? validHigh[validHigh.length - 1] ?? cLast;
-                const pl = validLow[validLow.length - 2] ?? validLow[validLow.length - 1] ?? cLast;
-                const pc = validClose[validClose.length - 2] ?? validClose[validClose.length - 1] ?? cLast;
-                const pp = (ph + pl + pc) / 3;
-                const r1 = (2 * pp) - pl;
-                const s1 = (2 * pp) - ph;
-                const r2 = pp + (ph - pl);
-                const s2 = pp - (ph - pl);
-                const r3 = ph + 2 * (pp - pl);
-                const s3 = pl - 2 * (ph - pp);
+                const swings = detectSwingPoints(highs, lows, 4, 4);
+                const scoredLevels = swings.map(p => scoreLevel(p, highs, lows, closes, cLast));
+                const mergedLevels = dedupeCloseLevels(scoredLevels, 0.008);
+                const supportLevels = pickTopLevels(mergedLevels, 'support', 5);
+                const resistanceLevels = pickTopLevels(mergedLevels, 'resistance', 5);
+                const selectedLevels = [...supportLevels, ...resistanceLevels];
 
-                // Swing High/Low + Fibonacci Retracement
-                const { pivHigh, pivLow } = pivotSwing(highs, lows, 4, 4);
-                const swingHigh = pivHigh.length ? pivHigh[pivHigh.length - 1].value : Math.max(...validHigh);
-                const swingLow = pivLow.length ? pivLow[pivLow.length - 1].value : Math.min(...validLow);
-                const fibRange = Math.max(swingHigh - swingLow, cLast * 0.01);
-                const fib236 = swingHigh - (fibRange * 0.236);
-                const fib382 = swingHigh - (fibRange * 0.382);
-                const fib500 = swingHigh - (fibRange * 0.5);
-                const fib618 = swingHigh - (fibRange * 0.618);
-                const fib786 = swingHigh - (fibRange * 0.786);
+                const makeLevelDataset = (level) => {
+                    const normalized = Math.min(1, Math.max(0, level.strength / 16));
+                    const alpha = 0.35 + (normalized * 0.45);
+                    const width = 1 + (normalized * 2.2);
+                    const isSupport = level.type === 'support';
+                    const baseColor = isSupport ? `rgba(16,185,129,${alpha.toFixed(2)})` : `rgba(244,63,94,${alpha.toFixed(2)})`;
+                    return {
+                        label: `${isSupport ? 'Support' : 'Resistance'} ${level.price.toFixed(2)}`,
+                        data: labels.map(() => level.price),
+                        borderColor: baseColor,
+                        borderWidth: width,
+                        borderDash: normalized > 0.72 ? [] : [5, 4],
+                        pointRadius: 0,
+                        tension: 0,
+                        order: 1
+                    };
+                };
 
-                // SMA
-                const sma20 = buildSMA(closes, 20);
-                const sma50 = buildSMA(closes, 50);
-                const sma200 = buildSMA(closes, 200);
-
-                const hLine = (val, color, label, dash = [5, 5]) => ({
-                    label,
-                    data: labels.map(() => val),
-                    borderColor: color,
-                    borderWidth: 1.1,
-                    borderDash: dash,
-                    pointRadius: 0,
-                    tension: 0
-                });
-
-                new Chart(document.getElementById('detail-sr-chart'), {
+                if (srChartInstance) srChartInstance.destroy();
+                srChartInstance = new Chart(document.getElementById('detail-sr-chart'), {
                     type: 'line',
                     data: {
                         labels,
                         datasets: [
-                            { label: 'Price', data: closes, borderColor: '#34a8eb', borderWidth: 2, pointRadius: 0, tension: 0.15 },
-                            { label: 'SMA 20', data: sma20, borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
-                            { label: 'SMA 50', data: sma50, borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
-                            { label: 'SMA 200', data: sma200, borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
-
-                            hLine(r3, '#ef4444', `R3 ${r3.toFixed(2)}`),
-                            hLine(r2, '#f97316', `R2 ${r2.toFixed(2)}`),
-                            hLine(r1, '#fb7185', `R1 ${r1.toFixed(2)}`),
-                            hLine(pp, '#eab308', `PP ${pp.toFixed(2)}`, [2, 4]),
-                            hLine(s1, '#10b981', `S1 ${s1.toFixed(2)}`),
-                            hLine(s2, '#14b8a6', `S2 ${s2.toFixed(2)}`),
-                            hLine(s3, '#06b6d4', `S3 ${s3.toFixed(2)}`),
-
-                            hLine(fib236, '#fca5a5', `Fib 23.6% ${fib236.toFixed(2)}`),
-                            hLine(fib382, '#fdba74', `Fib 38.2% ${fib382.toFixed(2)}`),
-                            hLine(fib500, '#86efac', `Fib 50% ${fib500.toFixed(2)}`),
-                            hLine(fib618, '#7dd3fc', `Fib 61.8% ${fib618.toFixed(2)}`),
-                            hLine(fib786, '#c4b5fd', `Fib 78.6% ${fib786.toFixed(2)}`),
-                            hLine(swingHigh, '#fecaca', `Swing High ${swingHigh.toFixed(2)}`, [8, 4]),
-                            hLine(swingLow, '#bbf7d0', `Swing Low ${swingLow.toFixed(2)}`, [8, 4])
+                            { label: 'Price', data: closes, borderColor: '#34a8eb', borderWidth: 1.8, pointRadius: 0, tension: 0.15, order: 2 },
+                            ...selectedLevels.map(makeLevelDataset)
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
-                                mode: 'index',
-                                intersect: false,
-                                callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}` }
+                                callbacks: {
+                                    label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}`
+                                }
+                            },
+                            zoom: {
+                                limits: {
+                                    x: { min: 'original', max: 'original' },
+                                    y: { min: 'original', max: 'original' }
+                                },
+                                pan: {
+                                    enabled: true,
+                                    mode: 'xy',
+                                    modifierKey: null
+                                },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    drag: { enabled: true },
+                                    mode: 'xy'
+                                }
                             }
                         },
                         scales: {
-                            x: { display: false },
+                            x: { display: false, grid: { color: '#1b2332' } },
                             y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8' } }
                         }
                     }
                 });
             } catch (e) {
                 console.error(e);
+                if (!isThaiStock) {
+                    renderTradingViewFallback();
+                    return;
+                }
                 container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`;
             }
         };
