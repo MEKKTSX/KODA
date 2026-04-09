@@ -49,7 +49,9 @@ window.KodaLabAI = {
         let attempts = keys.length;
         while (attempts > 0) {
             try {
-                const res = await fetch(`${url}&token=${keys[window.KodaLabAI.finnhubKeyIdx]}`, options);
+                const delimiter = url.includes('?') ? '&' : '?';
+                const signedUrl = `${url}${delimiter}token=${keys[window.KodaLabAI.finnhubKeyIdx]}`;
+                const res = await fetch(signedUrl, options);
                 if (res.status === 429) {
                     window.KodaLabAI.finnhubKeyIdx = (window.KodaLabAI.finnhubKeyIdx + 1) % keys.length;
                     attempts--; continue;
@@ -181,33 +183,44 @@ window.KodaLabAI = {
         const geminiKeys = window.ENV_KEYS?.GEMINI || [];
         if (!geminiKeys.length) throw new Error("No Gemini Key");
 
+        const modelCandidates = ['gemini-1.5-pro', 'gemini-1.5-flash'];
         let attempts = geminiKeys.length;
         while (attempts > 0) {
             const key = geminiKeys[window.KodaLabAI.geminiKeyIdx];
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${key}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                        tools: [{ googleSearch: {} }],
-                        generationConfig: { temperature: 0.2 }
-                    })
-                });
+                for (const modelName of modelCandidates) {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            tools: [{ googleSearch: {} }],
+                            generationConfig: { temperature: 0.2 }
+                        })
+                    });
 
-                if (!response.ok) {
-                    if (response.status === 429 || response.status >= 500) {
-                        window.KodaLabAI.geminiKeyIdx = (window.KodaLabAI.geminiKeyIdx + 1) % geminiKeys.length;
-                        attempts--;
-                        continue;
+                    if (!response.ok) {
+                        if (response.status === 429 || response.status >= 500) continue;
+                        const bodyText = await response.text();
+                        throw new Error(`Gemini ${modelName} failed (${response.status}): ${bodyText.slice(0, 120)}`);
                     }
-                    throw new Error(`Gemini error: ${response.status}`);
-                }
 
-                const resData = await response.json();
-                const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-                return JSON.parse(cleanJson);
+                    const resData = await response.json();
+                    const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                    const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                    try {
+                        return JSON.parse(cleaned);
+                    } catch (err) {
+                        const jsonStart = cleaned.indexOf('{');
+                        const jsonEnd = cleaned.lastIndexOf('}');
+                        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+                            const sliced = cleaned.slice(jsonStart, jsonEnd + 1);
+                            return JSON.parse(sliced);
+                        }
+                        throw new Error(`Gemini ${modelName} returned invalid JSON`);
+                    }
+                }
+                throw new Error('Gemini rate-limited/unavailable on all candidate models');
             } catch (e) {
                 window.KodaLabAI.geminiKeyIdx = (window.KodaLabAI.geminiKeyIdx + 1) % geminiKeys.length;
                 attempts--;
@@ -518,7 +531,7 @@ window.KodaLabAI = {
                 currentHoldingsInfo.push({ symbol: h.symbol, shares: h.shares, current_price: currentPrice, avg_cost: h.avgCost });
             }
 
-            const technicalUniverse = [...new Set(['SPY', 'QQQ', ...data.aiHoldings.map(h => h.symbol)])].slice(0, 10);
+            const technicalUniverse = [...new Set(['SPY', 'QQQ', ...data.aiHoldings.map(h => h.symbol)])].slice(0, 5);
             const technicalList = (await Promise.all(technicalUniverse.map(sym => window.KodaLabAI.getTechnicalSnapshot(sym)))).filter(Boolean);
             const macroNews = await window.KodaLabAI.fetchSerperContext("US stock market today inflation fed rates earnings war geopolitics");
             const earningsNews = await window.KodaLabAI.fetchSerperContext("latest US earnings beats misses guidance Nasdaq NYSE");
@@ -630,7 +643,8 @@ ${JSON.stringify(technicalList)}
         } catch(e) {
             console.error(e);
             window.KodaLabAI.setStatus('Rebalance failed', 'error');
-            alert("เกิดข้อผิดพลาดในการเรียก AI (API limit หรือผลลัพธ์ JSON ไม่ถูกต้อง) กรุณาลองใหม่ครับ");
+            const reason = String(e?.message || e || '').slice(0, 160);
+            alert(`เกิดข้อผิดพลาดในการเรียก AI\nสาเหตุ: ${reason || 'Unknown error'}\n\nลองอีกครั้งใน 30-60 วินาที หรือเช็ก /api/keys แล้วรีเฟรชหน้า`);
         } finally {
             btn.disabled = false;
             btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">auto_awesome</span> Rebalance`;
