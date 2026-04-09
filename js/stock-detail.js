@@ -99,307 +99,373 @@ document.addEventListener('DOMContentLoaded', () => {
     // 📌 2. ระบบสร้างกราฟ (ปลดล็อก TradingView Advanced Chart)
     // ==========================================
     const renderChart = () => {
-        const containerId = 'tv-widget-container';
-        const container = document.getElementById(containerId);
-        if (!container) return;
+    const containerId = 'tv-widget-container';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+
+    container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
+
+    const renderTradingViewFallback = () => {
         container.innerHTML = '';
+        const script = document.createElement('script');
+        script.type = 'text/javascript';
+        script.src = 'https://s3.tradingview.com/tv.js';
+        script.async = true;
+        script.onload = () => {
+            let tvSym = symbol;
+            if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
+            else if (symbol.includes(':')) tvSym = symbol;
 
-        container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
-
-        const renderTradingViewFallback = () => {
-            container.innerHTML = '';
-            const script = document.createElement('script');
-            script.type = 'text/javascript';
-            script.src = 'https://s3.tradingview.com/tv.js';
-            script.async = true;
-            script.onload = () => {
-                let tvSym = symbol;
-                if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
-                else if (symbol.includes(':')) tvSym = symbol;
-
-                new TradingView.widget({
-                    "autosize": true,
-                    "symbol": tvSym,
-                    "interval": "D",
-                    "timezone": "Etc/UTC",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "en",
-                    "enable_publishing": false,
-                    "backgroundColor": "#0a0e17",
-                    "gridColor": "#161c2b",
-                    "hide_top_toolbar": false,
-                    "hide_legend": false,
-                    "save_image": false,
-                    "container_id": containerId,
-                    "allow_symbol_change": false,
-                    "withdateranges": true,
-                    "studies": [
-                        "Volume@tv-basicstudies"
-                    ]
-                });
-            };
-            container.appendChild(script);
+            new TradingView.widget({
+                "autosize": true,
+                "symbol": tvSym,
+                "interval": "D",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "1",
+                "locale": "en",
+                "enable_publishing": false,
+                "backgroundColor": "#0a0e17",
+                "gridColor": "#161c2b",
+                "hide_top_toolbar": false,
+                "hide_legend": false,
+                "save_image": false,
+                "container_id": containerId,
+                "allow_symbol_change": false,
+                "withdateranges": true,
+                "studies": [
+                    "Volume@tv-basicstudies"
+                ]
+            });
         };
+        container.appendChild(script);
+    };
 
-        // หมายเหตุ: ใช้ Advanced SR กับทุกตลาดก่อน เพื่อให้เห็นแนวรับ/แนวต้านจริงบนกราฟ
-        // หากโหลดข้อมูลไม่สำเร็จสำหรับ non-Thai ให้ fallback ไป TradingView เพื่อคงความเสถียร
+    // หมายเหตุ: ใช้ Advanced SR กับทุกตลาดก่อน เพื่อให้เห็นแนวรับ/แนวต้านจริงบนกราฟ
+    // หากโหลดข้อมูลไม่สำเร็จสำหรับ non-Thai ให้ fallback ไป TradingView เพื่อคงความเสถียร
 
-        let srChartInstance = null;
+    let srChartInstance = null;
 
-        const loadScript = (src) => new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = src;
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
+    const loadScript = (src) => new Promise((resolve, reject) => {
+        const existing = Array.from(document.scripts).find(sc => sc.src === src);
+        if (existing) {
+            if (window.LightweightCharts && src.includes('lightweight-charts')) {
+                resolve();
+                return;
+            }
+            existing.addEventListener('load', () => resolve(), { once: true });
+            existing.addEventListener('error', reject, { once: true });
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+
+    const loadLightweightCharts = async () => {
+        if (!window.LightweightCharts) {
+            await loadScript('https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js');
+        }
+    };
+
+    const detectSwingPoints = (candles, left = 3, right = 3) => {
+        const swings = [];
+        for (let i = left; i < candles.length - right; i++) {
+            const current = candles[i];
+            if (!current) continue;
+
+            let isSwingHigh = true;
+            let isSwingLow = true;
+
+            for (let j = 1; j <= left; j++) {
+                const c = candles[i - j];
+                if (!c) continue;
+                if (c.high >= current.high) isSwingHigh = false;
+                if (c.low <= current.low) isSwingLow = false;
+            }
+
+            for (let j = 1; j <= right; j++) {
+                const c = candles[i + j];
+                if (!c) continue;
+                if (c.high > current.high) isSwingHigh = false;
+                if (c.low < current.low) isSwingLow = false;
+            }
+
+            if (isSwingHigh) swings.push({ idx: i, price: current.high, type: 'resistance', method: 'swing-high' });
+            if (isSwingLow) swings.push({ idx: i, price: current.low, type: 'support', method: 'swing-low' });
+        }
+        return swings;
+    };
+
+    const scoreLevel = (point, candles, currentPrice) => {
+        const i = point.idx;
+        const candle = candles[i];
+        const price = point.price;
+        const recentWindow = candles.slice(Math.max(0, i - 40), Math.min(candles.length, i + 41));
+        const touchBand = Math.max(price * 0.0035, currentPrice * 0.0025);
+
+        let touchCount = 0;
+        let rejectionPower = 0;
+
+        recentWindow.forEach(c => {
+            const touched = Math.abs(c.high - price) <= touchBand || Math.abs(c.low - price) <= touchBand || (c.low <= price && c.high >= price);
+            if (touched) touchCount += 1;
         });
 
-        const loadChartJs = async () => {
-            if (!window.Chart) await loadScript('https://cdn.jsdelivr.net/npm/chart.js');
-            if (!window.Hammer) await loadScript('https://cdn.jsdelivr.net/npm/hammerjs');
-            if (!window.ChartZoom) await loadScript('https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js');
-            if (window.Chart && window.ChartZoom && !window.__kodaZoomRegistered) {
-                Chart.register(window.ChartZoom);
-                window.__kodaZoomRegistered = true;
-            }
+        const next = candles[i + 1] || candle;
+        const prev = candles[i - 1] || candle;
+        if (point.type === 'support') {
+            rejectionPower = Math.max(0, (next.close - price) / Math.max(price, 1));
+            if (prev.close < price && candle.close > candle.open) rejectionPower += 0.15;
+        } else {
+            rejectionPower = Math.max(0, (price - next.close) / Math.max(price, 1));
+            if (prev.close > price && candle.close < candle.open) rejectionPower += 0.15;
+        }
+
+        const structure = Math.abs(candle.high - candle.low) / Math.max(price, 1);
+        const recency = (i + 1) / candles.length;
+        const proximity = 1 - Math.min(Math.abs(price - currentPrice) / Math.max(currentPrice, 1), 1);
+
+        const strength = (touchCount * 1.1) + (rejectionPower * 140) + (structure * 45) + (recency * 3.2) + (proximity * 2.1);
+
+        return {
+            price,
+            type: point.type,
+            strength,
+            method: point.method,
+            idx: i
         };
+    };
 
-        const detectSwingPoints = (highs, lows, left = 4, right = 4) => {
-            const swings = [];
-            for (let i = left; i < highs.length - right; i++) {
-                const h = highs[i];
-                const l = lows[i];
-                if (h === null || l === null || Number.isNaN(h) || Number.isNaN(l)) continue;
+    const calculateMergeThresholdPct = (candles) => {
+        const ranges = candles.slice(-120).map(c => (c.high - c.low) / Math.max(c.close, 1));
+        if (!ranges.length) return 0.008;
+        const avgRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+        return Math.min(0.012, Math.max(0.005, avgRange * 0.75));
+    };
 
-                let isSwingHigh = true;
-                let isSwingLow = true;
-                for (let j = 1; j <= left; j++) {
-                    if (highs[i - j] !== null && highs[i - j] >= h) isSwingHigh = false;
-                    if (lows[i - j] !== null && lows[i - j] <= l) isSwingLow = false;
-                }
-                for (let j = 1; j <= right; j++) {
-                    if (highs[i + j] !== null && highs[i + j] > h) isSwingHigh = false;
-                    if (lows[i + j] !== null && lows[i + j] < l) isSwingLow = false;
-                }
+    const dedupeCloseLevels = (levels, mergeThresholdPct = 0.008) => {
+        const merged = [];
+        ['support', 'resistance'].forEach(type => {
+            const sorted = levels.filter(l => l.type === type).sort((a, b) => a.price - b.price);
+            let cluster = [];
 
-                if (isSwingHigh) swings.push({ idx: i, price: h, type: 'resistance', method: 'swing-high' });
-                if (isSwingLow) swings.push({ idx: i, price: l, type: 'support', method: 'swing-low' });
-            }
-            return swings;
-        };
-
-        const scoreLevel = (point, highs, lows, closes, currentPrice) => {
-            const i = point.idx;
-            const isSupport = point.type === 'support';
-            const price = point.price;
-
-            const left = Math.max(0, i - 6);
-            const right = Math.min(closes.length - 1, i + 6);
-            let touchCount = 0;
-            let rejectionPower = 0;
-            const touchBand = Math.max(currentPrice * 0.003, price * 0.003);
-
-            for (let k = left; k <= right; k++) {
-                const hk = highs[k];
-                const lk = lows[k];
-                if (hk === null || lk === null || Number.isNaN(hk) || Number.isNaN(lk)) continue;
-                if (Math.abs(hk - price) <= touchBand || Math.abs(lk - price) <= touchBand) touchCount++;
-            }
-
-            const prevClose = closes[i - 1] ?? closes[i];
-            const nextClose = closes[i + 1] ?? closes[i];
-            if (isSupport) {
-                rejectionPower = Math.max(0, (nextClose - price) / Math.max(price, 1));
-                if (prevClose < price) rejectionPower += 0.2;
-            } else {
-                rejectionPower = Math.max(0, (price - nextClose) / Math.max(price, 1));
-                if (prevClose > price) rejectionPower += 0.2;
-            }
-
-            const recency = (i + 1) / closes.length;
-            const proximity = 1 - Math.min(Math.abs(price - currentPrice) / Math.max(currentPrice, 1), 1);
-            const strength = (touchCount * 1.2) + (rejectionPower * 120) + (recency * 2.5) + (proximity * 1.5);
-
-            return {
-                price,
-                type: point.type,
-                strength,
-                method: point.method,
-                idx: i
-            };
-        };
-
-        const dedupeCloseLevels = (levels, mergeThresholdPct = 0.008) => {
-            const groupedByType = {
-                support: levels.filter(l => l.type === 'support').sort((a, b) => a.price - b.price),
-                resistance: levels.filter(l => l.type === 'resistance').sort((a, b) => a.price - b.price)
-            };
-
-            const merged = [];
-            ['support', 'resistance'].forEach(type => {
-                let bucket = [];
-                groupedByType[type].forEach(level => {
-                    if (!bucket.length) {
-                        bucket.push(level);
-                        return;
-                    }
-                    const anchor = bucket[bucket.length - 1];
-                    const threshold = Math.max(anchor.price, level.price) * mergeThresholdPct;
-                    if (Math.abs(level.price - anchor.price) <= threshold) {
-                        bucket.push(level);
-                    } else {
-                        const best = bucket.sort((a, b) => b.strength - a.strength)[0];
-                        merged.push(best);
-                        bucket = [level];
-                    }
-                });
-                if (bucket.length) {
-                    const best = bucket.sort((a, b) => b.strength - a.strength)[0];
-                    merged.push(best);
-                }
-            });
-            return merged;
-        };
-
-        const pickTopLevels = (levels, type, limit = 5) => {
-            return levels
-                .filter(l => l.type === type)
-                .sort((a, b) => b.strength - a.strength)
-                .slice(0, limit)
-                .sort((a, b) => a.price - b.price);
-        };
-
-        const renderAdvancedSR = async () => {
-            try {
-                await loadChartJs();
-
-                let timestamps = [], closes = [], highs = [], lows = [], latestPrice = null;
-                if (isThaiStock) {
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                    const res = await fetch(proxyUrl).then(r => r.json());
-                    const yfData = JSON.parse(res.contents);
-                    const result = yfData.chart.result[0];
-                    const quote = result.indicators.quote[0];
-                    timestamps = result.timestamp || [];
-                    closes = quote.close || [];
-                    highs = quote.high || [];
-                    lows = quote.low || [];
-                    latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
-                } else if (isCrypto) {
-                    const coin = symbol.split(':')[1];
-                    const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`).then(r => r.json());
-                    timestamps = data.map(k => Math.floor(k[0] / 1000));
-                    highs = data.map(k => parseFloat(k[2]));
-                    lows = data.map(k => parseFloat(k[3]));
-                    closes = data.map(k => parseFloat(k[4]));
-                    latestPrice = closes[closes.length - 1];
-                } else {
-                    const to = Math.floor(Date.now() / 1000);
-                    const from = to - (365 * 24 * 60 * 60);
-                    const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
-                    const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
-                    if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
-                    timestamps = fh.t;
-                    closes = fh.c;
-                    highs = fh.h;
-                    lows = fh.l;
-                    latestPrice = closes[closes.length - 1];
-                }
-
-                if (!closes.length) throw new Error('No chart points');
-
-                const labels = timestamps.map(t => new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-                const validClose = closes.filter(v => v !== null && !Number.isNaN(v));
-                const validHigh = highs.filter(v => v !== null && !Number.isNaN(v));
-                const validLow = lows.filter(v => v !== null && !Number.isNaN(v));
-                const cLast = validClose[validClose.length - 1] || latestPrice || 0;
-
-                const swings = detectSwingPoints(highs, lows, 4, 4);
-                const scoredLevels = swings.map(p => scoreLevel(p, highs, lows, closes, cLast));
-                const mergedLevels = dedupeCloseLevels(scoredLevels, 0.008);
-                const supportLevels = pickTopLevels(mergedLevels, 'support', 5);
-                const resistanceLevels = pickTopLevels(mergedLevels, 'resistance', 5);
-                const selectedLevels = [...supportLevels, ...resistanceLevels];
-
-                const makeLevelDataset = (level) => {
-                    const normalized = Math.min(1, Math.max(0, level.strength / 16));
-                    const alpha = 0.35 + (normalized * 0.45);
-                    const width = 1 + (normalized * 2.2);
-                    const isSupport = level.type === 'support';
-                    const baseColor = isSupport ? `rgba(16,185,129,${alpha.toFixed(2)})` : `rgba(244,63,94,${alpha.toFixed(2)})`;
-                    return {
-                        label: `${isSupport ? 'Support' : 'Resistance'} ${level.price.toFixed(2)}`,
-                        data: labels.map(() => level.price),
-                        borderColor: baseColor,
-                        borderWidth: width,
-                        borderDash: normalized > 0.72 ? [] : [5, 4],
-                        pointRadius: 0,
-                        tension: 0,
-                        order: 1
-                    };
-                };
-
-                if (srChartInstance) srChartInstance.destroy();
-                srChartInstance = new Chart(document.getElementById('detail-sr-chart'), {
-                    type: 'line',
-                    data: {
-                        labels,
-                        datasets: [
-                            { label: 'Price', data: closes, borderColor: '#34a8eb', borderWidth: 1.8, pointRadius: 0, tension: 0.15, order: 2 },
-                            ...selectedLevels.map(makeLevelDataset)
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                            mode: 'index',
-                            intersect: false
-                        },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}`
-                                }
-                            },
-                            zoom: {
-                                limits: {
-                                    x: { min: 'original', max: 'original' },
-                                    y: { min: 'original', max: 'original' }
-                                },
-                                pan: {
-                                    enabled: true,
-                                    mode: 'xy',
-                                    modifierKey: null
-                                },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    drag: { enabled: true },
-                                    mode: 'xy'
-                                }
-                            }
-                        },
-                        scales: {
-                            x: { display: false, grid: { color: '#1b2332' } },
-                            y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8' } }
-                        }
-                    }
-                });
-            } catch (e) {
-                console.error(e);
-                if (!isThaiStock) {
-                    renderTradingViewFallback();
+            sorted.forEach(level => {
+                if (!cluster.length) {
+                    cluster.push(level);
                     return;
                 }
-                container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`;
-            }
-        };
-        renderAdvancedSR();
+
+                const centerPrice = cluster.reduce((sum, lv) => sum + lv.price, 0) / cluster.length;
+                const threshold = centerPrice * mergeThresholdPct;
+                if (Math.abs(level.price - centerPrice) <= threshold) {
+                    cluster.push(level);
+                } else {
+                    merged.push(cluster.sort((a, b) => b.strength - a.strength)[0]);
+                    cluster = [level];
+                }
+            });
+
+            if (cluster.length) merged.push(cluster.sort((a, b) => b.strength - a.strength)[0]);
+        });
+        return merged;
     };
+
+    const pickTopLevels = (levels, type, limit = 5) => levels
+        .filter(l => l.type === type)
+        .sort((a, b) => b.strength - a.strength)
+        .slice(0, limit)
+        .sort((a, b) => a.price - b.price)
+        .map(({ price, type, strength, method }) => ({ price, type, strength, method }));
+
+    const renderAdvancedSR = async () => {
+        try {
+            await loadLightweightCharts();
+
+            let timestamps = [], opens = [], closes = [], highs = [], lows = [], latestPrice = null;
+            if (isThaiStock) {
+                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                const res = await fetch(proxyUrl).then(r => r.json());
+                const yfData = JSON.parse(res.contents);
+                const result = yfData.chart.result[0];
+                const quote = result.indicators.quote[0];
+                timestamps = result.timestamp || [];
+                opens = quote.open || [];
+                closes = quote.close || [];
+                highs = quote.high || [];
+                lows = quote.low || [];
+                latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
+            } else if (isCrypto) {
+                const coin = symbol.split(':')[1];
+                const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`).then(r => r.json());
+                timestamps = data.map(k => Math.floor(k[0] / 1000));
+                opens = data.map(k => parseFloat(k[1]));
+                highs = data.map(k => parseFloat(k[2]));
+                lows = data.map(k => parseFloat(k[3]));
+                closes = data.map(k => parseFloat(k[4]));
+                latestPrice = closes[closes.length - 1];
+            } else {
+                const to = Math.floor(Date.now() / 1000);
+                const from = to - (365 * 24 * 60 * 60);
+                const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
+                const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
+                if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
+                timestamps = fh.t;
+                opens = fh.o;
+                closes = fh.c;
+                highs = fh.h;
+                lows = fh.l;
+                latestPrice = closes[closes.length - 1];
+            }
+
+            const candles = timestamps.map((t, idx) => {
+                const open = Number(opens[idx]);
+                const high = Number(highs[idx]);
+                const low = Number(lows[idx]);
+                const close = Number(closes[idx]);
+                if ([open, high, low, close].some(v => Number.isNaN(v) || v === null)) return null;
+                return {
+                    time: t,
+                    open,
+                    high,
+                    low,
+                    close
+                };
+            }).filter(Boolean);
+
+            if (!candles.length) throw new Error('No chart points');
+
+            const currentPrice = Number(latestPrice) || candles[candles.length - 1].close;
+            const swings = detectSwingPoints(candles, 3, 3);
+            const scoredLevels = swings.map(point => scoreLevel(point, candles, currentPrice));
+            const mergeThresholdPct = calculateMergeThresholdPct(candles);
+            const mergedLevels = dedupeCloseLevels(scoredLevels, mergeThresholdPct);
+            const supportLevels = pickTopLevels(mergedLevels, 'support', 5);
+            const resistanceLevels = pickTopLevels(mergedLevels, 'resistance', 5);
+            const selectedLevels = [...supportLevels, ...resistanceLevels];
+
+            container.innerHTML = '<div id="detail-sr-chart" class="w-full h-full"></div>';
+            const chartEl = document.getElementById('detail-sr-chart');
+            if (!chartEl) throw new Error('Chart container missing');
+
+            if (srChartInstance && typeof srChartInstance.remove === 'function') {
+                srChartInstance.remove();
+            }
+
+            const createCandlestickSeries = (chartInstance) => {
+                if (typeof chartInstance.addCandlestickSeries === 'function') {
+                    return chartInstance.addCandlestickSeries({
+                        upColor: '#10b981',
+                        downColor: '#f43f5e',
+                        borderUpColor: '#10b981',
+                        borderDownColor: '#f43f5e',
+                        wickUpColor: '#10b981',
+                        wickDownColor: '#f43f5e'
+                    });
+                }
+
+                if (typeof chartInstance.addSeries === 'function' && window.LightweightCharts?.CandlestickSeries) {
+                    return chartInstance.addSeries(window.LightweightCharts.CandlestickSeries, {
+                        upColor: '#10b981',
+                        downColor: '#f43f5e',
+                        borderUpColor: '#10b981',
+                        borderDownColor: '#f43f5e',
+                        wickUpColor: '#10b981',
+                        wickDownColor: '#f43f5e'
+                    });
+                }
+
+                throw new Error('Candlestick series API is not available');
+            };
+
+            const chart = LightweightCharts.createChart(chartEl, {
+                layout: {
+                    background: { color: '#0a0e17' },
+                    textColor: '#94a3b8'
+                },
+                grid: {
+                    vertLines: { color: '#1f2937' },
+                    horzLines: { color: '#1f2937' }
+                },
+                width: chartEl.clientWidth,
+                height: chartEl.clientHeight,
+                rightPriceScale: {
+                    borderColor: '#2b3548',
+                    scaleMargins: { top: 0.1, bottom: 0.08 }
+                },
+                timeScale: {
+                    borderColor: '#2b3548',
+                    timeVisible: true
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal
+                },
+                handleScroll: {
+                    mouseWheel: true,
+                    pressedMouseMove: true,
+                    horzTouchDrag: true,
+                    vertTouchDrag: true
+                },
+                handleScale: {
+                    axisPressedMouseMove: { price: true, time: true },
+                    mouseWheel: true,
+                    pinch: true
+                }
+            });
+
+            const candleSeries = createCandlestickSeries(chart);
+            candleSeries.setData(candles);
+
+            const maxStrength = Math.max(...selectedLevels.map(l => l.strength), 1);
+            const solidLine = window.LightweightCharts?.LineStyle?.Solid ?? 0;
+            const dashedLine = window.LightweightCharts?.LineStyle?.Dashed ?? 2;
+            selectedLevels.forEach(level => {
+                const normalized = Math.max(0.25, level.strength / maxStrength);
+                const color = level.type === 'support' ? '#10b981' : '#f43f5e';
+                const width = normalized > 0.78 ? 3 : normalized > 0.52 ? 2 : 1;
+                const lineStyle = normalized > 0.78 ? solidLine : dashedLine;
+
+                candleSeries.createPriceLine({
+                    price: level.price,
+                    color,
+                    lineWidth: width,
+                    lineStyle,
+                    axisLabelVisible: true,
+                    title: normalized > 0.78
+                        ? (level.type === 'support' ? 'Key Support' : 'Key Resistance')
+                        : (level.type === 'support' ? 'Support' : 'Resistance')
+                });
+            });
+
+            chart.timeScale().fitContent();
+
+            const resizeObserver = new ResizeObserver(() => {
+                chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+            });
+            resizeObserver.observe(chartEl);
+
+            srChartInstance = {
+                remove: () => {
+                    resizeObserver.disconnect();
+                    chart.remove();
+                }
+            };
+        } catch (e) {
+            console.error(e);
+            if (!isThaiStock) {
+                renderTradingViewFallback();
+                return;
+            }
+            container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`;
+        }
+    };
+    renderAdvancedSR();
+};
     renderChart(); 
 
     const fetchSafePrice = async () => {
