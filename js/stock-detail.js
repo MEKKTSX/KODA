@@ -99,373 +99,373 @@ document.addEventListener('DOMContentLoaded', () => {
     // 📌 2. ระบบสร้างกราฟ (ปลดล็อก TradingView Advanced Chart)
     // ==========================================
     const renderChart = () => {
-    const containerId = 'tv-widget-container';
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = '';
-
-    container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
-
-    const renderTradingViewFallback = () => {
+        const containerId = 'tv-widget-container';
+        const container = document.getElementById(containerId);
+        if (!container) return;
         container.innerHTML = '';
-        const script = document.createElement('script');
-        script.type = 'text/javascript';
-        script.src = 'https://s3.tradingview.com/tv.js';
-        script.async = true;
-        script.onload = () => {
-            let tvSym = symbol;
-            if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
-            else if (symbol.includes(':')) tvSym = symbol;
 
-            new TradingView.widget({
-                "autosize": true,
-                "symbol": tvSym,
-                "interval": "D",
-                "timezone": "Etc/UTC",
-                "theme": "dark",
-                "style": "1",
-                "locale": "en",
-                "enable_publishing": false,
-                "backgroundColor": "#0a0e17",
-                "gridColor": "#161c2b",
-                "hide_top_toolbar": false,
-                "hide_legend": false,
-                "save_image": false,
-                "container_id": containerId,
-                "allow_symbol_change": false,
-                "withdateranges": true,
-                "studies": [
-                    "Volume@tv-basicstudies"
-                ]
-            });
+        container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
+
+        const renderTradingViewFallback = () => {
+            container.innerHTML = '';
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'https://s3.tradingview.com/tv.js';
+            script.async = true;
+            script.onload = () => {
+                let tvSym = symbol;
+                if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
+                else if (symbol.includes(':')) tvSym = symbol;
+
+                new TradingView.widget({
+                    "autosize": true,
+                    "symbol": tvSym,
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "enable_publishing": false,
+                    "backgroundColor": "#0a0e17",
+                    "gridColor": "#161c2b",
+                    "hide_top_toolbar": false,
+                    "hide_legend": false,
+                    "save_image": false,
+                    "container_id": containerId,
+                    "allow_symbol_change": false,
+                    "withdateranges": true,
+                    "studies": [
+                        "Volume@tv-basicstudies"
+                    ]
+                });
+            };
+            container.appendChild(script);
         };
-        container.appendChild(script);
-    };
 
-    // หมายเหตุ: ใช้ Advanced SR กับทุกตลาดก่อน เพื่อให้เห็นแนวรับ/แนวต้านจริงบนกราฟ
-    // หากโหลดข้อมูลไม่สำเร็จสำหรับ non-Thai ให้ fallback ไป TradingView เพื่อคงความเสถียร
+        let srChartInstance = null;
 
-    let srChartInstance = null;
-
-    const loadScript = (src) => new Promise((resolve, reject) => {
-        const existing = Array.from(document.scripts).find(sc => sc.src === src);
-        if (existing) {
-            if (window.LightweightCharts && src.includes('lightweight-charts')) {
-                resolve();
-                return;
-            }
-            existing.addEventListener('load', () => resolve(), { once: true });
-            existing.addEventListener('error', reject, { once: true });
-            return;
-        }
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-    });
-
-    const loadLightweightCharts = async () => {
-        if (!window.LightweightCharts) {
-            await loadScript('https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js');
-        }
-    };
-
-    const detectSwingPoints = (candles, left = 3, right = 3) => {
-        const swings = [];
-        for (let i = left; i < candles.length - right; i++) {
-            const current = candles[i];
-            if (!current) continue;
-
-            let isSwingHigh = true;
-            let isSwingLow = true;
-
-            for (let j = 1; j <= left; j++) {
-                const c = candles[i - j];
-                if (!c) continue;
-                if (c.high >= current.high) isSwingHigh = false;
-                if (c.low <= current.low) isSwingLow = false;
-            }
-
-            for (let j = 1; j <= right; j++) {
-                const c = candles[i + j];
-                if (!c) continue;
-                if (c.high > current.high) isSwingHigh = false;
-                if (c.low < current.low) isSwingLow = false;
-            }
-
-            if (isSwingHigh) swings.push({ idx: i, price: current.high, type: 'resistance', method: 'swing-high' });
-            if (isSwingLow) swings.push({ idx: i, price: current.low, type: 'support', method: 'swing-low' });
-        }
-        return swings;
-    };
-
-    const scoreLevel = (point, candles, currentPrice) => {
-        const i = point.idx;
-        const candle = candles[i];
-        const price = point.price;
-        const recentWindow = candles.slice(Math.max(0, i - 40), Math.min(candles.length, i + 41));
-        const touchBand = Math.max(price * 0.0035, currentPrice * 0.0025);
-
-        let touchCount = 0;
-        let rejectionPower = 0;
-
-        recentWindow.forEach(c => {
-            const touched = Math.abs(c.high - price) <= touchBand || Math.abs(c.low - price) <= touchBand || (c.low <= price && c.high >= price);
-            if (touched) touchCount += 1;
-        });
-
-        const next = candles[i + 1] || candle;
-        const prev = candles[i - 1] || candle;
-        if (point.type === 'support') {
-            rejectionPower = Math.max(0, (next.close - price) / Math.max(price, 1));
-            if (prev.close < price && candle.close > candle.open) rejectionPower += 0.15;
-        } else {
-            rejectionPower = Math.max(0, (price - next.close) / Math.max(price, 1));
-            if (prev.close > price && candle.close < candle.open) rejectionPower += 0.15;
-        }
-
-        const structure = Math.abs(candle.high - candle.low) / Math.max(price, 1);
-        const recency = (i + 1) / candles.length;
-        const proximity = 1 - Math.min(Math.abs(price - currentPrice) / Math.max(currentPrice, 1), 1);
-
-        const strength = (touchCount * 1.1) + (rejectionPower * 140) + (structure * 45) + (recency * 3.2) + (proximity * 2.1);
-
-        return {
-            price,
-            type: point.type,
-            strength,
-            method: point.method,
-            idx: i
-        };
-    };
-
-    const calculateMergeThresholdPct = (candles) => {
-        const ranges = candles.slice(-120).map(c => (c.high - c.low) / Math.max(c.close, 1));
-        if (!ranges.length) return 0.008;
-        const avgRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
-        return Math.min(0.012, Math.max(0.005, avgRange * 0.75));
-    };
-
-    const dedupeCloseLevels = (levels, mergeThresholdPct = 0.008) => {
-        const merged = [];
-        ['support', 'resistance'].forEach(type => {
-            const sorted = levels.filter(l => l.type === type).sort((a, b) => a.price - b.price);
-            let cluster = [];
-
-            sorted.forEach(level => {
-                if (!cluster.length) {
-                    cluster.push(level);
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            const existing = Array.from(document.scripts).find(sc => sc.src === src);
+            if (existing) {
+                if (window.LightweightCharts && src.includes('lightweight-charts')) {
+                    resolve();
                     return;
                 }
-
-                const centerPrice = cluster.reduce((sum, lv) => sum + lv.price, 0) / cluster.length;
-                const threshold = centerPrice * mergeThresholdPct;
-                if (Math.abs(level.price - centerPrice) <= threshold) {
-                    cluster.push(level);
-                } else {
-                    merged.push(cluster.sort((a, b) => b.strength - a.strength)[0]);
-                    cluster = [level];
-                }
-            });
-
-            if (cluster.length) merged.push(cluster.sort((a, b) => b.strength - a.strength)[0]);
-        });
-        return merged;
-    };
-
-    const pickTopLevels = (levels, type, limit = 5) => levels
-        .filter(l => l.type === type)
-        .sort((a, b) => b.strength - a.strength)
-        .slice(0, limit)
-        .sort((a, b) => a.price - b.price)
-        .map(({ price, type, strength, method }) => ({ price, type, strength, method }));
-
-    const renderAdvancedSR = async () => {
-        try {
-            await loadLightweightCharts();
-
-            let timestamps = [], opens = [], closes = [], highs = [], lows = [], latestPrice = null;
-            if (isThaiStock) {
-                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                const res = await fetch(proxyUrl).then(r => r.json());
-                const yfData = JSON.parse(res.contents);
-                const result = yfData.chart.result[0];
-                const quote = result.indicators.quote[0];
-                timestamps = result.timestamp || [];
-                opens = quote.open || [];
-                closes = quote.close || [];
-                highs = quote.high || [];
-                lows = quote.low || [];
-                latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
-            } else if (isCrypto) {
-                const coin = symbol.split(':')[1];
-                const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`).then(r => r.json());
-                timestamps = data.map(k => Math.floor(k[0] / 1000));
-                opens = data.map(k => parseFloat(k[1]));
-                highs = data.map(k => parseFloat(k[2]));
-                lows = data.map(k => parseFloat(k[3]));
-                closes = data.map(k => parseFloat(k[4]));
-                latestPrice = closes[closes.length - 1];
-            } else {
-                const to = Math.floor(Date.now() / 1000);
-                const from = to - (365 * 24 * 60 * 60);
-                const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
-                const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
-                if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
-                timestamps = fh.t;
-                opens = fh.o;
-                closes = fh.c;
-                highs = fh.h;
-                lows = fh.l;
-                latestPrice = closes[closes.length - 1];
-            }
-
-            const candles = timestamps.map((t, idx) => {
-                const open = Number(opens[idx]);
-                const high = Number(highs[idx]);
-                const low = Number(lows[idx]);
-                const close = Number(closes[idx]);
-                if ([open, high, low, close].some(v => Number.isNaN(v) || v === null)) return null;
-                return {
-                    time: t,
-                    open,
-                    high,
-                    low,
-                    close
-                };
-            }).filter(Boolean);
-
-            if (!candles.length) throw new Error('No chart points');
-
-            const currentPrice = Number(latestPrice) || candles[candles.length - 1].close;
-            const swings = detectSwingPoints(candles, 3, 3);
-            const scoredLevels = swings.map(point => scoreLevel(point, candles, currentPrice));
-            const mergeThresholdPct = calculateMergeThresholdPct(candles);
-            const mergedLevels = dedupeCloseLevels(scoredLevels, mergeThresholdPct);
-            const supportLevels = pickTopLevels(mergedLevels, 'support', 5);
-            const resistanceLevels = pickTopLevels(mergedLevels, 'resistance', 5);
-            const selectedLevels = [...supportLevels, ...resistanceLevels];
-
-            container.innerHTML = '<div id="detail-sr-chart" class="w-full h-full"></div>';
-            const chartEl = document.getElementById('detail-sr-chart');
-            if (!chartEl) throw new Error('Chart container missing');
-
-            if (srChartInstance && typeof srChartInstance.remove === 'function') {
-                srChartInstance.remove();
-            }
-
-            const createCandlestickSeries = (chartInstance) => {
-                if (typeof chartInstance.addCandlestickSeries === 'function') {
-                    return chartInstance.addCandlestickSeries({
-                        upColor: '#10b981',
-                        downColor: '#f43f5e',
-                        borderUpColor: '#10b981',
-                        borderDownColor: '#f43f5e',
-                        wickUpColor: '#10b981',
-                        wickDownColor: '#f43f5e'
-                    });
-                }
-
-                if (typeof chartInstance.addSeries === 'function' && window.LightweightCharts?.CandlestickSeries) {
-                    return chartInstance.addSeries(window.LightweightCharts.CandlestickSeries, {
-                        upColor: '#10b981',
-                        downColor: '#f43f5e',
-                        borderUpColor: '#10b981',
-                        borderDownColor: '#f43f5e',
-                        wickUpColor: '#10b981',
-                        wickDownColor: '#f43f5e'
-                    });
-                }
-
-                throw new Error('Candlestick series API is not available');
-            };
-
-            const chart = LightweightCharts.createChart(chartEl, {
-                layout: {
-                    background: { color: '#0a0e17' },
-                    textColor: '#94a3b8'
-                },
-                grid: {
-                    vertLines: { color: '#1f2937' },
-                    horzLines: { color: '#1f2937' }
-                },
-                width: chartEl.clientWidth,
-                height: chartEl.clientHeight,
-                rightPriceScale: {
-                    borderColor: '#2b3548',
-                    scaleMargins: { top: 0.1, bottom: 0.08 }
-                },
-                timeScale: {
-                    borderColor: '#2b3548',
-                    timeVisible: true
-                },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal
-                },
-                handleScroll: {
-                    mouseWheel: true,
-                    pressedMouseMove: true,
-                    horzTouchDrag: true,
-                    vertTouchDrag: true
-                },
-                handleScale: {
-                    axisPressedMouseMove: { price: true, time: true },
-                    mouseWheel: true,
-                    pinch: true
-                }
-            });
-
-            const candleSeries = createCandlestickSeries(chart);
-            candleSeries.setData(candles);
-
-            const maxStrength = Math.max(...selectedLevels.map(l => l.strength), 1);
-            const solidLine = window.LightweightCharts?.LineStyle?.Solid ?? 0;
-            const dashedLine = window.LightweightCharts?.LineStyle?.Dashed ?? 2;
-            selectedLevels.forEach(level => {
-                const normalized = Math.max(0.25, level.strength / maxStrength);
-                const color = level.type === 'support' ? '#10b981' : '#f43f5e';
-                const width = normalized > 0.78 ? 3 : normalized > 0.52 ? 2 : 1;
-                const lineStyle = normalized > 0.78 ? solidLine : dashedLine;
-
-                candleSeries.createPriceLine({
-                    price: level.price,
-                    color,
-                    lineWidth: width,
-                    lineStyle,
-                    axisLabelVisible: true,
-                    title: normalized > 0.78
-                        ? (level.type === 'support' ? 'Key Support' : 'Key Resistance')
-                        : (level.type === 'support' ? 'Support' : 'Resistance')
-                });
-            });
-
-            chart.timeScale().fitContent();
-
-            const resizeObserver = new ResizeObserver(() => {
-                chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
-            });
-            resizeObserver.observe(chartEl);
-
-            srChartInstance = {
-                remove: () => {
-                    resizeObserver.disconnect();
-                    chart.remove();
-                }
-            };
-        } catch (e) {
-            console.error(e);
-            if (!isThaiStock) {
-                renderTradingViewFallback();
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', reject, { once: true });
                 return;
             }
-            container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`;
-        }
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+
+        const loadLightweightCharts = async () => {
+            if (!window.LightweightCharts) {
+                await loadScript('https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js');
+            }
+        };
+
+        // ปรับเป็น 7 แท่งซ้าย-ขวา เพื่อให้ได้โครงสร้างสวิงที่สำคัญจริงๆ ตัด Noise ย่อยๆ ทิ้ง
+        const detectSwingPoints = (candles, left = 7, right = 7) => {
+            const swings = [];
+            for (let i = left; i < candles.length - right; i++) {
+                const current = candles[i];
+                if (!current) continue;
+
+                let isSwingHigh = true;
+                let isSwingLow = true;
+
+                for (let j = 1; j <= left; j++) {
+                    const c = candles[i - j];
+                    if (!c) continue;
+                    if (c.high >= current.high) isSwingHigh = false;
+                    if (c.low <= current.low) isSwingLow = false;
+                }
+
+                for (let j = 1; j <= right; j++) {
+                    const c = candles[i + j];
+                    if (!c) continue;
+                    if (c.high > current.high) isSwingHigh = false;
+                    if (c.low < current.low) isSwingLow = false;
+                }
+
+                if (isSwingHigh) swings.push({ idx: i, price: current.high, type: 'resistance', method: 'swing-high' });
+                if (isSwingLow) swings.push({ idx: i, price: current.low, type: 'support', method: 'swing-low' });
+            }
+            return swings;
+        };
+
+        const scoreLevel = (point, candles, currentPrice) => {
+            const i = point.idx;
+            const candle = candles[i];
+            const price = point.price;
+            const recentWindow = candles.slice(Math.max(0, i - 60), Math.min(candles.length, i + 61));
+            // ระยะยอมรับได้เวลาชนเส้น ให้แคบลงเพื่อความแม่นยำ
+            const touchBand = Math.max(price * 0.002, currentPrice * 0.0015); 
+
+            let touchCount = 0;
+            let rejectionPower = 0;
+
+            recentWindow.forEach(c => {
+                const touched = Math.abs(c.high - price) <= touchBand || Math.abs(c.low - price) <= touchBand || (c.low <= price && c.high >= price);
+                if (touched) touchCount += 1;
+            });
+
+            const next = candles[i + 1] || candle;
+            const prev = candles[i - 1] || candle;
+            if (point.type === 'support') {
+                rejectionPower = Math.max(0, (next.close - price) / Math.max(price, 1));
+                if (prev.close < price && candle.close > candle.open) rejectionPower += 0.2;
+            } else {
+                rejectionPower = Math.max(0, (price - next.close) / Math.max(price, 1));
+                if (prev.close > price && candle.close < candle.open) rejectionPower += 0.2;
+            }
+
+            const structure = Math.abs(candle.high - candle.low) / Math.max(price, 1);
+            const recency = (i + 1) / candles.length;
+            const proximity = 1 - Math.min(Math.abs(price - currentPrice) / Math.max(currentPrice, 1), 1);
+
+            // ให้น้ำหนักการชนบ่อยๆ และการเด้งแรงๆ
+            const strength = (touchCount * 2.5) + (rejectionPower * 180) + (structure * 50) + (recency * 4.0) + (proximity * 2.5);
+
+            return {
+                price,
+                type: point.type,
+                strength,
+                method: point.method,
+                idx: i
+            };
+        };
+
+        const calculateMergeThresholdPct = (candles) => {
+            const ranges = candles.slice(-120).map(c => (c.high - c.low) / Math.max(c.close, 1));
+            if (!ranges.length) return 0.01;
+            const avgRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+            // บังคับระยะ Merge ให้อยู่ระหว่าง 0.8% ถึง 1.5% เพื่อรวมเส้นใกล้ๆ กันให้เด็ดขาด
+            return Math.min(0.015, Math.max(0.008, avgRange * 0.8));
+        };
+
+        const dedupeCloseLevels = (levels, mergeThresholdPct) => {
+            const merged = [];
+            ['support', 'resistance'].forEach(type => {
+                const sorted = levels.filter(l => l.type === type).sort((a, b) => a.price - b.price);
+                let cluster = [];
+
+                sorted.forEach(level => {
+                    if (!cluster.length) {
+                        cluster.push(level);
+                        return;
+                    }
+
+                    const centerPrice = cluster.reduce((sum, lv) => sum + lv.price, 0) / cluster.length;
+                    const threshold = centerPrice * mergeThresholdPct;
+                    if (Math.abs(level.price - centerPrice) <= threshold) {
+                        cluster.push(level);
+                    } else {
+                        // ดึงเฉพาะเส้นที่แกร่งที่สุดในกลุ่ม
+                        merged.push(cluster.sort((a, b) => b.strength - a.strength)[0]);
+                        cluster = [level];
+                    }
+                });
+
+                if (cluster.length) merged.push(cluster.sort((a, b) => b.strength - a.strength)[0]);
+            });
+            return merged;
+        };
+
+        const pickTopLevels = (levels, type, limit) => levels
+            .filter(l => l.type === type)
+            .sort((a, b) => b.strength - a.strength)
+            .slice(0, limit)
+            .sort((a, b) => a.price - b.price) // เรียงตามราคาจากน้อยไปมาก
+            .map(({ price, type, strength, method }) => ({ price, type, strength, method }));
+
+        const renderAdvancedSR = async () => {
+            try {
+                await loadLightweightCharts();
+
+                let timestamps = [], opens = [], closes = [], highs = [], lows = [], latestPrice = null;
+                if (isThaiStock) {
+                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                    const res = await fetch(proxyUrl).then(r => r.json());
+                    const yfData = JSON.parse(res.contents);
+                    const result = yfData.chart.result[0];
+                    const quote = result.indicators.quote[0];
+                    timestamps = result.timestamp || [];
+                    opens = quote.open || [];
+                    closes = quote.close || [];
+                    highs = quote.high || [];
+                    lows = quote.low || [];
+                    latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
+                } else if (isCrypto) {
+                    const coin = symbol.split(':')[1];
+                    const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`).then(r => r.json());
+                    timestamps = data.map(k => Math.floor(k[0] / 1000));
+                    opens = data.map(k => parseFloat(k[1]));
+                    highs = data.map(k => parseFloat(k[2]));
+                    lows = data.map(k => parseFloat(k[3]));
+                    closes = data.map(k => parseFloat(k[4]));
+                    latestPrice = closes[closes.length - 1];
+                } else {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - (365 * 24 * 60 * 60);
+                    const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
+                    const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
+                    if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
+                    timestamps = fh.t;
+                    opens = fh.o;
+                    closes = fh.c;
+                    highs = fh.h;
+                    lows = fh.l;
+                    latestPrice = closes[closes.length - 1];
+                }
+
+                const candles = timestamps.map((t, idx) => {
+                    const open = Number(opens[idx]);
+                    const high = Number(highs[idx]);
+                    const low = Number(lows[idx]);
+                    const close = Number(closes[idx]);
+                    if ([open, high, low, close].some(v => Number.isNaN(v) || v === null)) return null;
+                    return { time: t, open, high, low, close };
+                }).filter(Boolean);
+
+                if (!candles.length) throw new Error('No chart points');
+
+                const currentPrice = Number(latestPrice) || candles[candles.length - 1].close;
+                
+                // 1. หา Swing Points ที่แข็งแกร่ง (ตั้งซ้าย-ขวา 7 แท่ง)
+                const swings = detectSwingPoints(candles, 7, 7);
+                // 2. ให้คะแนนแต่ละจุด
+                const scoredLevels = swings.map(point => scoreLevel(point, candles, currentPrice));
+                // 3. รวมเส้นที่ใกล้กันเพื่อกันความรก
+                const mergeThresholdPct = calculateMergeThresholdPct(candles);
+                const mergedLevels = dedupeCloseLevels(scoredLevels, mergeThresholdPct);
+                
+                // 4. คัดเหลือเฉพาะแนวรับ 4 จุด และแนวต้าน 4 จุด
+                const supportLevels = pickTopLevels(mergedLevels, 'support', 4);
+                const resistanceLevels = pickTopLevels(mergedLevels, 'resistance', 4);
+                const selectedLevels = [...supportLevels, ...resistanceLevels];
+
+                container.innerHTML = '<div id="detail-sr-chart" class="w-full h-full"></div>';
+                const chartEl = document.getElementById('detail-sr-chart');
+                if (!chartEl) throw new Error('Chart container missing');
+
+                if (srChartInstance && typeof srChartInstance.remove === 'function') {
+                    srChartInstance.remove();
+                }
+
+                const createCandlestickSeries = (chartInstance) => {
+                    if (typeof chartInstance.addCandlestickSeries === 'function') {
+                        return chartInstance.addCandlestickSeries({
+                            upColor: '#10b981', downColor: '#f43f5e', borderUpColor: '#10b981',
+                            borderDownColor: '#f43f5e', wickUpColor: '#10b981', wickDownColor: '#f43f5e'
+                        });
+                    }
+                    if (typeof chartInstance.addSeries === 'function' && window.LightweightCharts?.CandlestickSeries) {
+                        return chartInstance.addSeries(window.LightweightCharts.CandlestickSeries, {
+                            upColor: '#10b981', downColor: '#f43f5e', borderUpColor: '#10b981',
+                            borderDownColor: '#f43f5e', wickUpColor: '#10b981', wickDownColor: '#f43f5e'
+                        });
+                    }
+                    throw new Error('Candlestick series API is not available');
+                };
+
+                // Config กราฟให้สามารถลาก/ซูม ได้อิสระแบบ TradingView
+                const chart = LightweightCharts.createChart(chartEl, {
+                    layout: {
+                        background: { color: '#0a0e17' },
+                        textColor: '#94a3b8'
+                    },
+                    grid: {
+                        vertLines: { color: '#1f2937' },
+                        horzLines: { color: '#1f2937' }
+                    },
+                    width: chartEl.clientWidth,
+                    height: chartEl.clientHeight,
+                    rightPriceScale: {
+                        borderColor: '#2b3548',
+                        scaleMargins: { top: 0.1, bottom: 0.08 },
+                        autoScale: true,
+                    },
+                    timeScale: {
+                        borderColor: '#2b3548',
+                        timeVisible: true,
+                        rightOffset: 5,
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal
+                    },
+                    handleScroll: {
+                        mouseWheel: true,
+                        pressedMouseMove: true,
+                        horzTouchDrag: true,
+                        vertTouchDrag: true
+                    },
+                    handleScale: {
+                        axisPressedMouseMove: { price: true, time: true },
+                        mouseWheel: true,
+                        pinch: true
+                    },
+                    kineticScroll: {
+                        touch: true,
+                        mouse: true
+                    }
+                });
+
+                const candleSeries = createCandlestickSeries(chart);
+                candleSeries.setData(candles);
+
+                const maxStrength = Math.max(...selectedLevels.map(l => l.strength), 1);
+                const solidLine = window.LightweightCharts?.LineStyle?.Solid ?? 0;
+                const dashedLine = window.LightweightCharts?.LineStyle?.Dashed ?? 2;
+                
+                selectedLevels.forEach(level => {
+                    const normalized = Math.max(0.3, level.strength / maxStrength);
+                    // แนวรับเขียว แนวต้านแดงเสมอ
+                    const color = level.type === 'support' ? '#10b981' : '#f43f5e';
+                    // เส้นแกร่งมากจะหนาและทึบ เส้นแกร่งรองลงมาจะบางและเป็นเส้นปะ
+                    const width = normalized > 0.8 ? 2 : 1;
+                    const lineStyle = normalized > 0.8 ? solidLine : dashedLine;
+
+                    candleSeries.createPriceLine({
+                        price: level.price,
+                        color,
+                        lineWidth: width,
+                        lineStyle,
+                        axisLabelVisible: true,
+                        title: level.type === 'support' ? 'Support' : 'Resistance'
+                    });
+                });
+
+                chart.timeScale().fitContent();
+
+                const resizeObserver = new ResizeObserver(() => {
+                    chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+                });
+                resizeObserver.observe(chartEl);
+
+                srChartInstance = {
+                    remove: () => {
+                        resizeObserver.disconnect();
+                        chart.remove();
+                    }
+                };
+            } catch (e) {
+                console.error(e);
+                if (!isThaiStock) {
+                    renderTradingViewFallback();
+                    return;
+                }
+                container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`;
+            }
+        };
+        renderAdvancedSR();
     };
-    renderAdvancedSR();
-};
     renderChart(); 
 
     const fetchSafePrice = async () => {
