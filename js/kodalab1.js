@@ -326,184 +326,176 @@ window.KodaLabAI = {
         }
     },
 
-    runAIRebalance: async () => {
+        runAIRebalance: async () => {
         const data = window.KodaLabAI.loadData();
         
         if (data.capital <= 0) {
             return alert("โปรดฝากเงิน (CAPITAL) เข้าพอร์ตก่อนให้ AI บริหารครับ! กดปุ่ม + ได้เลย");
         }
 
-        if (!confirm("AI จะแสกนตลาด NYSE/NASDAQ ทั้งหมด คัดกรองหุ้นและประเมินงบการเงิน ข่าว เพื่อปรับพอร์ตให้โตทะลุเป้าหมาย >40% ยืนยันรันระบบใช่ไหมครับ?")) return;
+        if (!confirm("AI จะสแกนราคาจริงในตลาด ค้นหาข่าวล่าสุด และตัดสินใจ ซื้อ/ขาย/ถือ แบบอัตโนมัติ ยืนยันการรันระบบไหมครับ?")) return;
 
         const btn = document.getElementById('btn-run-aifund');
         btn.disabled = true;
-        btn.innerHTML = `<span class="size-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span> ANALYZING...`;
+        btn.innerHTML = `<span class="size-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span> SCANNING MARKET...`;
 
         try {
+            // 1. Perception Phase: ดึงราคาปัจจุบันของหุ้นในพอร์ตและ Watchlist เพื่อป้อนเป็น Fact ให้ AI
+            const mainData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
+            // ใส่หุ้นกลุ่มที่คุณสนใจเป็นพิเศษลงไปให้ AI จับตาดูได้เลย
+            const watchListSymbols = ['ASTS', 'ONDS', 'RKLB', 'RBLX', 'NVDA', 'AAPL', 'MSFT', 'TSLA']; 
+            
+            let liveMarketData = {};
             let currentAIFundValue = data.unallocatedCash;
+            let currentHoldingsInfo = [];
+
+            // เช็คราคาหุ้นที่มีอยู่แล้ว
             for (const h of data.aiHoldings) {
                 try {
                     const priceRes = await window.KodaLabAI.safeFetch(`https://finnhub.io/api/v1/quote?symbol=${h.symbol}`);
                     const p = await priceRes.json();
-                    if(p && p.c > 0) currentAIFundValue += (h.shares * p.c);
-                    else currentAIFundValue += (h.shares * h.avgCost);
-                } catch(e) { currentAIFundValue += (h.shares * h.avgCost); }
+                    const currentPrice = (p && p.c > 0) ? p.c : h.avgCost;
+                    currentAIFundValue += (h.shares * currentPrice);
+                    liveMarketData[h.symbol] = currentPrice;
+                    currentHoldingsInfo.push({ symbol: h.symbol, shares: h.shares, current_price: currentPrice, avg_cost: h.avgCost });
+                } catch(e) { }
             }
 
-            // 📌 ปลดล็อก Serper ให้ค้นหาข้อมูลดิบที่เจาะจงถึงหุ้นพุ่งแรง ระดับตลาดโลก ไม่ใช่แค่ในพอร์ต
-            const marketContext = await window.KodaLabAI.fetchSerperContext("Top performing US stocks today NYSE NASDAQ, high growth breakout stocks, significant market moving geopolitical news, insider buying alerts");
+            // เช็คราคาหุ้นใน Watchlist
+            for (const sym of watchListSymbols) {
+                if (!liveMarketData[sym]) {
+                    try {
+                        const priceRes = await window.KodaLabAI.safeFetch(`https://finnhub.io/api/v1/quote?symbol=${sym}`);
+                        const p = await priceRes.json();
+                        if (p && p.c > 0) liveMarketData[sym] = p.c;
+                    } catch(e) {}
+                }
+            }
 
-            // 📌 แก้ไข Prompt ลบการจำกัด Watchlist ทิ้ง ปล่อย AI ท่องตลาดอิสระ 7,000+ ตัว
-            const prompt = `คุณคืออัจฉริยะ KODA AI Hedge Fund Manager ระดับโลก!
-            เป้าหมายสูงสุด: ทำกำไรพอร์ตให้เติบโต >40% ต่อปี ชนะตลาด S&P500 และ NASDAQ แบบขาดลอย
-            
-            [กฎเหล็ก]: คุณมีอิสระในการค้นหาและเลือกหุ้นจากทั้งตลาด NYSE และ NASDAQ (กว่า 7,000+ ตัว) เพื่อลงทุนในหุ้นที่มีศักยภาพสูงสุดจริงๆ ไม่ต้องยึดติดกับหุ้นตัวเดิม
+            // 2. Decision Phase: ส่งข้อมูล "ความจริง" ให้ AI คิด
+            const prompt = `คุณคือ KODA AI Hedge Fund Manager (Autonomous Agent) 
+            หน้าที่: บริหารพอร์ตให้เติบโต ชนะ S&P500 โดยอิงจากข้อมูล "ความจริง" เท่านั้น
 
-            [สถานะพอร์ต AI ปัจจุบัน]: มูลค่าพอร์ตรวม $${currentAIFundValue.toFixed(2)} (รวมเงินสด), ถือหุ้น: ${JSON.stringify(data.aiHoldings)}
-            
-            [🚨 ข้อมูลตลาดและข่าวล่าสุด (Real-time Context)]:
-            ${marketContext}
+            [สถานะพอร์ตปัจจุบัน]: 
+            - เงินสดที่ซื้อได้ (Unallocated Cash): $${data.unallocatedCash.toFixed(2)}
+            - มูลค่าพอร์ตรวม (Total Value): $${currentAIFundValue.toFixed(2)}
+            - หุ้นที่ถืออยู่ตอนนี้: ${JSON.stringify(currentHoldingsInfo)}
 
-            คำสั่งปฏิบัติการ: 
-            1. ใช้ข้อมูลตลาดล่าสุด (ข่าวมหภาค, ดอกเบี้ย, สงคราม, งบการเงิน, หุ้น Breakout, Insider, แนวรับ-แนวต้าน) มาวิเคราะห์อย่างลึกซึ้ง
-            2. Rebalance พอร์ต: กำหนดสัดส่วนพอร์ต (weight_pct) รวมกันต้องได้ 100% (รวมสัดส่วนเงินสด CASH) หากคุณเลือกหุ้นใหม่ที่ไม่อยู่ในพอร์ตเดิม ให้พิมพ์สัญลักษณ์มาเลย ระบบจะเพิ่มอัตโนมัติ
-            
-            รูปแบบการตอบกลับต้องเป็น JSON เท่านั้น (ตามโครงสร้างด้านล่างเป๊ะๆ) ห้ามมีข้อความอธิบายใดๆ นอกเหนือจาก JSON เด็ดขาด:
+            [ราคาตลาด ณ วินาทีนี้ (Live Prices)]: 
+            ${JSON.stringify(liveMarketData)}
+
+            คำสั่ง:
+            1. ใช้เครื่องมือ Google Search ค้นหาข่าวที่สดใหม่ที่สุด (การเมือง, เศรษฐกิจ, สงคราม, เทคโนโลยีอวกาศ, AI, การประกาศงบ) เพื่อหาสัญญาณการลงทุน
+            2. ตัดสินใจ "BUY", "SELL", หรือ "HOLD" สำหรับหุ้นในพอร์ต หรือหุ้นใหม่ที่คุณเจอในข่าว
+            3. กฎเหล็ก: ห้ามแต่งราคาหุ้นเองเด็ดขาด! ถ้าจะซื้อหุ้นที่มีใน [Live Prices] ต้องอิงราคานั้น ถ้าจะซื้อหุ้นตัวอื่น ให้ Search หาราคาปัจจุบันก่อนคำนวณ
+            4. กฎเงินสด: ห้ามสั่ง BUY รวมกันเกินเงินสดที่มี ($${data.unallocatedCash.toFixed(2)})
+
+            ตอบกลับเป็น JSON STRICT ONLY ห้ามมี Text อื่น โครงสร้างดังนี้:
             {
-                "allocations": [
-                    {"symbol": "TICKER_หุ้น", "weight_pct": ตัวเลขสัดส่วน, "reason": "เหตุผลเชิงลึกว่าทำไมถึงซื้อ/ขาย อิงจากข่าว งบ หรือกราฟ"},
-                    {"symbol": "CASH", "weight_pct": ตัวเลขสัดส่วนเงินสด, "reason": "เหตุผลการถือเงินสดสำรองความเสี่ยง"}
-                ],
-                "learning_note": "บันทึกสรุปภาวะตลาดและกลยุทธ์ที่คุณใช้ในรอบนี้"
+                "trades": [
+                    { "action": "BUY", "symbol": "NVDA", "amount_usd": 500, "reason": "เจอข่าว Blackwell ชิปใหม่ และราคาปัจจุบัน $170 น่าเข้าสะสม" },
+                    { "action": "SELL", "symbol": "TSLA", "sell_percent": 100, "reason": "กราฟเสียทรง และข่าวกีดกันการค้า ขายทำกำไรทั้งหมด 100%" },
+                    { "action": "HOLD", "symbol": "ASTS", "reason": "งบไตรมาสล่าสุดดี รอดูการปล่อยดาวเทียมเฟสถัดไป" }
+                ]
             }`;
 
-            const geminiKeys = window.ENV_KEYS?.GEMINI || [];
-            if(geminiKeys.length === 0) throw new Error("ไม่พบ Gemini API Keys ในระบบ");
+            const GEMINI_KEY = window.ENV_KEYS?.GEMINI[0];
+            if(!GEMINI_KEY) throw new Error("No Gemini Key");
 
-            // 📌 ใช้ gemini-2.5-flash-lite ที่เสถียรที่สุด
-            let retries = geminiKeys.length;
-            let aiPlan = null;
-            let lastError = null;
+            btn.innerHTML = `<span class="size-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span> AI THINKING...`;
 
-            while (retries > 0) {
-                try {
-                    const currentKey = geminiKeys[window.KodaLabAI.geminiKeyIdx];
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${currentKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            contents: [{ role: "user", parts: [{ text: prompt }] }],
-                            generationConfig: { temperature: 0.3 } 
-                        })
-                    });
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    contents: [{ parts: [{ text: prompt }] }],
+                    tools: [{ googleSearch: {} }],
+                    generationConfig: { temperature: 0.1 } // ปรับ Temp ต่ำลงเพื่อลดการมโน
+                })
+            });
 
-                    if (response.status === 429 || response.status === 503) {
-                        window.KodaLabAI.geminiKeyIdx = (window.KodaLabAI.geminiKeyIdx + 1) % geminiKeys.length;
-                        retries--;
-                        await new Promise(r => setTimeout(r, 2000));
-                        continue;
-                    }
+            const resData = await response.json();
+            const rawText = resData.candidates[0].content.parts[0].text;
+            const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+            const aiPlan = JSON.parse(cleanJson);
 
-                    if (!response.ok) {
-                        let errorText = `HTTP Error ${response.status}`;
-                        try { const errJson = await response.json(); errorText = errJson.error?.message || errorText; } catch(e){}
-                        throw new Error(errorText);
-                    }
-
-                    const resData = await response.json();
-                    if (resData.candidates && resData.candidates[0].content.parts[0].text) {
-                        const rawText = resData.candidates[0].content.parts[0].text;
-                        
-                        const match = rawText.match(/\{[\s\S]*\}/);
-                        const cleanJson = match ? match[0] : rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-                        aiPlan = JSON.parse(cleanJson);
-                        break; 
-                    } else {
-                        throw new Error("Invalid response format from AI");
-                    }
-
-                } catch(e) {
-                    lastError = e;
-                    retries--;
-                    if (retries > 0) await new Promise(r => setTimeout(r, 1500));
-                }
-            }
-
-            if (!aiPlan) throw new Error(`ไม่สามารถเชื่อมต่อ AI ได้ (${lastError?.message || 'Unknown Error'})`);
-
+            // 3. Execution Phase: ลงมือทำตามที่ AI สั่ง
             const dateStr = new Date().toLocaleDateString('en-GB');
-            const newHoldings = [];
-            let newUnallocated = 0;
+            let newUnallocated = data.unallocatedCash;
+            let currentHoldingsMap = {};
+            data.aiHoldings.forEach(h => currentHoldingsMap[h.symbol] = h);
 
-            for (const alloc of aiPlan.allocations) {
-                if (alloc.symbol === 'CASH') {
-                    newUnallocated += (alloc.weight_pct / 100) * currentAIFundValue;
-                    continue;
+            btn.innerHTML = `<span class="size-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span> EXECUTING...`;
+
+            for (const trade of aiPlan.trades) {
+                const sym = trade.symbol.toUpperCase();
+                
+                // ดึงราคาจริงตอน Execute อีกครั้งกันพลาด
+                let execPrice = liveMarketData[sym] || null;
+                if (!execPrice) {
+                    try {
+                        const pRes = await window.KodaLabAI.safeFetch(`https://finnhub.io/api/v1/quote?symbol=${sym}`);
+                        const pData = await pRes.json();
+                        if (pData && pData.c > 0) execPrice = pData.c;
+                    } catch(e) {}
                 }
                 
-                try {
-                    const priceRes = await window.KodaLabAI.safeFetch(`https://finnhub.io/api/v1/quote?symbol=${alloc.symbol}`);
-                    const p = await priceRes.json();
-                    const currentPrice = (p && p.c > 0) ? p.c : 100; 
-                    
-                    const targetValue = (alloc.weight_pct / 100) * currentAIFundValue;
-                    const targetShares = targetValue / currentPrice;
-                    
-                    const existing = data.aiHoldings.find(h => h.symbol === alloc.symbol);
-                    let finalAvgCost = currentPrice;
-                    
-                    if (existing) {
-                        const diffShares = targetShares - existing.shares;
-                        if (diffShares > 0.01) { // 📌 ถัวเฉลี่ยขาขึ้น (Average Up) หรือช้อนเพิ่ม (Buy More)
-                            finalAvgCost = ((existing.shares * existing.avgCost) + (diffShares * currentPrice)) / targetShares;
-                            data.aiHistoryLog.push({ date: dateStr, action: 'BUY', symbol: alloc.symbol, shares: diffShares, price: currentPrice, reason: alloc.reason });
-                        } else if (diffShares < -0.01) { // 📌 ทยอยขายทำกำไร (Take Profit) หรือคัทลอส
-                            finalAvgCost = existing.avgCost; 
-                            data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: alloc.symbol, shares: Math.abs(diffShares), price: currentPrice, reason: "Rebalance/Take Profit" });
-                        } else {
-                            data.aiHistoryLog.push({ date: dateStr, action: 'HOLD', symbol: alloc.symbol, shares: targetShares, price: currentPrice, reason: alloc.reason });
-                        }
-                    } else if (targetShares > 0.01) { // 📌 เปิดตำแหน่งใหม่ (New Position) ที่ AI สแกนเจอเอง!
-                        data.aiHistoryLog.push({ date: dateStr, action: 'BUY', symbol: alloc.symbol, shares: targetShares, price: currentPrice, reason: alloc.reason });
-                    }
-                    
-                    if (targetShares > 0.001) { // เก็บหุ้นที่สัดส่วน > 0 ไว้
-                        newHoldings.push({ symbol: alloc.symbol, shares: targetShares, avgCost: finalAvgCost });
-                    }
+                if (!execPrice) continue; // ข้ามถ้าหาราคาจริงไม่ได้
 
-                } catch(e) { console.warn("Failed to fetch quote", alloc.symbol); }
-            }
+                if (trade.action === "BUY") {
+                    const spendAmount = Math.min(trade.amount_usd, newUnallocated);
+                    if (spendAmount < 5) continue; // ข้ามถ้ายอดซื้อน้อยเกินไป
+                    
+                    const sharesToBuy = spendAmount / execPrice;
+                    newUnallocated -= spendAmount;
 
-            // จัดการหุ้นเก่าที่ AI ไม่ได้เลือก (ขายล้างพอร์ต)
-            const newSymbols = aiPlan.allocations.map(a => a.symbol);
-            for (const old of data.aiHoldings) {
-                if (!newSymbols.includes(old.symbol)) {
-                    let sellPrice = old.avgCost;
-                    try {
-                        const keys = window.ENV_KEYS?.FINNHUB_ARRAY || [window.ENV_KEYS?.FINNHUB].filter(Boolean);
-                        const p = await fetch(`https://finnhub.io/api/v1/quote?symbol=${old.symbol}&token=${keys[0]}`).then(r=>r.json());
-                        if(p && p.c > 0) sellPrice = p.c;
-                    } catch(e){}
-                    data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: old.symbol, shares: old.shares, price: sellPrice, reason: "AI Cut / Removed from port completely" });
+                    if (currentHoldingsMap[sym]) {
+                        const existing = currentHoldingsMap[sym];
+                        existing.avgCost = ((existing.shares * existing.avgCost) + spendAmount) / (existing.shares + sharesToBuy);
+                        existing.shares += sharesToBuy;
+                    } else {
+                        currentHoldingsMap[sym] = { symbol: sym, shares: sharesToBuy, avgCost: execPrice };
+                    }
+                    data.aiHistoryLog.push({ date: dateStr, action: 'BUY', symbol: sym, shares: sharesToBuy, price: execPrice, reason: trade.reason });
+                
+                } else if (trade.action === "SELL") {
+                    if (currentHoldingsMap[sym]) {
+                        const existing = currentHoldingsMap[sym];
+                        const sellPct = Math.min(trade.sell_percent || 100, 100);
+                        const sharesToSell = existing.shares * (sellPct / 100);
+                        const cashReturned = sharesToSell * execPrice;
+                        
+                        newUnallocated += cashReturned;
+                        existing.shares -= sharesToSell;
+                        
+                        data.aiHistoryLog.push({ date: dateStr, action: 'SELL', symbol: sym, shares: sharesToSell, price: execPrice, reason: trade.reason });
+
+                        if (existing.shares <= 0.0001) delete currentHoldingsMap[sym];
+                    }
+                } else if (trade.action === "HOLD") {
+                    if (currentHoldingsMap[sym]) {
+                        data.aiHistoryLog.push({ date: dateStr, action: 'HOLD', symbol: sym, shares: currentHoldingsMap[sym].shares, price: execPrice, reason: trade.reason });
+                    }
                 }
             }
 
-            data.aiHoldings = newHoldings;
+            data.aiHoldings = Object.values(currentHoldingsMap);
             data.unallocatedCash = newUnallocated;
             
             window.KodaLabAI.saveData(data);
-            window.KodaLabAI.recordDailyHistory(currentAIFundValue); 
+            window.KodaLabAI.recordDailyHistory(); 
             window.KodaLabAI.renderChart();
-            alert("✅ AI วิเคราะห์ตลาด 7,000 หุ้น และปรับพอร์ตให้คุณเรียบร้อยแล้ว!");
+            alert("✅ AI Agent สแกนตลาดและปรับพอร์ตเรียบร้อยแล้ว!");
 
         } catch(e) {
-            console.error("AI Error:", e);
-            alert(`เกิดข้อผิดพลาดในการเรียก AI กรุณาลองใหม่ครับ\n(${e.message})`);
+            console.error(e);
+            alert("เกิดข้อผิดพลาดในการเรียก AI กรุณาลองใหม่ครับ (ตรวจเช็ค API Key หรือรอสักครู่)");
         } finally {
             btn.disabled = false;
             btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">auto_awesome</span> Rebalance`;
         }
-    },
+    }
+
 
     recordDailyHistory: (aiTotalForced = null, manualTotalForced = null) => {
         const data = window.KodaLabAI.loadData();
