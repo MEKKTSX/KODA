@@ -183,7 +183,7 @@ window.KodaLabAI = {
         const geminiKeys = window.ENV_KEYS?.GEMINI || [];
         if (!geminiKeys.length) throw new Error("No Gemini Key");
 
-        const modelCandidates = ['gemini-1.5-pro', 'gemini-1.5-flash'];
+        const modelCandidates = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
         let attempts = geminiKeys.length;
         while (attempts > 0) {
             const key = geminiKeys[window.KodaLabAI.geminiKeyIdx];
