@@ -95,7 +95,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-cancel-remove')?.click();
     });
 
-
     // ==========================================
     // 📌 2. ระบบสร้างกราฟ (Adapting from StockChart.tsx & stocks.ts)
     // ==========================================
@@ -170,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // 🟢 Logic คำนวณ S/R ดึงมาจาก stocks.ts โดยตรง
+        // 🟢 Logic คำนวณ S/R ดึงมาจาก stocks.ts 
         const calculateSupportResistance = (candles) => {
             if (candles.length === 0) return [];
             const currentPrice = candles[candles.length - 1].close;
@@ -260,35 +259,38 @@ document.addEventListener('DOMContentLoaded', () => {
                     highs = data.map(k => parseFloat(k[2]));
                     lows = data.map(k => parseFloat(k[3]));
                     closes = data.map(k => parseFloat(k[4]));
-                    volumes = data.map(k => parseFloat(k[5])); // ดึง Volume คริปโต
+                    volumes = data.map(k => parseFloat(k[5])); 
                     latestPrice = closes[closes.length - 1];
+                } else if (isThaiStock) {
+                    // ใช้ Yahoo Finance แบบดิบ ไม่ผ่าน Proxy แบบเก่าเพื่อกันพัง
+                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                    const res = await fetch(proxyUrl).then(r => r.json());
+                    if (!res.chart || !res.chart.result || !res.chart.result[0]) throw new Error('No Chart Data');
+                    
+                    const result = res.chart.result[0];
+                    const quote = result.indicators.quote[0];
+                    timestamps = result.timestamp || [];
+                    opens = quote.open || [];
+                    closes = quote.close || [];
+                    highs = quote.high || [];
+                    lows = quote.low || [];
+                    volumes = quote.volume || []; 
+                    latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
                 } else {
-                    let yfSymbol = symbol;
-                    if (symbol === 'XAUUSD') yfSymbol = 'GC=F';
-                    else if (symbol.includes(':')) yfSymbol = symbol.split(':')[1];
-                    
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSymbol}?range=1y&interval=1d`;
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                    const res = await fetch(proxyUrl);
-                    const resText = await res.text(); 
-                    
-                    try {
-                        const yfData = JSON.parse(resText);
-                        const resultContent = JSON.parse(yfData.contents); 
-                        if (!resultContent.chart || !resultContent.chart.result || !resultContent.chart.result[0]) throw new Error('No Chart Data');
-                        
-                        const result = resultContent.chart.result[0];
-                        const quote = result.indicators.quote[0];
-                        timestamps = result.timestamp || [];
-                        opens = quote.open || [];
-                        closes = quote.close || [];
-                        highs = quote.high || [];
-                        lows = quote.low || [];
-                        volumes = quote.volume || []; // ดึง Volume หุ้น
-                        latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
-                    } catch (err) {
-                        throw new Error('Proxy or JSON Error');
-                    }
+                    // ใช้ Finnhub สำหรับหุ้นนอก (เสถียรสุด ไม่ต้องใช้ Proxy)
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - (365 * 24 * 60 * 60);
+                    const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
+                    const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
+                    if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
+                    timestamps = fh.t;
+                    opens = fh.o;
+                    closes = fh.c;
+                    highs = fh.h;
+                    lows = fh.l;
+                    volumes = fh.v;
+                    latestPrice = closes[closes.length - 1];
                 }
 
                 let candles = timestamps.map((t, idx) => {
@@ -299,6 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!candles.length) throw new Error('No chart points');
 
+                // 🟢 กรองเวลาที่ซ้ำกันทิ้ง ป้องกัน Library พัง
                 const uniqueCandles = [];
                 let lastTime = -1;
                 candles.sort((a, b) => a.time - b.time).forEach(c => {
@@ -309,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 candles = uniqueCandles;
 
-                // 🟢 เรียกใช้ฟังก์ชัน S/R จาก Backend
+                // 🟢 คำนวณเส้น
                 const levels = calculateSupportResistance(candles);
 
                 container.innerHTML = '<div id="detail-sr-chart" style="width: 100%; height: 100%; min-height: 400px; position: relative;"></div>';
@@ -319,16 +322,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     srChartInstance.remove();
                 }
 
-                // 🟢 ตั้งค่ากราฟ สี ธีม ให้เหมือนใน StockChart.tsx
+                // 🟢 ตั้งค่ากราฟ สี ธีม ให้เหมือนใน StockChart.tsx (ใช้ค่าตรงๆ เพื่อกัน undefined)
                 const chart = window.LightweightCharts.createChart(chartEl, {
-                    layout: { background: { type: window.LightweightCharts.ColorType?.Solid || 'Solid', color: '#0a0e17' }, textColor: '#848e9c', fontSize: 12 },
+                    layout: { background: { type: 'solid', color: '#0a0e17' }, textColor: '#848e9c', fontSize: 12 },
                     grid: { vertLines: { color: 'rgba(42, 46, 57, 0.5)' }, horzLines: { color: 'rgba(42, 46, 57, 0.5)' } },
                     width: chartEl.clientWidth,
                     height: chartEl.clientHeight,
                     rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0.8)', scaleMargins: { top: 0.1, bottom: 0.25 }, autoScale: true },
                     timeScale: { borderColor: 'rgba(42, 46, 57, 0.8)', timeVisible: true, secondsVisible: false },
                     crosshair: {
-                        mode: window.LightweightCharts.CrosshairMode.Normal,
+                        mode: 0, // Normal
                         vertLine: { color: 'rgba(224, 227, 235, 0.2)', width: 1, style: 2, labelBackgroundColor: '#1a1e2e' },
                         horzLine: { color: 'rgba(224, 227, 235, 0.2)', width: 1, style: 2, labelBackgroundColor: '#1a1e2e' }
                     },
@@ -361,14 +364,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 volumeSeries.setData(volumeData);
 
                 // 🟢 วาดเส้นแนวรับแนวต้านตาม Style ใหม่
-                const solidLine = window.LightweightCharts.LineStyle?.Solid ?? 0;
-                const dashedLine = window.LightweightCharts.LineStyle?.Dashed ?? 2;
-                
                 levels.forEach(level => {
                     const isSupport = level.type === "support";
                     const color = isSupport ? "rgba(14, 203, 129, 0.6)" : "rgba(246, 70, 93, 0.6)";
                     const lineWidth = level.strength >= 3 ? 2 : 1;
-                    const lineStyle = level.strength >= 3 ? solidLine : dashedLine;
+                    const lineStyle = level.strength >= 3 ? 0 : 2; // 0 = Solid, 2 = Dashed
 
                     candleSeries.createPriceLine({
                         price: level.price,
@@ -398,7 +398,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAdvancedSR();
     };
     renderChart();
-
 
     const fetchSafePrice = async () => {
         if (isCrypto) {
