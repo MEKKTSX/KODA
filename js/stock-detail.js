@@ -104,124 +104,182 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
         container.innerHTML = '';
 
-        if (isThaiStock) {
-            container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="thai-chart"></canvas></div>`;
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-            script.onload = async () => {
-                try {
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=3mo&interval=1d`;
+        container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
+
+        const loadChartJs = async () => {
+            if (window.Chart) return;
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        };
+
+        const buildSMA = (values, period) => values.map((_, i) => {
+            if (i < period - 1) return null;
+            const win = values.slice(i - period + 1, i + 1).filter(v => v !== null && !Number.isNaN(v));
+            if (win.length < period) return null;
+            return win.reduce((a, b) => a + b, 0) / win.length;
+        });
+
+        const pivotSwing = (highs, lows, left = 3, right = 3) => {
+            const pivHigh = [];
+            const pivLow = [];
+            for (let i = left; i < highs.length - right; i++) {
+                const h = highs[i];
+                const l = lows[i];
+                if (h === null || l === null) continue;
+                let isHigh = true, isLow = true;
+                for (let j = 1; j <= left; j++) {
+                    if (highs[i - j] !== null && highs[i - j] >= h) isHigh = false;
+                    if (lows[i - j] !== null && lows[i - j] <= l) isLow = false;
+                }
+                for (let j = 1; j <= right; j++) {
+                    if (highs[i + j] !== null && highs[i + j] > h) isHigh = false;
+                    if (lows[i + j] !== null && lows[i + j] < l) isLow = false;
+                }
+                if (isHigh) pivHigh.push({ idx: i, value: h });
+                if (isLow) pivLow.push({ idx: i, value: l });
+            }
+            return { pivHigh, pivLow };
+        };
+
+        const renderAdvancedSR = async () => {
+            try {
+                await loadChartJs();
+
+                let timestamps = [], closes = [], highs = [], lows = [], latestPrice = null;
+                if (isThaiStock) {
+                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
                     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
                     const res = await fetch(proxyUrl).then(r => r.json());
                     const yfData = JSON.parse(res.contents);
                     const result = yfData.chart.result[0];
-                    const closes = result.indicators.quote[0].close;
-                    const timestamps = result.timestamp;
-                    const meta = result.meta;
-                    const cPrice = meta.regularMarketPrice;
-                    const pClose = meta.chartPreviousClose;
-                    const change = cPrice - pClose;
-                    const changePct = (change / pClose) * 100;
-                    
-                    document.getElementById('detail-price').textContent = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'THB' }).format(cPrice);
-                    document.getElementById('detail-price').dataset.rawPrice = cPrice;
-                    const changeEl = document.getElementById('detail-change');
-                    changeEl.className = `text-sm font-bold px-2 py-0.5 rounded flex items-center gap-1 ${change >= 0 ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`;
-                    changeEl.innerHTML = `<span class="material-symbols-outlined text-[14px]">${change >= 0 ? 'trending_up' : 'trending_down'}</span> ${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePct.toFixed(2)}%)`;
-                    changeEl.style.display = 'flex';
+                    const quote = result.indicators.quote[0];
+                    timestamps = result.timestamp || [];
+                    closes = quote.close || [];
+                    highs = quote.high || [];
+                    lows = quote.low || [];
+                    latestPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
+                } else if (isCrypto) {
+                    const coin = symbol.split(':')[1];
+                    const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`).then(r => r.json());
+                    timestamps = data.map(k => Math.floor(k[0] / 1000));
+                    highs = data.map(k => parseFloat(k[2]));
+                    lows = data.map(k => parseFloat(k[3]));
+                    closes = data.map(k => parseFloat(k[4]));
+                    latestPrice = closes[closes.length - 1];
+                } else {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - (365 * 24 * 60 * 60);
+                    const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
+                    const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
+                    if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
+                    timestamps = fh.t;
+                    closes = fh.c;
+                    highs = fh.h;
+                    lows = fh.l;
+                    latestPrice = closes[closes.length - 1];
+                }
 
-                    const labels = timestamps.map(t => new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-                    const validCloses = closes.filter(v => v !== null && !Number.isNaN(v));
-                    const lastClose = validCloses[validCloses.length - 1] || cPrice || 0;
-                    const highs = (result.indicators.quote[0].high || []).filter(v => v !== null && !Number.isNaN(v));
-                    const lows = (result.indicators.quote[0].low || []).filter(v => v !== null && !Number.isNaN(v));
-                    const swingHigh = highs.length ? Math.max(...highs) : lastClose;
-                    const swingLow = lows.length ? Math.min(...lows) : lastClose;
-                    const range = Math.max(swingHigh - swingLow, lastClose * 0.02);
+                if (!closes.length) throw new Error('No chart points');
 
-                    const fibUps = [0.236, 0.382, 0.5, 0.618, 0.786];
-                    const fibDowns = [0.236, 0.382, 0.5, 0.618, 0.786];
-                    const resistances = fibUps.map(r => lastClose + (range * r));
-                    const supports = fibDowns.map(r => lastClose - (range * r));
+                const labels = timestamps.map(t => new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                const validClose = closes.filter(v => v !== null && !Number.isNaN(v));
+                const validHigh = highs.filter(v => v !== null && !Number.isNaN(v));
+                const validLow = lows.filter(v => v !== null && !Number.isNaN(v));
+                const cLast = validClose[validClose.length - 1] || latestPrice || 0;
 
-                    const constLine = (value, color, label) => ({
-                        label,
-                        data: labels.map(() => value),
-                        borderColor: color,
-                        borderWidth: 1,
-                        pointRadius: 0,
-                        tension: 0,
-                        borderDash: [6, 5]
-                    });
+                // Classic Pivot Points (ใช้แท่งก่อนหน้าล่าสุด)
+                const ph = validHigh[validHigh.length - 2] ?? validHigh[validHigh.length - 1] ?? cLast;
+                const pl = validLow[validLow.length - 2] ?? validLow[validLow.length - 1] ?? cLast;
+                const pc = validClose[validClose.length - 2] ?? validClose[validClose.length - 1] ?? cLast;
+                const pp = (ph + pl + pc) / 3;
+                const r1 = (2 * pp) - pl;
+                const s1 = (2 * pp) - ph;
+                const r2 = pp + (ph - pl);
+                const s2 = pp - (ph - pl);
+                const r3 = ph + 2 * (pp - pl);
+                const s3 = pl - 2 * (ph - pp);
 
-                    new Chart(document.getElementById('thai-chart'), {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                { label: 'Price', data: closes, borderColor: change >= 0 ? '#00c076' : '#ff4d4d', borderWidth: 2, pointRadius: 0, tension: 0.1 },
-                                ...resistances.map((v, i) => constLine(v, '#ff6b6b', `R${i+1} ${v.toFixed(2)}`)),
-                                ...supports.map((v, i) => constLine(v, '#34d399', `S${i+1} ${v.toFixed(2)}`))
-                            ]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false },
-                                tooltip: {
-                                    mode: 'index',
-                                    intersect: false,
-                                    callbacks: {
-                                        label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}`
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: { display: false },
-                                y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8' } }
-                            }
-                        }
-                    });
-                } catch(e) { container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`; }
-            };
-            document.head.appendChild(script);
-        } else {
-            const script = document.createElement('script');
-            script.type = 'text/javascript';
-            script.src = 'https://s3.tradingview.com/tv.js';
-            script.async = true;
-            script.onload = () => {
-                let tvSym = symbol;
-                if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
-                else if (symbol.includes(':')) tvSym = symbol;
-                
-                // 📌 เปลี่ยนแปลงส่วนนี้: ปลดล็อกฟีเจอร์กราฟแบบจัดเต็ม
-                new TradingView.widget({
-                    "autosize": true,
-                    "symbol": tvSym,
-                    "interval": "D",
-                    "timezone": "Etc/UTC",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "en",
-                    "enable_publishing": false,
-                    "backgroundColor": "#0a0e17",
-                    "gridColor": "#161c2b",
-                    "hide_top_toolbar": false,     // โชว์แถบเครื่องมือด้านบน
-                    "hide_legend": false,          // โชว์ข้อมูล OHLC ด้านมุมซ้าย
-                    "save_image": false,
-                    "container_id": containerId,
-                    "allow_symbol_change": false,  // ไม่ให้เปลี่ยนหุ้นมั่ว
-                    "withdateranges": true,        // โชว์กรอบเวลาด้านล่าง
-                    "studies": [                   // ใส่ Volume + Pivot (S/R) ให้เป็นค่าเริ่มต้น
-                        "Volume@tv-basicstudies",
-                        "PivotPointsStandard@tv-basicstudies"
-                    ]
+                // Swing High/Low + Fibonacci Retracement
+                const { pivHigh, pivLow } = pivotSwing(highs, lows, 4, 4);
+                const swingHigh = pivHigh.length ? pivHigh[pivHigh.length - 1].value : Math.max(...validHigh);
+                const swingLow = pivLow.length ? pivLow[pivLow.length - 1].value : Math.min(...validLow);
+                const fibRange = Math.max(swingHigh - swingLow, cLast * 0.01);
+                const fib236 = swingHigh - (fibRange * 0.236);
+                const fib382 = swingHigh - (fibRange * 0.382);
+                const fib500 = swingHigh - (fibRange * 0.5);
+                const fib618 = swingHigh - (fibRange * 0.618);
+                const fib786 = swingHigh - (fibRange * 0.786);
+
+                // SMA
+                const sma20 = buildSMA(closes, 20);
+                const sma50 = buildSMA(closes, 50);
+                const sma200 = buildSMA(closes, 200);
+
+                const hLine = (val, color, label, dash = [5, 5]) => ({
+                    label,
+                    data: labels.map(() => val),
+                    borderColor: color,
+                    borderWidth: 1.1,
+                    borderDash: dash,
+                    pointRadius: 0,
+                    tension: 0
                 });
-            };
-            container.appendChild(script);
-        }
+
+                new Chart(document.getElementById('detail-sr-chart'), {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            { label: 'Price', data: closes, borderColor: '#34a8eb', borderWidth: 2, pointRadius: 0, tension: 0.15 },
+                            { label: 'SMA 20', data: sma20, borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+                            { label: 'SMA 50', data: sma50, borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+                            { label: 'SMA 200', data: sma200, borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+
+                            hLine(r3, '#ef4444', `R3 ${r3.toFixed(2)}`),
+                            hLine(r2, '#f97316', `R2 ${r2.toFixed(2)}`),
+                            hLine(r1, '#fb7185', `R1 ${r1.toFixed(2)}`),
+                            hLine(pp, '#eab308', `PP ${pp.toFixed(2)}`, [2, 4]),
+                            hLine(s1, '#10b981', `S1 ${s1.toFixed(2)}`),
+                            hLine(s2, '#14b8a6', `S2 ${s2.toFixed(2)}`),
+                            hLine(s3, '#06b6d4', `S3 ${s3.toFixed(2)}`),
+
+                            hLine(fib236, '#fca5a5', `Fib 23.6% ${fib236.toFixed(2)}`),
+                            hLine(fib382, '#fdba74', `Fib 38.2% ${fib382.toFixed(2)}`),
+                            hLine(fib500, '#86efac', `Fib 50% ${fib500.toFixed(2)}`),
+                            hLine(fib618, '#7dd3fc', `Fib 61.8% ${fib618.toFixed(2)}`),
+                            hLine(fib786, '#c4b5fd', `Fib 78.6% ${fib786.toFixed(2)}`),
+                            hLine(swingHigh, '#fecaca', `Swing High ${swingHigh.toFixed(2)}`, [8, 4]),
+                            hLine(swingLow, '#bbf7d0', `Swing Low ${swingLow.toFixed(2)}`, [8, 4])
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}` }
+                            }
+                        },
+                        scales: {
+                            x: { display: false },
+                            y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<p class="text-slate-500 text-sm flex items-center justify-center h-full">Chart Unavailable</p>`;
+            }
+        };
+        renderAdvancedSR();
     };
     renderChart(); 
 
@@ -501,12 +559,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             โปรดวิเคราะห์ข่าวนี้เป็น "ภาษาไทย" ให้เห็นภาพชัดเจน โดยบังคับใช้โครงสร้าง HTML ดังนี้:
             <p>📝 <strong style="color:#fff;">สรุปเหตุการณ์:</strong> (สรุปเหตุการณ์ที่เกิดขึ้นสั้นๆ)</p>
-            <p>🌍 <strong style="color:#fff;">ผลกระทบ:</strong> (วิเคราะห์ผลกระทต่อบริษัท อุตสาหกรรม หรือราคาหุ้น)</p>
+            <p>🌍 <strong style="color:#fff;">ผลกระทบ:</strong> (วิเคราะห์ผลกระทบต่อบริษัท อุตสาหกรรม หรือราคาหุ้น)</p>
             <div style="background: rgba(52,168,235,0.1); border: 1px solid rgba(52,168,235,0.3); padding: 12px; border-radius: 8px; margin-top: 16px;">
                 💡 <strong style="color:#34a8eb;">สรุปย่อ (TL;DR):</strong> (เขียนสรุปใจความสำคัญทั้งหมดใน 1-2 ประโยคสั้นๆ เพื่อให้อ่านปุ๊บเข้าใจทันที)
             </div>
             
-            ตอบด้วย HTML format ตามที่กำหนดเท่านั้น ห้ามใช้ Markdown (เช่น ** หรือ *) เด็ดขาด`;
+            ตอบด้วย HTML format ตามที่กำหนดเท่านั้น ห้ามใช้ Markdown (เช่น ** หรือ *) ด็ดขาด`;
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, 
