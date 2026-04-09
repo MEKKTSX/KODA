@@ -106,6 +106,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = `<div class="w-full h-full relative p-4"><canvas id="detail-sr-chart"></canvas></div>`;
 
+        const renderTradingViewFallback = () => {
+            container.innerHTML = '';
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'https://s3.tradingview.com/tv.js';
+            script.async = true;
+            script.onload = () => {
+                let tvSym = symbol;
+                if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
+                else if (symbol.includes(':')) tvSym = symbol;
+
+                new TradingView.widget({
+                    "autosize": true,
+                    "symbol": tvSym,
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "enable_publishing": false,
+                    "backgroundColor": "#0a0e17",
+                    "gridColor": "#161c2b",
+                    "hide_top_toolbar": false,
+                    "hide_legend": false,
+                    "save_image": false,
+                    "container_id": containerId,
+                    "allow_symbol_change": false,
+                    "withdateranges": true,
+                    "studies": [
+                        "Volume@tv-basicstudies",
+                        "PivotPointsStandard@tv-basicstudies"
+                    ]
+                });
+            };
+            container.appendChild(script);
+        };
+
+        // ✅ หุ้นส่วนใหญ่ (US/HK/Crypto/Forex) ใช้ TradingView โดยตรงเพื่อความเสถียร
+        // และให้แสดงกราฟได้ชัวร์บน mobile webview
+        if (!isThaiStock) {
+            renderTradingViewFallback();
+            return;
+        }
+
         const loadChartJs = async () => {
             if (window.Chart) return;
             await new Promise((resolve, reject) => {
@@ -564,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 💡 <strong style="color:#34a8eb;">สรุปย่อ (TL;DR):</strong> (เขียนสรุปใจความสำคัญทั้งหมดใน 1-2 ประโยคสั้นๆ เพื่อให้อ่านปุ๊บเข้าใจทันที)
             </div>
             
-            ตอบด้วย HTML format ตามที่กำหนดเท่านั้น ห้ามใช้ Markdown (เช่น ** หรือ *) ด็ดขาด`;
+            ตอบด้วย HTML format ตามที่กำหนดเท่านั้น ห้ามใช้ Markdown (เช่น ** หรือ *) เด็ดขาด`;
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, 
