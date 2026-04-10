@@ -3,9 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 📌 ระบบสลับ Key อัตโนมัติ (Round Robin)
     const finnhubKeys = (window.ENV_KEYS.FINNHUB_ARRAY && window.ENV_KEYS.FINNHUB_ARRAY.length > 0) 
                         ? window.ENV_KEYS.FINNHUB_ARRAY 
-                        : [window.ENV_KEYS.FINNHUB];
+                        : (window.ENV_KEYS.FINNHUB ? window.ENV_KEYS.FINNHUB.split(',').map(k => k.trim()).filter(Boolean) : []);
     let fhKeyIndex = 0;
     const getFHKey = () => {
+        if (!finnhubKeys.length) return '';
         const key = finnhubKeys[fhKeyIndex % finnhubKeys.length];
         fhKeyIndex++;
         return key;
@@ -145,16 +146,17 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const showChartError = (message) => {
+            if (kodaChartInstance) { kodaChartInstance.remove(); kodaChartInstance = null; }
             container.innerHTML = `
-                <div style="width:100%;height:100%;min-height:350px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;box-sizing:border-box;">
+                <div style="width:100%;height:350px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;box-sizing:border-box;">
                     <div style="width:40px;height:40px;border-radius:50%;background:rgba(246,70,93,0.15);display:flex;align-items:center;justify-content:center;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6465d" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     </div>
                     <p style="color:#f6465d;font-size:13px;font-family:Inter,sans-serif;font-weight:700;">ไม่สามารถโหลดข้อมูลได้</p>
-                    <p style="color:#848e9c;font-size:11px;font-family:Inter,sans-serif;text-align:center;max-width:240px;">${message || 'แหล่งข้อมูลทั้งหมดไม่ตอบสนอง กรุณาลองใหม่อีกครั้ง'}</p>
-                    <button onclick="this.closest('#tv-widget-container') && window.__kodaRetryChart && window.__kodaRetryChart()" style="margin-top:4px;padding:6px 16px;background:rgba(52,168,235,0.15);border:1px solid rgba(52,168,235,0.4);border-radius:8px;color:#34a8eb;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;">ลองใหม่</button>
+                    <p style="color:#848e9c;font-size:11px;font-family:Inter,sans-serif;text-align:center;max-width:240px;line-height:1.6;">${message || 'แหล่งข้อมูลทั้งหมดไม่ตอบสนอง กรุณาลองใหม่อีกครั้ง'}</p>
+                    <button id="koda-retry-btn" style="margin-top:4px;padding:6px 16px;background:rgba(52,168,235,0.15);border:1px solid rgba(52,168,235,0.4);border-radius:8px;color:#34a8eb;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;">ลองใหม่</button>
                 </div>`;
-            window.__kodaRetryChart = () => renderAdvancedSR();
+            document.getElementById('koda-retry-btn')?.addEventListener('click', () => renderAdvancedSR());
         };
 
         const renderTradingViewFallback = () => {
@@ -199,82 +201,90 @@ document.addEventListener('DOMContentLoaded', () => {
             const days = rangeMap[tfRange] || 365;
 
             if (isCrypto) {
-                const limit = days;
-                const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol.split(':')[1] || symbol}&interval=1d&limit=${limit}`).then(r => r.json());
+                const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol.split(':')[1] || symbol}&interval=1d&limit=${days}`).then(r => r.json());
                 return { timestamps: data.map(k => Math.floor(k[0] / 1000)), opens: data.map(k => parseFloat(k[1])), highs: data.map(k => parseFloat(k[2])), lows: data.map(k => parseFloat(k[3])), closes: data.map(k => parseFloat(k[4])), volumes: data.map(k => parseFloat(k[5])) };
             }
 
-            const CACHE_KEY = `koda_chart_v2_${symbol}_${tfRange}`;
+            const CACHE_KEY = `koda_chart_v3_${symbol}_${tfRange}`;
             try { const cached = localStorage.getItem(CACHE_KEY); if (cached) { const { ts, data } = JSON.parse(cached); if (Date.now() - ts < 12 * 3600000) return data; } } catch(_) {}
 
-            // 🟢 1. ดึง Finnhub + เพิ่มระบบดักจับ Error
-            if (!isThaiStock) {
+            // 🟢 1. Finnhub
+            const token = getFHKey();
+            if (!isThaiStock && token) {
                 try {
                     const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
                     const toDate = Math.floor(Date.now() / 1000);
                     const fromDate = toDate - (days * 24 * 60 * 60);
-                    const token = getFHKey();
-                    
-                    if (!token) console.error("🚨 KODA Error: ไม่พบ Finnhub API Key! ตรวจสอบ Vercel Environment Variables");
-
                     const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${fromDate}&to=${toDate}&token=${token}`);
-                    
-                    if (res.status === 429) console.warn(`⚠️ Finnhub Limit Hit! (429) - ข้ามไปใช้ Yahoo`);
-                    if (res.status === 403) console.warn(`🚨 Finnhub 403 Forbidden! - API Key ผิดหรือหมดอายุ`);
-
-                    const data = await res.json();
-                    
-                    if (data && data.s === "ok" && data.t && data.t.length > 0) {
-                        const parsed = { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
-                        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
-                        return parsed;
-                    } else {
-                        console.warn(`⚠️ Finnhub ส่งค่ากลับมาเป็น: ${data.s || 'Error'} -> กำลังสลับไป Yahoo Fallback`);
+                    if (res.status === 429) console.warn(`⚠️ Finnhub 429 Rate Limit`);
+                    else if (res.status === 403) console.warn(`⚠️ Finnhub 403 Forbidden`);
+                    else {
+                        const data = await res.json();
+                        if (data && data.s === "ok" && data.t && data.t.length > 0) {
+                            const parsed = { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
+                            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
+                            return parsed;
+                        }
+                        console.warn(`⚠️ Finnhub: ${data.s || 'no_data'} → Yahoo fallback`);
                     }
                 } catch (e) {
-                    console.warn(`⚠️ Finnhub Request ล้มเหลว:`, e.message);
+                    console.warn(`⚠️ Finnhub failed:`, e.message);
                 }
             }
 
-            // 🟠 2. Yahoo Fallback
-            console.log(`🔄 กำลังใช้ Yahoo Finance Proxy...`);
+            // 🟠 2. Yahoo Finance — ลอง server-side proxy ก่อน (น่าเชื่อถือที่สุด)
             const yahooRange = tfRange === '3M' ? '3mo' : tfRange === '6M' ? '6mo' : tfRange === '1Y' ? '1y' : '5y';
-            const fetchWithTimeout = (url, ms = 10000) => {
+            const parseYahoo = (raw) => {
+                if (raw?.chart?.result?.[0]) {
+                    const q = raw.chart.result[0].indicators.quote[0];
+                    return { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
+                }
+                return null;
+            };
+            const saveAndReturn = (parsed) => {
+                try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
+                return parsed;
+            };
+            const fetchWithTimeout = (url, ms = 12000) => {
                 const ctrl = new AbortController();
                 const timer = setTimeout(() => ctrl.abort(), ms);
                 return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
             };
 
+            // 🔵 2a. Server-side proxy (Vercel API) — เลี่ยง CORS ได้ 100%
             try {
-                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${yahooRange}&interval=1d`;
-                const PROXIES = [
-                    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, 
-                    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-                    u => `https://corsproxy.io/?${encodeURIComponent(u)}`
-                ];
-                for (let i = 0; i < PROXIES.length; i++) {
-                    try {
-                        console.log(`🌐 ลอง Proxy ${i + 1}/${PROXIES.length}...`);
-                        const raw = await fetchWithTimeout(PROXIES[i](url), 10000).then(r => r.json());
-                        if (raw.chart && raw.chart.result && raw.chart.result[0]) {
-                            const q = raw.chart.result[0].indicators.quote[0];
-                            const parsed = { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
-                            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
-                            return parsed;
-                        }
-                    } catch (err) {
-                        console.warn(`❌ Proxy ${i + 1} ล้มเหลว:`, err.message);
-                    }
-                }
+                console.log(`🔵 ลอง server-side proxy /api/chart...`);
+                const raw = await fetchWithTimeout(`/api/chart?symbol=${encodeURIComponent(symbol)}&range=${tfRange}`, 15000).then(r => r.json());
+                const parsed = parseYahoo(raw);
+                if (parsed) { console.log(`✅ server-side proxy สำเร็จ`); return saveAndReturn(parsed); }
             } catch (e) {
-                console.error("🚨 Yahoo Proxies ทั้งหมดล้มเหลว", e);
+                console.warn(`⚠️ /api/chart ล้มเหลว:`, e.message);
             }
 
-            // 🔴 แหล่งข้อมูลทั้งหมดล้มเหลว — คืน null แทนการ throw เพื่อป้องกันโดดไป TradingView
-            console.warn(`🚨 All data sources failed for ${symbol} [${tfRange}]`);
+            // 🟠 2b. CORS Proxies (client-side fallbacks)
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${yahooRange}&interval=1d`;
+            const PROXIES = [
+                u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+                u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+                u => `https://thingproxy.freeboard.io/fetch/${u}`,
+                u => `https://cors.eu.org/${u}`,
+            ];
+            for (let i = 0; i < PROXIES.length; i++) {
+                try {
+                    console.log(`🌐 CORS Proxy ${i + 1}/${PROXIES.length}...`);
+                    const raw = await fetchWithTimeout(PROXIES[i](yahooUrl), 12000).then(r => r.json());
+                    const parsed = parseYahoo(raw);
+                    if (parsed) { console.log(`✅ Proxy ${i + 1} สำเร็จ`); return saveAndReturn(parsed); }
+                } catch (err) {
+                    console.warn(`❌ Proxy ${i + 1} ล้มเหลว:`, err.message);
+                }
+            }
+
+            // 🔴 ทุก source ล้มเหลว
+            console.error(`🚨 ทุก data source ล้มเหลวสำหรับ ${symbol} [${tfRange}]`);
             return null;
         };
-
 
         const calculateSupportResistance = (candles) => {
             if (!candles || candles.length < 20) return [];
@@ -313,9 +323,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const candleResult = await fetchCandleData(currentTimeframe);
 
-                // ถ้าไม่ได้ข้อมูล แสดง error ใน KODA mode — ไม่โดดไป TradingView
                 if (!candleResult) {
-                    showChartError('แหล่งข้อมูลทั้งหมดไม่ตอบสนองในขณะนี้\nกรุณาลองใหม่อีกครั้ง หรือเปลี่ยน Timeframe');
+                    showChartError('ไม่สามารถโหลดข้อมูลได้ในขณะนี้\nกรุณากดลองใหม่ หรือเปลี่ยน Timeframe');
                     return;
                 }
 
@@ -327,6 +336,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const seen = new Set();
                 candles = candles.filter(c => { if (seen.has(c.time)) return false; seen.add(c.time); return true; });
+
+                if (candles.length === 0) {
+                    showChartError('ไม่พบข้อมูลแท่งเทียนสำหรับ ' + symbol);
+                    return;
+                }
+
                 const levels = calculateSupportResistance(candles);
 
                 container.innerHTML = '<div id="detail-sr-chart" style="width:100%;height:100%;min-height:350px;"></div>';
@@ -340,15 +355,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 const candleSeries = kodaChartInstance.addCandlestickSeries({ 
-                    upColor: '#0ecb81', 
-                    downColor: '#f6465d', 
-                    borderUpColor: '#0ecb81', 
-                    borderDownColor: '#f6465d', 
-                    wickUpColor: '#0ecb81', 
-                    wickDownColor: '#f6465d',
-                    priceLineColor: '#fbbf24', 
-                    priceLineWidth: 2,         
-                    priceLineStyle: 2          
+                    upColor: '#0ecb81', downColor: '#f6465d', 
+                    borderUpColor: '#0ecb81', borderDownColor: '#f6465d', 
+                    wickUpColor: '#0ecb81', wickDownColor: '#f6465d',
+                    priceLineColor: '#fbbf24', priceLineWidth: 2, priceLineStyle: 2          
                 });
                 candleSeries.setData(candles);
 
@@ -362,8 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         color: lvl.type === 'sup' ? 'rgba(14,203,129,0.85)' : 'rgba(246,70,93,0.85)',
                         lineWidth: lvl.strength === 3 ? 2 : 1, 
                         lineStyle: lvl.strength === 3 ? 0 : 2, 
-                        axisLabelVisible: true, 
-                        title: '' 
+                        axisLabelVisible: true, title: '' 
                     });
                 });
                 
@@ -371,7 +380,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ro = new ResizeObserver(entries => {
                     for (const entry of entries) {
-                        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) kodaChartInstance.applyOptions({ width: entry.contentRect.width, height: entry.contentRect.height });
+                        if (entry.contentRect.width > 0 && entry.contentRect.height > 0 && kodaChartInstance) {
+                            kodaChartInstance.applyOptions({ width: entry.contentRect.width, height: entry.contentRect.height });
+                        }
                     }
                 });
                 ro.observe(chartEl);
@@ -379,8 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } catch (e) {
                 console.error('KODA Chart error:', e);
-                // แสดง error message ใน KODA mode — ไม่โดดไป TradingView
-                showChartError('เกิดข้อผิดพลาดในการแสดงกราฟ\nกรุณาลองใหม่อีกครั้ง');
+                showChartError('เกิดข้อผิดพลาดในการแสดงกราฟ\nกรุณากดลองใหม่อีกครั้ง');
             }
         };
 
