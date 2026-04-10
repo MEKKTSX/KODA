@@ -194,21 +194,37 @@ document.addEventListener('DOMContentLoaded', () => {
             const CACHE_KEY = `koda_chart_v2_${symbol}_${tfRange}`;
             try { const cached = localStorage.getItem(CACHE_KEY); if (cached) { const { ts, data } = JSON.parse(cached); if (Date.now() - ts < 12 * 3600000) return data; } } catch(_) {}
 
+            // 🟢 1. ดึง Finnhub + เพิ่มระบบดักจับ Error
             if (!isThaiStock) {
                 try {
                     const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
                     const toDate = Math.floor(Date.now() / 1000);
                     const fromDate = toDate - (days * 24 * 60 * 60);
-                    const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${fromDate}&to=${toDate}&token=${getFHKey()}`);
+                    const token = getFHKey();
+                    
+                    if (!token) console.error("🚨 KODA Error: ไม่พบ Finnhub API Key! ตรวจสอบ Vercel Environment Variables");
+
+                    const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${fromDate}&to=${toDate}&token=${token}`);
+                    
+                    if (res.status === 429) console.warn(`⚠️ Finnhub Limit Hit! (429) - ข้ามไปใช้ Yahoo`);
+                    if (res.status === 403) console.warn(`🚨 Finnhub 403 Forbidden! - API Key ผิดหรือหมดอายุ`);
+
                     const data = await res.json();
+                    
                     if (data && data.s === "ok" && data.t && data.t.length > 0) {
                         const parsed = { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
                         try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
                         return parsed;
+                    } else {
+                        console.warn(`⚠️ Finnhub ส่งค่ากลับมาเป็น: ${data.s || 'Error'} -> กำลังสลับไป Yahoo Fallback`);
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.warn(`⚠️ Finnhub Request ล้มเหลว:`, e.message);
+                }
             }
 
+            // 🟠 2. Yahoo Fallback
+            console.log(`🔄 กำลังใช้ Yahoo Finance Proxy...`);
             const yahooRange = tfRange === '3M' ? '3mo' : tfRange === '6M' ? '6mo' : tfRange === '1Y' ? '1y' : '5y';
             const fetchWithTimeout = (url, ms = 10000) => {
                 const ctrl = new AbortController();
@@ -223,20 +239,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
                     u => `https://corsproxy.io/?${encodeURIComponent(u)}`
                 ];
-                for (let proxy of PROXIES) {
+                for (let i = 0; i < PROXIES.length; i++) {
                     try {
-                        const raw = await fetchWithTimeout(proxy(url), 10000).then(r => r.json());
+                        console.log(`🌐 ลอง Proxy ${i + 1}/${PROXIES.length}...`);
+                        const raw = await fetchWithTimeout(PROXIES[i](url), 10000).then(r => r.json());
                         if (raw.chart && raw.chart.result && raw.chart.result[0]) {
                             const q = raw.chart.result[0].indicators.quote[0];
                             const parsed = { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
                             try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
                             return parsed;
                         }
-                    } catch (err) {}
+                    } catch (err) {
+                        console.warn(`❌ Proxy ${i + 1} ล้มเหลว:`, err.message);
+                    }
                 }
-            } catch (e) {}
-            throw new Error('All data sources failed');
+            } catch (e) {
+                console.error("🚨 Yahoo Proxies ทั้งหมดล้มเหลว", e);
+            }
+            throw new Error('All data sources failed (เด้งเข้า TradingView)');
         };
+
 
         const calculateSupportResistance = (candles) => {
             if (!candles || candles.length < 20) return [];
