@@ -317,14 +317,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const renderHome = () => {
+        const renderHome = () => {
         const totalValueEl = document.getElementById('total-value');
         if (!totalValueEl) return;
-        let total = 0, prevTotal = 0, best = null, worst = null;
         
+        // 📌 ดึงยอด Cash มาเป็นค่าเริ่มต้น (ถ้าไม่มีให้เป็น 0)
+        let cash = window.kodaApiData.cash || 0;
+        let total = cash, prevTotal = cash, best = null, worst = null; 
+
         window.kodaApiData.holdings.forEach(s => {
             total += (s.shares * s.currentPrice);
             prevTotal += (s.shares * s.previousClose);
+
             const pct = s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0;
             if (!best || pct > best.change) best = { symbol: s.symbol, change: pct };
             if (!worst || pct < worst.change) worst = { symbol: s.symbol, change: pct };
