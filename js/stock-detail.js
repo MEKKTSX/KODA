@@ -229,9 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         // ============================================================
-        // 🟢 ดึง Candle Data — Yahoo Finance (ไม่ใช้ Finnhub candle)
-        // เพราะ Finnhub free tier ไม่รองรับ historical candles
-        // ใช้ multi-proxy fallback + localStorage cache 12 ชั่วโมง
+        // 🟢 ดึง Candle Data — เพิ่ม Finnhub API เป็นตัวเลือกหลัก
         // ============================================================
         const fetchCandleData = async () => {
             // Crypto → Binance (direct, no proxy needed)
@@ -264,7 +262,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch(_) {}
 
-            // ---- Multi-proxy fallback (Yahoo Finance) ----
+            // ---- 🟢 1. ดึงผ่าน Finnhub (หลัก) เสถียรกว่า Proxy ----
+            if (!isThaiStock) {
+                try {
+                    const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+                    const toDate = Math.floor(Date.now() / 1000);
+                    const fromDate = toDate - (365 * 24 * 60 * 60); // ย้อนหลัง 1 ปี
+
+                    const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${fromDate}&to=${toDate}&token=${FINNHUB_API_KEY}`);
+                    const data = await res.json();
+
+                    // Finnhub คืนค่า s === "ok" เมื่อสำเร็จและมีข้อมูล
+                    if (data && data.s === "ok" && data.t && data.t.length > 0) {
+                        const parsed = {
+                            timestamps: data.t,
+                            opens: data.o,
+                            highs: data.h,
+                            lows: data.l,
+                            closes: data.c,
+                            volumes: data.v,
+                        };
+                        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
+                        console.log('[Chart] Finnhub data loaded successfully');
+                        return parsed;
+                    }
+                } catch (err) {
+                    console.warn('[Chart] Finnhub failed, trying Yahoo Proxies...', err);
+                }
+            }
+
+            // ---- 🟠 2. Multi-proxy fallback (Yahoo Finance) กรณี Finnhub มีปัญหาหรือเป็นหุ้นไทย ----
             const yahooSym = symbol;
             const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?range=1y&interval=1d`;
 
@@ -306,11 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const raw = await resp.json();
                     const parsed = parseYahoo(raw);
 
-                    // save to cache
-                    try {
-                        localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed }));
-                    } catch(_) {}
-
+                    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
                     console.log(`[Chart] Proxy ${i + 1} succeeded`);
                     return parsed;
                 } catch (err) {
@@ -318,8 +341,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     lastErr = err;
                 }
             }
-            throw new Error(`All proxies failed: ${lastErr?.message || lastErr}`);
+            throw new Error(`All data sources failed: ${lastErr?.message || lastErr}`);
         };
+
 
         // ============================================================
         // 🟢 Render chart
@@ -457,25 +481,38 @@ document.addEventListener('DOMContentLoaded', () => {
  
     // ⚡ โหลดราคาก่อนทันที ไม่รอ API อื่น
     const loadPriceFirst = async () => {
-        const quote = await fetchSafePrice();
-        if (!quote || quote.c <= 0) return;
-        let currencyCode = 'USD';
-        if (symbol.includes('.HK')) currencyCode = 'HKD';
-        else if (symbol.includes('.SS')) currencyCode = 'CNY';
-        const isPositive = quote.d >= 0;
-        const priceEl = document.getElementById('detail-price');
-        const changeEl = document.getElementById('detail-change');
-        if (priceEl) {
-            priceEl.textContent = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(quote.c);
-            priceEl.dataset.rawPrice = quote.c;
+        try {
+            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+            // ดึงราคาผ่าน Finnhub Quote API โดยตรง
+            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`);
+            const quote = await res.json();
+
+            if (!quote || !quote.c || quote.c <= 0) return null;
+
+            let currencyCode = 'USD';
+            if (symbol.includes('.HK')) currencyCode = 'HKD';
+            else if (symbol.includes('.SS')) currencyCode = 'CNY';
+            
+            const isPositive = quote.d >= 0;
+            const priceEl = document.getElementById('detail-price');
+            const changeEl = document.getElementById('detail-change');
+            
+            if (priceEl) {
+                priceEl.textContent = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(quote.c);
+                priceEl.dataset.rawPrice = quote.c;
+            }
+            if (changeEl) {
+                changeEl.className = `text-sm font-bold px-2 py-0.5 rounded flex items-center gap-1 ${isPositive ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`;
+                changeEl.innerHTML = `<span class="material-symbols-outlined text-[14px]">${isPositive ? 'trending_up' : 'trending_down'}</span> ${isPositive ? '+' : ''}${quote.d ? quote.d.toFixed(2) : '0.00'} (${quote.dp ? quote.dp.toFixed(2) : '0.00'}%)`;
+                changeEl.style.display = 'flex';
+            }
+            return quote;
+        } catch (e) {
+            console.error("Price fetch error:", e);
+            return null;
         }
-        if (changeEl) {
-            changeEl.className = `text-sm font-bold px-2 py-0.5 rounded flex items-center gap-1 ${isPositive ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`;
-            changeEl.innerHTML = `<span class="material-symbols-outlined text-[14px]">${isPositive ? 'trending_up' : 'trending_down'}</span> ${isPositive ? '+' : ''}${quote.d.toFixed(2)} (${quote.dp.toFixed(2)}%)`;
-            changeEl.style.display = 'flex';
-        }
-        return quote;
     };
+
 
     const fetchStockData = async () => {
         try {
@@ -490,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isThaiStock) {
                 try {
                     const [qRes, pRes, mRes, cRes, iRes] = await Promise.all([
-                        fetchSafePrice(),
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
                         fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
                         fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
                         fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
