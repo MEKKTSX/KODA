@@ -40,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"watchlist":[]}');
             if (!data.watchlist) data.watchlist = [];
             
-            // กรองขยะซ้ำทิ้งไปก่อน
             const unique = [];
             const seen = new Set();
             data.watchlist.forEach(item => {
@@ -70,9 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     previousClose: 0
                 });
                 localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-                
                 if (window.kodaApiData) window.kodaApiData.watchlist = data.watchlist; 
-                
                 updateStarUI();
             }
         });
@@ -88,55 +85,47 @@ document.addEventListener('DOMContentLoaded', () => {
         let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"watchlist":[]}');
         data.watchlist = data.watchlist.filter(s => s.symbol !== symbol);
         localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-        
         if (window.kodaApiData) window.kodaApiData.watchlist = data.watchlist; 
-        
         updateStarUI();
         document.getElementById('btn-cancel-remove')?.click();
     });
 
     // ==========================================
-    // 📌 2. ระบบสร้างกราฟ (Advanced Support/Resistance)
+    // 📌 2. ระบบสร้างกราฟ + แนวรับแนวต้าน (S/R)
     // ==========================================
     const renderChart = () => {
         const containerId = 'tv-widget-container';
         const container = document.getElementById(containerId);
         if (!container) return;
-        
+
+        // แสดง loading spinner ระหว่างโหลด
+        container.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
+            <div style="width:28px;height:28px;border:2px solid #34a8eb;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+            <p style="color:#848e9c;font-size:12px;font-family:Inter,sans-serif;">Loading chart...</p>
+        </div>
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+
+        // Fallback ไป TradingView widget เฉพาะเมื่อ custom chart ใช้งานไม่ได้จริงๆ
         const renderTradingViewFallback = () => {
             container.innerHTML = '';
             container.style.width = '100%';
             container.style.height = '400px'; 
-            
             const initTV = () => {
                 let tvSym = symbol;
                 if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
                 else if (symbol.includes(':')) tvSym = symbol;
-
                 new TradingView.widget({
-                    "autosize": true,
-                    "symbol": tvSym,
-                    "interval": "D",
-                    "timezone": "Etc/UTC",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "en",
-                    "enable_publishing": false,
-                    "backgroundColor": "#0a0e17",
-                    "gridColor": "rgba(42, 46, 57, 0.5)",
-                    "hide_top_toolbar": false,
-                    "hide_legend": false,
-                    "save_image": false,
-                    "container_id": containerId,
-                    "allow_symbol_change": false,
-                    "withdateranges": true,
+                    "autosize": true, "symbol": tvSym, "interval": "D",
+                    "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
+                    "enable_publishing": false, "backgroundColor": "#0a0e17",
+                    "gridColor": "rgba(42, 46, 57, 0.5)", "hide_top_toolbar": false,
+                    "hide_legend": false, "save_image": false, "container_id": containerId,
+                    "allow_symbol_change": false, "withdateranges": true,
                     "studies": ["Volume@tv-basicstudies"]
                 });
             };
-
-            if (window.TradingView) {
-                initTV();
-            } else {
+            if (window.TradingView) { initTV(); }
+            else {
                 const script = document.createElement('script');
                 script.type = 'text/javascript';
                 script.src = 'https://s3.tradingview.com/tv.js';
@@ -145,187 +134,180 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        let srChartInstance = null;
-
-        const loadScript = (src) => new Promise((resolve, reject) => {
+        // โหลด LightweightCharts v4
+        const loadLightweightCharts = () => new Promise((resolve, reject) => {
             if (window.LightweightCharts) { resolve(); return; }
-            const existing = Array.from(document.scripts).find(sc => sc.src === src);
+            const existing = Array.from(document.scripts).find(sc => sc.src && sc.src.includes('lightweight-charts'));
             if (existing) {
-                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('load', resolve, { once: true });
                 existing.addEventListener('error', reject, { once: true });
                 return;
             }
             const script = document.createElement('script');
-            script.src = src;
+            script.src = 'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
             script.async = true;
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
         });
 
-        const loadLightweightCharts = async () => {
-            if (!window.LightweightCharts) {
-                await loadScript('https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js');
-            }
-        };
-
-        // 🟢 Core S/R Logic Engine
+        // ============================================================
+        // 🟢 S/R Algorithm — คัดระดับสำคัญ ฝั่งละ 4 เส้น
+        // ============================================================
         const calculateSupportResistance = (candles) => {
-            if (!candles || candles.length === 0) return [];
-            
+            if (!candles || candles.length < 20) return [];
+
             const currentPrice = candles[candles.length - 1].close;
             const highs = candles.map(c => c.high);
-            const lows = candles.map(c => c.low);
-            
-            const lookback = 10; // หา swing point โดยดูแท่งเทียน 10 วันย้อนหลังและไปหน้า
-            const swings = [];
+            const lows  = candles.map(c => c.low);
+            const n     = candles.length;
 
-            for (let i = lookback; i < candles.length - lookback; i++) {
+            // lookback ยืดหยุ่นตามจำนวน candle
+            const lookback = Math.max(5, Math.floor(n / 20));
+            const swingHighs = [];
+            const swingLows  = [];
+
+            for (let i = lookback; i < n - lookback; i++) {
                 let isHigh = true;
-                let isLow = true;
-                
+                let isLow  = true;
+
                 for (let j = 1; j <= lookback; j++) {
                     if (highs[i] <= highs[i - j] || highs[i] <= highs[i + j]) isHigh = false;
-                    if (lows[i] >= lows[i - j] || lows[i] >= lows[i + j]) isLow = false;
+                    if (lows[i]  >= lows[i - j]  || lows[i]  >= lows[i + j])  isLow  = false;
                 }
 
-                const recencyScore = i / candles.length;
+                const recency = i / n; // 0 = เก่า, 1 = ใหม่
 
-                // ตรวจสอบ Resistance (จุดกลับตัวขาลง)
                 if (isHigh) {
-                    const localMin = Math.min(...lows.slice(i - lookback, i + lookback + 1));
-                    const amplitude = (highs[i] - localMin) / currentPrice;
-                    const score = (amplitude * 60) + (recencyScore * 40); // ให้น้ำหนักรอบสวิงมากกว่า
-                    swings.push({ price: highs[i], type: "resistance", score: score });
+                    // prominence = ความสูงของ swing เทียบกับแท่งรอบข้าง
+                    const localMin = Math.min(...lows.slice(Math.max(0, i - lookback * 2), Math.min(n, i + lookback * 2 + 1)));
+                    const prominence = (highs[i] - localMin) / currentPrice;
+                    const score = prominence * 70 + recency * 30;
+                    swingHighs.push({ price: highs[i], score });
                 }
-                
-                // ตรวจสอบ Support (จุดกลับตัวขาขึ้น)
+
                 if (isLow) {
-                    const localMax = Math.max(...highs.slice(i - lookback, i + lookback + 1));
-                    const amplitude = (localMax - lows[i]) / currentPrice;
-                    const score = (amplitude * 60) + (recencyScore * 40);
-                    swings.push({ price: lows[i], type: "support", score: score });
+                    const localMax = Math.max(...highs.slice(Math.max(0, i - lookback * 2), Math.min(n, i + lookback * 2 + 1)));
+                    const prominence = (localMax - lows[i]) / currentPrice;
+                    const score = prominence * 70 + recency * 30;
+                    swingLows.push({ price: lows[i], score });
                 }
             }
 
-            // แบ่ง Support และ Resistance เทียบกับราคาปัจจุบัน
-            let rawResistances = swings.filter(s => s.price > currentPrice).sort((a, b) => b.score - a.score);
-            let rawSupports = swings.filter(s => s.price < currentPrice).sort((a, b) => b.score - a.score);
+            // เรียงคะแนนจากมากไปน้อย
+            swingHighs.sort((a, b) => b.score - a.score);
+            swingLows.sort((a, b) => b.score - a.score);
 
-            // ใช้ Threshold ป้องกันเส้นใกล้กันเกินไป (เว้นระยะ 2%)
-            const mergeThreshold = currentPrice * 0.02; 
+            // ระยะ dedupe 2% ของราคาปัจจุบัน
+            const threshold = currentPrice * 0.02;
 
-            const pickBestLevels = (candidates, limit) => {
+            const pickLevels = (items, filterFn, limit) => {
                 const picked = [];
-                for (const c of candidates) {
-                    const isTooClose = picked.some((p) => Math.abs(p.price - c.price) < mergeThreshold);
-                    if (!isTooClose) {
-                        picked.push(c);
-                    }
+                for (const item of items) {
+                    if (!filterFn(item.price)) continue;
+                    const tooClose = picked.some(p => Math.abs(p.price - item.price) < threshold);
+                    if (!tooClose) picked.push(item);
                     if (picked.length >= limit) break;
                 }
                 return picked;
             };
 
-            // คัดระดับที่แข็งแกร่งที่สุดฝั่งละ 4-5 เส้น
-            const topResistances = pickBestLevels(rawResistances, 4);
-            const topSupports = pickBestLevels(rawSupports, 4);
+            const resistances = pickLevels(swingHighs, p => p > currentPrice, 4);
+            const supports    = pickLevels(swingLows,  p => p < currentPrice, 4);
 
-            const formatLevel = (levels, type) => {
-                return levels.map((lvl, idx) => {
-                    const strength = idx === 0 ? 3 : (idx === 1 ? 2 : 1);
-                    return {
-                        price: Math.round(lvl.price * 100) / 100,
-                        type: type,
-                        strength: strength,
-                        method: idx === 0 ? `Key ${type.charAt(0).toUpperCase() + type.slice(1)}` : `${type.charAt(0).toUpperCase() + type.slice(1)} ${idx + 1}`
-                    };
-                });
-            };
+            const toLevel = (items, type) => items.map((item, idx) => ({
+                price:    Math.round(item.price * 100) / 100,
+                type,
+                strength: idx === 0 ? 3 : idx === 1 ? 2 : 1,
+                method:   idx === 0
+                    ? `Key ${type === 'resistance' ? 'Resistance' : 'Support'}`
+                    : `${type === 'resistance' ? 'Resistance' : 'Support'} ${idx + 1}`,
+            }));
 
-            const result = [
-                ...formatLevel(topResistances, "resistance"),
-                ...formatLevel(topSupports, "support")
-            ];
-
-            return result.sort((a, b) => b.price - a.price);
+            return [...toLevel(resistances, 'resistance'), ...toLevel(supports, 'support')]
+                .sort((a, b) => b.price - a.price);
         };
 
+        // ============================================================
+        // 🟢 ดึง Candle Data — Yahoo Finance (ไม่ใช้ Finnhub candle)
+        // เพราะ Finnhub free tier ไม่รองรับ historical candles
+        // ============================================================
+        const fetchCandleData = async () => {
+            // Crypto → Binance
+            if (isCrypto) {
+                const coin = symbol.split(':')[1] || symbol;
+                const data = await fetch(
+                    `https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`
+                ).then(r => r.json());
+                return {
+                    timestamps: data.map(k => Math.floor(k[0] / 1000)),
+                    opens:   data.map(k => parseFloat(k[1])),
+                    highs:   data.map(k => parseFloat(k[2])),
+                    lows:    data.map(k => parseFloat(k[3])),
+                    closes:  data.map(k => parseFloat(k[4])),
+                    volumes: data.map(k => parseFloat(k[5])),
+                };
+            }
+
+            // หุ้นทุกชนิด (ไทย, US, ฮ่องกง ฯลฯ) → Yahoo Finance ผ่าน allorigins proxy
+            const yahooSym = symbol; // Yahoo รองรับทั้ง TSLA, AAPL, PTT.BK, 0700.HK ฯลฯ
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?range=1y&interval=1d`;
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+
+            const res = await fetch(proxyUrl).then(r => r.json());
+            if (!res.chart || !res.chart.result || !res.chart.result[0]) {
+                throw new Error('Yahoo Finance: no data');
+            }
+            const result = res.chart.result[0];
+            const q = result.indicators.quote[0];
+            return {
+                timestamps: result.timestamp || [],
+                opens:   q.open   || [],
+                highs:   q.high   || [],
+                lows:    q.low    || [],
+                closes:  q.close  || [],
+                volumes: q.volume || [],
+            };
+        };
+
+        // ============================================================
+        // 🟢 Render chart
+        // ============================================================
         const renderAdvancedSR = async () => {
             try {
                 await loadLightweightCharts();
 
-                let timestamps = [], opens = [], closes = [], highs = [], lows = [], volumes = [];
-                
-                if (isCrypto) {
-                    const coin = symbol.split(':')[1] || symbol;
-                    const data = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=365`).then(r => r.json());
-                    timestamps = data.map(k => Math.floor(k[0] / 1000));
-                    opens = data.map(k => parseFloat(k[1]));
-                    highs = data.map(k => parseFloat(k[2]));
-                    lows = data.map(k => parseFloat(k[3]));
-                    closes = data.map(k => parseFloat(k[4]));
-                    volumes = data.map(k => parseFloat(k[5])); 
-                } else if (isThaiStock) {
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
-                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-                    const res = await fetch(proxyUrl).then(r => r.json());
-                    if (!res.chart || !res.chart.result || !res.chart.result[0]) throw new Error('No Chart Data');
-                    
-                    const result = res.chart.result[0];
-                    const quote = result.indicators.quote[0];
-                    timestamps = result.timestamp || [];
-                    opens = quote.open || [];
-                    closes = quote.close || [];
-                    highs = quote.high || [];
-                    lows = quote.low || [];
-                    volumes = quote.volume || []; 
-                } else {
-                    const to = Math.floor(Date.now() / 1000);
-                    const from = to - (365 * 24 * 60 * 60);
-                    const cleanSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
-                    const fh = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`).then(r => r.json());
-                    if (fh?.s !== 'ok' || !fh.c?.length) throw new Error('No chart data');
-                    timestamps = fh.t;
-                    opens = fh.o;
-                    closes = fh.c;
-                    highs = fh.h;
-                    lows = fh.l;
-                    volumes = fh.v;
-                }
+                const { timestamps, opens, highs, lows, closes, volumes } = await fetchCandleData();
 
-                let candles = timestamps.map((t, idx) => {
-                    const open = Number(opens[idx]), high = Number(highs[idx]), low = Number(lows[idx]), close = Number(closes[idx]), volume = Number(volumes[idx] || 0);
-                    if ([open, high, low, close].some(v => Number.isNaN(v) || v === null)) return null;
+                // สร้าง candle objects + กรอง NaN + ซ้ำ
+                let candles = timestamps.map((t, i) => {
+                    const open   = Number(opens[i]);
+                    const high   = Number(highs[i]);
+                    const low    = Number(lows[i]);
+                    const close  = Number(closes[i]);
+                    const volume = Number(volumes[i] || 0);
+                    if ([open, high, low, close].some(v => !isFinite(v) || v <= 0)) return null;
                     return { time: t, open, high, low, close, volume };
                 }).filter(Boolean);
 
-                if (!candles.length) throw new Error('No chart points');
+                if (!candles.length) throw new Error('No valid candles');
 
-                const uniqueCandles = [];
-                let lastTime = -1;
-                candles.sort((a, b) => a.time - b.time).forEach(c => {
-                    if (c.time > lastTime) {
-                        uniqueCandles.push(c);
-                        lastTime = c.time;
-                    }
-                });
-                candles = uniqueCandles;
+                // dedupe timestamp
+                const seen = new Set();
+                candles = candles
+                    .sort((a, b) => a.time - b.time)
+                    .filter(c => { if (seen.has(c.time)) return false; seen.add(c.time); return true; });
 
-                // ส่ง Data เข้า Algorithm ใหม่
+                // คำนวณ S/R
                 const levels = calculateSupportResistance(candles);
 
-                container.innerHTML = '<div id="detail-sr-chart" style="width: 100%; height: 100%; min-height: 400px; position: relative;"></div>';
+                // สร้าง chart element
+                container.innerHTML = '<div id="detail-sr-chart" style="width:100%;height:100%;min-height:350px;position:relative;"></div>';
                 const chartEl = document.getElementById('detail-sr-chart');
 
-                if (srChartInstance && typeof srChartInstance.remove === 'function') {
-                    srChartInstance.remove();
-                }
-
-                // ปรับแต่ง Chart Behavior
                 const chart = window.LightweightCharts.createChart(chartEl, {
-                    width: chartEl.clientWidth,
-                    height: chartEl.clientHeight,
+                    width:  chartEl.clientWidth  || 360,
+                    height: chartEl.clientHeight || 350,
                     layout: {
                         background: { type: 'solid', color: '#0a0e17' },
                         textColor: '#848e9c',
@@ -336,9 +318,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         horzLines: { color: 'rgba(42, 46, 57, 0.2)' },
                     },
                     crosshair: {
-                        mode: 0, 
-                        vertLine: { color: 'rgba(224, 227, 235, 0.2)', width: 1, style: 2, labelBackgroundColor: '#1a1e2e' },
-                        horzLine: { color: 'rgba(224, 227, 235, 0.2)', width: 1, style: 2, labelBackgroundColor: '#1a1e2e' }
+                        mode: 0,
+                        vertLine: { color: 'rgba(224,227,235,0.2)', width: 1, style: 2, labelBackgroundColor: '#1a1e2e' },
+                        horzLine: { color: 'rgba(224,227,235,0.2)', width: 1, style: 2, labelBackgroundColor: '#1a1e2e' },
                     },
                     rightPriceScale: {
                         borderColor: 'rgba(42, 46, 57, 0.8)',
@@ -349,10 +331,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         borderColor: 'rgba(42, 46, 57, 0.8)',
                         timeVisible: true,
                         secondsVisible: false,
-                        fixLeftEdge: true,
                     },
                     handleScale: {
-                        axisPressedMouseMove: { time: true, price: true }, // อนุญาตให้ลากแกนราคา
+                        axisPressedMouseMove: { time: true, price: true },
                         mouseWheel: true,
                         pinch: true,
                     },
@@ -364,6 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                 });
 
+                // Candlestick series
                 const candleSeries = chart.addCandlestickSeries({
                     upColor: '#0ecb81', downColor: '#f6465d',
                     borderUpColor: '#0ecb81', borderDownColor: '#f6465d',
@@ -371,59 +353,56 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 candleSeries.setData(candles);
 
+                // Volume histogram
                 const volumeSeries = chart.addHistogramSeries({
-                    priceFormat: { type: "volume" },
-                    priceScaleId: "volume",
+                    priceFormat: { type: 'volume' },
+                    priceScaleId: 'volume',
                 });
-                chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+                chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+                volumeSeries.setData(candles.map(c => ({
+                    time:  c.time,
+                    value: c.volume || 0,
+                    color: c.close >= c.open ? 'rgba(14,203,129,0.3)' : 'rgba(246,70,93,0.3)',
+                })));
 
-                const volumeData = candles.map(candle => ({
-                    time: candle.time,
-                    value: candle.volume || 0,
-                    color: candle.close >= candle.open ? "rgba(14, 203, 129, 0.3)" : "rgba(246, 70, 93, 0.3)",
-                }));
-                volumeSeries.setData(volumeData);
-
-                // วาดเส้นแนวรับแนวต้านตามระดับความแข็งแกร่ง
+                // วาดเส้น S/R
                 levels.forEach(level => {
-                    const isSupport = level.type === "support";
-                    // ปรับสีให้ชัดเจนและแยกฝั่ง
-                    const color = isSupport ? "rgba(14, 203, 129, 0.9)" : "rgba(246, 70, 93, 0.9)"; 
-                    
-                    // Key Level = Solid, Secondary Level = Dashed, Minor Level = Dotted
-                    const lineStyle = level.strength === 3 ? 0 : (level.strength === 2 ? 2 : 3); 
-                    const lineWidth = level.strength === 3 ? 2 : 1;
-
+                    const isSupport = level.type === 'support';
                     candleSeries.createPriceLine({
-                        price: level.price,
-                        color: color,
-                        lineWidth: lineWidth,
-                        lineStyle: lineStyle,
+                        price:            level.price,
+                        color:            isSupport ? 'rgba(14,203,129,0.85)' : 'rgba(246,70,93,0.85)',
+                        lineWidth:        level.strength >= 3 ? 2 : 1,
+                        lineStyle:        level.strength >= 3 ? 0 : 2,  // 0=Solid, 2=Dashed
                         axisLabelVisible: true,
-                        title: level.method,
+                        title:            level.method,
                     });
                 });
 
                 chart.timeScale().fitContent();
 
-                const resizeObserver = new ResizeObserver((entries) => {
+                // Resize observer
+                const ro = new ResizeObserver(entries => {
                     for (const entry of entries) {
                         const { width, height } = entry.contentRect;
-                        chart.applyOptions({ width, height });
+                        if (width > 0 && height > 0) chart.applyOptions({ width, height });
                     }
                 });
-                resizeObserver.observe(chartEl);
+                ro.observe(chartEl);
+                window.addEventListener('beforeunload', () => ro.disconnect(), { once: true });
 
-                srChartInstance = { remove: () => { resizeObserver.disconnect(); chart.remove(); } };
             } catch (e) {
-                console.error("Chart Error:", e);
-                renderTradingViewFallback(); 
+                console.error('Chart Error:', e);
+                renderTradingViewFallback();
             }
         };
+
         renderAdvancedSR();
     };
     renderChart();
-    
+
+    // ==========================================
+    // 📌 3. ระบบดึงข้อมูลราคาและข่าว 
+    // ==========================================
     const fetchSafePrice = async () => {
         if (isCrypto) {
             try {
@@ -440,9 +419,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     };
 
-    // ==========================================
-    // 📌 3. ระบบดึงข้อมูลราคาและข่าว 
-    // ==========================================
     const fetchStockData = async () => {
         try {
             const today = new Date();
@@ -582,7 +558,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const GEMINI_API_KEY = window.ENV_KEYS.GEMINI[0];
                         const prompt = `ในฐานะนักวิเคราะห์การเงิน โปรดสรุปข้อมูลหุ้น ${symbol} เป็นภาษาไทย 2-3 บรรทัดให้เข้าใจง่าย อิงจากข้อมูลนี้: PE: ${formatNum(m.peExclExtraTTM)}, EPS: ${formatNum(m.epsTTM)}, Rev Growth: ${formatNum(m.revenueGrowthTTMYoy, '%')}, Margin: ${formatNum(m.netProfitMarginTTM, '%')}, Consensus: ${consensusSummaryText || 'N/A'}`;
-                        
                         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7 } })
@@ -594,7 +569,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             localStorage.setItem(cacheKeyAI, JSON.stringify({ timestamp: now, text: aiText }));
                         } else { throw new Error('AI Failed'); }
                     } catch (e) {
-                        let fallbackText = `Based on financial data, ${symbol} is showing revenue growth of ${formatNum(m.revenueGrowthTTMYoy, '%')}.`;
+                        let fallbackText = `Based on financial data, ${symbol} is showing revenue growth of ${formatNum(metricsObj.metric.revenueGrowthTTMYoy, '%')}.`;
                         summaryEl.textContent = (window.KodaAI && typeof window.KodaAI.translateText === 'function') ? await window.KodaAI.translateText(fallbackText) : fallbackText;
                     }
                 }
@@ -693,7 +668,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const GEMINI_API_KEY = window.ENV_KEYS.GEMINI[0]; 
-            
             const prompt = `ในฐานะนักวิเคราะห์การเงิน โปรดอ่านหัวข้อข่าวและเนื้อหาย่อต่อไปนี้:
             Headline: ${headline}
             Summary: ${summary}
@@ -716,7 +690,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.candidates && data.candidates[0].content.parts[0].text) {
                 let aiResponse = data.candidates[0].content.parts[0].text.replace(/```html/g, '').replace(/```/g, '').trim();
                 localStorage.setItem(cacheKey, aiResponse);
-                
                 modalBody.innerHTML = `
                     ${visualHtml}
                     <h4 class="text-white text-lg font-bold leading-snug mb-2">${headline}</h4>
@@ -800,7 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (finChartInstance) finChartInstance.destroy();
             finChartInstance = new Chart(ctx, { type: 'bar', data: { labels: finDataCache.years, datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }, y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => formatFinNumber(v) } } } } });
-        }
+        };
         
         const fetchFinancialData = async () => {
             if (isCrypto || isForex) { document.getElementById('fin-data-list').innerHTML = `<p class="text-center text-slate-500 text-xs py-4">Only available for stocks.</p>`; return; }
