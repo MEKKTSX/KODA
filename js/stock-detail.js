@@ -231,9 +231,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // ============================================================
         // 🟢 ดึง Candle Data — Yahoo Finance (ไม่ใช้ Finnhub candle)
         // เพราะ Finnhub free tier ไม่รองรับ historical candles
+        // ใช้ multi-proxy fallback + localStorage cache 12 ชั่วโมง
         // ============================================================
         const fetchCandleData = async () => {
-            // Crypto → Binance
+            // Crypto → Binance (direct, no proxy needed)
             if (isCrypto) {
                 const coin = symbol.split(':')[1] || symbol;
                 const data = await fetch(
@@ -249,25 +250,75 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             }
 
-            // หุ้นทุกชนิด (ไทย, US, ฮ่องกง ฯลฯ) → Yahoo Finance ผ่าน allorigins proxy
-            const yahooSym = symbol; // Yahoo รองรับทั้ง TSLA, AAPL, PTT.BK, 0700.HK ฯลฯ
-            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?range=1y&interval=1d`;
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+            // ---- Check localStorage cache (12h) ก่อนดึงใหม่ ----
+            const CACHE_KEY = `koda_chart_v2_${symbol}`;
+            const CACHE_TTL = 12 * 60 * 60 * 1000;
+            try {
+                const cached = localStorage.getItem(CACHE_KEY);
+                if (cached) {
+                    const { ts, data } = JSON.parse(cached);
+                    if (Date.now() - ts < CACHE_TTL) {
+                        console.log('[Chart] Using cached candle data for', symbol);
+                        return data;
+                    }
+                }
+            } catch(_) {}
 
-            const res = await fetch(proxyUrl).then(r => r.json());
-            if (!res.chart || !res.chart.result || !res.chart.result[0]) {
-                throw new Error('Yahoo Finance: no data');
-            }
-            const result = res.chart.result[0];
-            const q = result.indicators.quote[0];
-            return {
-                timestamps: result.timestamp || [],
-                opens:   q.open   || [],
-                highs:   q.high   || [],
-                lows:    q.low    || [],
-                closes:  q.close  || [],
-                volumes: q.volume || [],
+            // ---- Multi-proxy fallback (Yahoo Finance) ----
+            const yahooSym = symbol;
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?range=1y&interval=1d`;
+
+            const PROXIES = [
+                u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+                u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+            ];
+
+            const fetchWithTimeout = (url, ms = 7000) => {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), ms);
+                return fetch(url, { signal: ctrl.signal })
+                    .finally(() => clearTimeout(timer));
             };
+
+            const parseYahoo = (raw) => {
+                const res = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (!res.chart || !res.chart.result || !res.chart.result[0]) throw new Error('Yahoo: no result');
+                const result = res.chart.result[0];
+                const q = result.indicators.quote[0];
+                return {
+                    timestamps: result.timestamp || [],
+                    opens:   q.open   || [],
+                    highs:   q.high   || [],
+                    lows:    q.low    || [],
+                    closes:  q.close  || [],
+                    volumes: q.volume || [],
+                };
+            };
+
+            let lastErr;
+            for (let i = 0; i < PROXIES.length; i++) {
+                const proxyUrl = PROXIES[i](yahooUrl);
+                try {
+                    console.log(`[Chart] Trying proxy ${i + 1}/${PROXIES.length}:`, proxyUrl.slice(0, 60));
+                    const resp = await fetchWithTimeout(proxyUrl, 7000);
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const raw = await resp.json();
+                    const parsed = parseYahoo(raw);
+
+                    // save to cache
+                    try {
+                        localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed }));
+                    } catch(_) {}
+
+                    console.log(`[Chart] Proxy ${i + 1} succeeded`);
+                    return parsed;
+                } catch (err) {
+                    console.warn(`[Chart] Proxy ${i + 1} failed:`, err.message || err);
+                    lastErr = err;
+                }
+            }
+            throw new Error(`All proxies failed: ${lastErr?.message || lastErr}`);
         };
 
         // ============================================================
@@ -403,20 +454,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 📌 3. ระบบดึงข้อมูลราคาและข่าว 
     // ==========================================
-    const fetchSafePrice = async () => {
-        if (isCrypto) {
-            try {
-                const coin = symbol.split(':')[1];
-                const r = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}`).then(res=>res.json());
-                return { c: parseFloat(r.lastPrice), d: parseFloat(r.priceChange), dp: parseFloat(r.priceChangePercent) };
-            } catch(e) {}
+ 
+    // ⚡ โหลดราคาก่อนทันที ไม่รอ API อื่น
+    const loadPriceFirst = async () => {
+        const priceEl = document.getElementById('detail-price');
+        if (priceEl && priceEl.dataset.rawPrice && Number(priceEl.dataset.rawPrice) > 0) return;
+        const quote = await fetchSafePrice();
+        if (!quote || quote.c <= 0) return;
+        let currencyCode = 'USD';
+        if (symbol.includes('.HK')) currencyCode = 'HKD';
+        else if (symbol.includes('.SS')) currencyCode = 'CNY';
+        const isPositive = quote.d >= 0;
+        const changeEl = document.getElementById('detail-change');
+        if (priceEl) {
+            priceEl.textContent = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(quote.c);
+            priceEl.dataset.rawPrice = quote.c;
         }
-        try {
-            let fSym = symbol === 'XAUUSD' ? 'OANDA:XAU_USD' : symbol;
-            const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${fSym}&token=${FINNHUB_API_KEY}`).then(res=>res.json());
-            if (r && r.c > 0) return r;
-        } catch(e) {}
-        return null;
+        if (changeEl) {
+            changeEl.className = `text-sm font-bold px-2 py-0.5 rounded flex items-center gap-1 ${isPositive ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`;
+            changeEl.innerHTML = `<span class="material-symbols-outlined text-[14px]">${isPositive ? 'trending_up' : 'trending_down'}</span> ${isPositive ? '+' : ''}${quote.d.toFixed(2)} (${quote.dp.toFixed(2)}%)`;
+            changeEl.style.display = 'flex';
+        }
+        return quote;
     };
 
     const fetchStockData = async () => {
@@ -620,6 +679,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (e) { console.error("Data Fetch Error:", e); }
     };
+    loadPriceFirst();
+    setTimeout(loadPriceFirst, 1200);
     fetchStockData();
 
     // ==========================================
