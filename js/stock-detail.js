@@ -1,6 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
     
-    const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB;
+    // 📌 ระบบสลับ Key อัตโนมัติ (Round Robin)
+    const finnhubKeys = (window.ENV_KEYS.FINNHUB_ARRAY && window.ENV_KEYS.FINNHUB_ARRAY.length > 0) 
+                        ? window.ENV_KEYS.FINNHUB_ARRAY 
+                        : [window.ENV_KEYS.FINNHUB];
+    let fhKeyIndex = 0;
+    const getFHKey = () => {
+        const key = finnhubKeys[fhKeyIndex % finnhubKeys.length];
+        fhKeyIndex++;
+        return key;
+    };
+
     const AV_API_KEY = window.ENV_KEYS.ALPHAVANTAGE;
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -90,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-cancel-remove')?.click();
     });
 
-        // ==========================================
+    // ==========================================
     // 📌 2. ระบบสร้างกราฟ + S/R + Timeframe
     // ==========================================
     const renderChart = () => {
@@ -98,7 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        // UI สำหรับปุ่มสลับกราฟและ Timeframe
         const chartSection = container.parentElement;
         if (!document.getElementById('chart-controls-wrapper')) {
             const controlsHTML = `
@@ -123,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnTV = document.getElementById('btn-chart-tv');
         const tfSelector = document.getElementById('tf-selector');
         
-        // 🟢 จุดที่ 2: ตั้งค่า State เริ่มต้นเป็น 'tv'
         let currentChartMode = 'tv';
         let currentTimeframe = '1Y';
         let kodaChartInstance = null;
@@ -191,9 +199,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
                     const toDate = Math.floor(Date.now() / 1000);
                     const fromDate = toDate - (days * 24 * 60 * 60);
-                    const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${fromDate}&to=${toDate}&token=${FINNHUB_API_KEY}`);
+                    const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=D&from=${fromDate}&to=${toDate}&token=${getFHKey()}`);
                     const data = await res.json();
-                    if (data && data.s === "ok") {
+                    if (data && data.s === "ok" && data.t && data.t.length > 0) {
                         const parsed = { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
                         try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
                         return parsed;
@@ -202,16 +210,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const yahooRange = tfRange === '3M' ? '3mo' : tfRange === '6M' ? '6mo' : tfRange === '1Y' ? '1y' : '5y';
+            const fetchWithTimeout = (url, ms = 10000) => {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), ms);
+                return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+            };
+
             try {
                 const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${yahooRange}&interval=1d`;
-                const PROXIES = [u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, u => `https://corsproxy.io/?${encodeURIComponent(u)}`];
+                const PROXIES = [
+                    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, 
+                    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                    u => `https://corsproxy.io/?${encodeURIComponent(u)}`
+                ];
                 for (let proxy of PROXIES) {
                     try {
-                        const raw = await fetch(proxy(url)).then(r => r.json());
-                        const q = raw.chart.result[0].indicators.quote[0];
-                        const parsed = { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
-                        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
-                        return parsed;
+                        const raw = await fetchWithTimeout(proxy(url), 10000).then(r => r.json());
+                        if (raw.chart && raw.chart.result && raw.chart.result[0]) {
+                            const q = raw.chart.result[0].indicators.quote[0];
+                            const parsed = { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
+                            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(_) {}
+                            return parsed;
+                        }
                     } catch (err) {}
                 }
             } catch (e) {}
@@ -279,9 +299,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     borderDownColor: '#f6465d', 
                     wickUpColor: '#0ecb81', 
                     wickDownColor: '#f6465d',
-                    priceLineColor: '#fbbf24', // 🟡 บังคับเส้นราคาปัจจุบันเป็นสีเหลือง (Tailwind yellow-400)
-                    priceLineWidth: 2,         // เพิ่มความหนาของเส้นให้เด่นขึ้น
-                    priceLineStyle: 2          // ใช้เป็นเส้นปะ (2 = Dashed) จะได้แยกออกจากเส้น S/R ทึบๆ
+                    priceLineColor: '#fbbf24', 
+                    priceLineWidth: 2,         
+                    priceLineStyle: 2          
                 });
                 candleSeries.setData(candles);
 
@@ -343,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTradingViewFallback();
         });
 
-        // 🟢 จุดที่ 3: เรียก TradingView แทนเมื่อโหลดหน้าครั้งแรก
         renderTradingViewFallback();
     };
     renderChart();
@@ -355,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadPriceFirst = async () => {
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`);
+            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}`);
             const quote = await res.json();
 
             if (!quote || !quote.c || quote.c <= 0) return null;
@@ -384,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-
     const fetchStockData = async () => {
         try {
             const today = new Date();
@@ -398,11 +416,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isThaiStock) {
                 try {
                     const [qRes, pRes, mRes, cRes, iRes] = await Promise.all([
-                        fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                        fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                        fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                        fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                        fetch(`https://finnhub.io/api/v1/stock/insider-transactions?symbol=${cleanSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json())
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${getFHKey()}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/stock/insider-transactions?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json())
                     ]);
                     quote = qRes; profile = pRes; metricsObj = mRes; consensusData = cRes; insiderData = iRes;
                 } catch (e) { console.warn("Basic data fetch error"); }
@@ -411,10 +429,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isThaiStock) {
                 if (isCrypto || isForex || symbol === 'XAUUSD') {
                     const category = isCrypto ? 'crypto' : 'forex';
-                    let catNews = await fetch(`https://finnhub.io/api/v1/news?category=${category}&token=${FINNHUB_API_KEY}`).then(r=>r.json());
+                    let catNews = await fetch(`https://finnhub.io/api/v1/news?category=${category}&token=${getFHKey()}`).then(r=>r.json());
                     newsData = catNews;
                 } else {
-                    let compNews = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${cleanSym}&from=${formatDate(past15Days)}&to=${formatDate(today)}&token=${FINNHUB_API_KEY}`).then(r=>r.json()).catch(()=>[]);
+                    let compNews = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${cleanSym}&from=${formatDate(past15Days)}&to=${formatDate(today)}&token=${getFHKey()}`).then(r=>r.json()).catch(()=>[]);
                     if (compNews && compNews.length > 0) {
                         newsData = compNews;
                     } else {
