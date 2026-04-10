@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-cancel-remove')?.click();
     });
 
-    // ==========================================
+        // ==========================================
     // 📌 2. ระบบสร้างกราฟ + S/R + Timeframe
     // ==========================================
     const renderChart = () => {
@@ -105,10 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div id="chart-controls-wrapper" class="bg-background-dark border-b border-border-dark/30">
                     <div class="flex justify-between items-center px-4 py-2">
                         <div class="bg-surface-dark border border-border-dark rounded-lg p-0.5 flex text-[10px] font-bold uppercase tracking-wider">
-                            <button id="btn-chart-koda" class="px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors">KODA SR</button>
-                            <button id="btn-chart-tv" class="px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors">TradingView</button>
+                            <button id="btn-chart-koda" class="px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors">KODA SR</button>
+                            <button id="btn-chart-tv" class="px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors">TradingView</button>
                         </div>
-                        <div id="tf-selector" class="flex gap-1">
+                        <div id="tf-selector" class="flex gap-1" style="display: none;">
                             ${['3M', '6M', '1Y', '3Y'].map(tf => `
                                 <button class="tf-btn px-2.5 py-1.5 text-[10px] font-black rounded-md transition-all ${tf === '1Y' ? 'text-primary bg-primary/10' : 'text-slate-500 hover:text-slate-300'}" data-tf="${tf}">${tf}</button>
                             `).join('')}
@@ -123,7 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnTV = document.getElementById('btn-chart-tv');
         const tfSelector = document.getElementById('tf-selector');
         
-        let currentChartMode = 'koda';
+        // 🟢 จุดที่ 2: ตั้งค่า State เริ่มต้นเป็น 'tv'
+        let currentChartMode = 'tv';
         let currentTimeframe = '1Y';
         let kodaChartInstance = null;
 
@@ -270,8 +271,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0.8)', autoScale: true },
                     timeScale: { borderColor: 'rgba(42, 46, 57, 0.8)', timeVisible: true }
                 });
-
-                const candleSeries = kodaChartInstance.addCandlestickSeries({ upColor: '#0ecb81', downColor: '#f6465d', borderUpColor: '#0ecb81', borderDownColor: '#f6465d', wickUpColor: '#0ecb81', wickDownColor: '#f6465d' });
+                
+                const candleSeries = kodaChartInstance.addCandlestickSeries({ 
+                    upColor: '#0ecb81', 
+                    downColor: '#f6465d', 
+                    borderUpColor: '#0ecb81', 
+                    borderDownColor: '#f6465d', 
+                    wickUpColor: '#0ecb81', 
+                    wickDownColor: '#f6465d',
+                    priceLineColor: '#fbbf24', // 🟡 บังคับเส้นราคาปัจจุบันเป็นสีเหลือง (Tailwind yellow-400)
+                    priceLineWidth: 2,         // เพิ่มความหนาของเส้นให้เด่นขึ้น
+                    priceLineStyle: 2          // ใช้เป็นเส้นปะ (2 = Dashed) จะได้แยกออกจากเส้น S/R ทึบๆ
+                });
                 candleSeries.setData(candles);
 
                 const volumeSeries = kodaChartInstance.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'volume' });
@@ -285,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         lineWidth: lvl.strength === 3 ? 2 : 1, 
                         lineStyle: lvl.strength === 3 ? 0 : 2, 
                         axisLabelVisible: true, 
-                        title: '' // ซ่อนตัวอักษรเหลือแค่ป้ายราคาตามที่ขอ
+                        title: '' 
                     });
                 });
                 
@@ -321,21 +332,22 @@ document.addEventListener('DOMContentLoaded', () => {
         btnKoda.addEventListener('click', () => {
             currentChartMode = 'koda';
             btnKoda.className = "px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors";
-            btnTV.className = "px-3 py-1.5 rounded-md text-slate-500 transition-colors";
+            btnTV.className = "px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors";
             renderAdvancedSR();
         });
 
         btnTV.addEventListener('click', () => {
             currentChartMode = 'tv';
             btnTV.className = "px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors";
-            btnKoda.className = "px-3 py-1.5 rounded-md text-slate-500 transition-colors";
+            btnKoda.className = "px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors";
             renderTradingViewFallback();
         });
 
-        renderAdvancedSR();
+        // 🟢 จุดที่ 3: เรียก TradingView แทนเมื่อโหลดหน้าครั้งแรก
+        renderTradingViewFallback();
     };
     renderChart();
-
+    
     // ==========================================
     // 📌 3. ระบบดึงข้อมูลราคาและข่าว 
     // ==========================================
