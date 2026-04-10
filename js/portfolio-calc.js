@@ -5,7 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let isWhatIfMode = false; 
     let selectedWhatIfAsset = null; 
 
-    const loadData = () => JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
+    // ดึง Cash มาด้วย ถ้าไม่มีให้เป็น 0
+    const loadData = () => {
+        let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[], "cash": 0}');
+        if (typeof data.cash === 'undefined') data.cash = 0;
+        return data;
+    };
     
     const saveData = (data) => {
         data.lastUpdated = Date.now(); 
@@ -13,7 +18,91 @@ document.addEventListener('DOMContentLoaded', () => {
         window.dispatchEvent(new Event('storage'));
         document.dispatchEvent(new Event('portfolioUpdated'));
     };
+        // ==========================================
+    // 📌 ระบบ Manage Cash UI Modal
+    // ==========================================
+    const modalCash = document.getElementById('modal-manage-cash');
+    const modalCashContent = document.getElementById('modal-manage-cash-content');
+    const cashModeInput = document.getElementById('cash-mode');
+    const tabDeposit = document.getElementById('tab-deposit');
+    const tabWithdraw = document.getElementById('tab-withdraw');
+    const cashLabel = document.getElementById('cash-label');
+    const cashAmount = document.getElementById('cash-amount');
+    const btnSubmitCash = document.getElementById('btn-submit-cash');
+    const cashIconTitle = document.getElementById('cash-icon-title');
 
+    // เปิด Modal Manage Cash
+    document.getElementById('btn-manage-cash')?.addEventListener('click', () => {
+        cashAmount.value = ''; 
+        modalCash.classList.remove('hidden'); 
+        modalCash.classList.add('flex');
+        setTimeout(() => { 
+            modalCash.classList.remove('opacity-0'); 
+            modalCashContent.classList.remove('translate-y-full'); 
+        }, 10);
+    });
+
+    // ปิด Modal Manage Cash
+    document.getElementById('btn-close-cash-modal')?.addEventListener('click', () => {
+        modalCash.classList.add('opacity-0'); 
+        modalCashContent.classList.add('translate-y-full');
+        setTimeout(() => { 
+            modalCash.classList.add('hidden'); 
+            modalCash.classList.remove('flex'); 
+        }, 300);
+    });
+
+    // กดปุ่ม Deposit
+    tabDeposit?.addEventListener('click', () => {
+        cashModeInput.value = 'deposit';
+        tabDeposit.className = 'flex-1 text-xs font-bold py-2.5 rounded-lg bg-success text-white transition-all shadow-md';
+        tabWithdraw.className = 'flex-1 text-xs font-bold py-2.5 rounded-lg text-slate-500 hover:text-white transition-all';
+        cashLabel.textContent = 'Deposit Amount ($)';
+        cashLabel.className = 'text-xs text-success font-bold uppercase tracking-wider transition-colors';
+        cashAmount.className = 'w-full bg-background-dark border border-border-dark focus:border-success focus:ring-1 focus:ring-success rounded-xl px-4 py-3 text-white mt-1.5 font-bold outline-none transition-colors';
+        btnSubmitCash.textContent = 'Confirm Deposit';
+        btnSubmitCash.className = 'w-full bg-success text-white font-bold rounded-xl py-3.5 mt-2 hover:bg-green-500 shadow-lg shadow-success/30 transition-colors text-lg';
+        cashIconTitle.className = 'material-symbols-outlined text-success';
+    });
+
+    // กดปุ่ม Withdraw
+    tabWithdraw?.addEventListener('click', () => {
+        cashModeInput.value = 'withdraw';
+        tabWithdraw.className = 'flex-1 text-xs font-bold py-2.5 rounded-lg bg-danger text-white transition-all shadow-md';
+        tabDeposit.className = 'flex-1 text-xs font-bold py-2.5 rounded-lg text-slate-500 hover:text-white transition-all';
+        cashLabel.textContent = 'Withdraw Amount ($)';
+        cashLabel.className = 'text-xs text-danger font-bold uppercase tracking-wider transition-colors';
+        cashAmount.className = 'w-full bg-background-dark border border-border-dark focus:border-danger focus:ring-1 focus:ring-danger rounded-xl px-4 py-3 text-white mt-1.5 font-bold outline-none transition-colors';
+        btnSubmitCash.textContent = 'Confirm Withdraw';
+        btnSubmitCash.className = 'w-full bg-danger text-white font-bold rounded-xl py-3.5 mt-2 hover:bg-red-500 shadow-lg shadow-danger/30 transition-colors text-lg';
+        cashIconTitle.className = 'material-symbols-outlined text-danger';
+    });
+
+    // บันทึกเงินฝาก/ถอน ลง Data
+    document.getElementById('manage-cash-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const amt = parseFloat(cashAmount.value);
+        if (isNaN(amt) || amt <= 0) return;
+
+        const data = loadData();
+        const mode = cashModeInput.value;
+
+        if (mode === 'deposit') {
+            data.cash += amt;
+        } else if (mode === 'withdraw') {
+            if (amt > data.cash) {
+                alert('Warning: ถอนยอดเงินสดมากกว่าที่มีอยู่ (ระบบอนุญาตให้ติดลบได้)');
+            }
+            data.cash -= amt;
+        }
+
+        saveData(data);
+        updateUI();
+        document.getElementById('btn-close-cash-modal').click();
+    });
+
+
+    // --- 2. Equity Curve History Builder ---
     const updateEquityHistory = (currentTotal) => {
         let history = JSON.parse(localStorage.getItem('koda_equity_history') || '[]');
         const today = new Date().toISOString().split('T')[0];
@@ -122,7 +211,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = loadData();
         let holdings = data.holdings || [];
         
-        let totalValue = 0; let totalCost = 0;
+        let cash = data.cash || 0; 
+        let totalValue = cash; // Total Value เอา Cash ตั้งไว้ก่อน
+        let totalCost = 0;
 
         holdings.forEach(h => {
             h.calculatedPrice = h.currentPrice || h.avgCost;
@@ -131,6 +222,9 @@ document.addEventListener('DOMContentLoaded', () => {
             h.calculatedProfit = h.calculatedValue - h.calculatedCost;
             h.dailyUpside = h.previousClose ? ((h.calculatedPrice - h.previousClose) / h.previousClose) * 100 : 0;
             h.calculatedProfitPct = h.calculatedCost > 0 ? (h.calculatedProfit / h.calculatedCost) * 100 : 0;
+            
+            totalValue += h.calculatedValue; // เอามูลค่าหุ้นบวกเข้าไป
+            totalCost += h.calculatedCost;
         });
 
         holdings.sort((a, b) => {
@@ -152,7 +246,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             holdings.forEach((h) => {
                 const realIndex = data.holdings.findIndex(item => item.symbol === h.symbol);
-                totalValue += h.calculatedValue; totalCost += h.calculatedCost;
 
                 const isUp = h.calculatedProfit >= 0;
                 const colorCls = isUp ? 'text-success' : 'text-danger';
@@ -195,16 +288,18 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = html;
 
         const portTotalValEl = document.getElementById('port-total-val');
+        const portCashValEl = document.getElementById('port-cash-val'); 
         const portUnrealizedValEl = document.getElementById('port-unrealized-val');
         if (portTotalValEl) portTotalValEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(totalValue) : `$${totalValue.toFixed(2)}`;
+        if (portCashValEl) portCashValEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(cash) : `$${cash.toFixed(2)}`; // อัพเดทยอด Cash ลง UI
         document.getElementById('position-count').textContent = holdings.length;
 
         if (portUnrealizedValEl) {
-            const totalProfit = totalValue - totalCost;
+            const totalProfit = (totalValue - cash) - totalCost; // กำไรคิดจากมูลค่าหุ้นเพียวๆ
             const totalProfitPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
             const isTotalUp = totalProfit >= 0;
             portUnrealizedValEl.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isTotalUp ? 'trending_up' : 'trending_down'}</span> ${isTotalUp ? '+' : ''}${window.formatKodaMoney ? window.formatKodaMoney(Math.abs(totalProfit)) : `$${Math.abs(totalProfit)}`} (${totalProfitPct.toFixed(2)}%) All Time`;
-            portUnrealizedValEl.className = `text-sm font-bold flex items-center gap-1 ${isTotalUp ? 'text-success' : 'text-danger'}`;
+            portUnrealizedValEl.className = `text-sm font-bold flex items-center gap-1 mt-1 ${isTotalUp ? 'text-success' : 'text-danger'}`;
         }
 
         if (totalValue > 0 && !isWhatIfMode) {
@@ -254,18 +349,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const whatIfAssetBtn = document.getElementById('whatif-asset-btn');
     const whatIfAssetMenu = document.getElementById('whatif-asset-menu');
     
-    // 📌 แก้ไขที่ 1: ดึงรายชื่อหุ้นใส่ Dropdown ทันทีที่กดปุ่ม "Select asset..." ในหน้า Simulator (ไม่รอผูกกับปุ่มเปิด Modal มั่วๆ แล้ว)
-    whatIfAssetBtn?.addEventListener('click', (e) => { 
-        e.stopPropagation(); 
-        whatIfAssetMenu.classList.toggle('hidden'); 
-        
+    whatIfAssetBtn?.addEventListener('click', (e) => { e.stopPropagation(); whatIfAssetMenu.classList.toggle('hidden'); });
+    document.getElementById('mode-whatif')?.addEventListener('click', () => {
         const holdings = loadData().holdings || [];
+        if (holdings.length === 0) { alert("Your portfolio is empty."); return; }
         whatIfAssetMenu.innerHTML = '';
-        if (holdings.length === 0) { 
-            whatIfAssetMenu.innerHTML = '<div class="px-4 py-3 text-slate-500 text-sm font-bold">Your portfolio is empty.</div>';
-            return; 
-        }
-
         holdings.forEach(h => {
             const item = document.createElement('div');
             item.className = 'px-4 py-3 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white font-bold text-sm transition-colors flex justify-between items-center';
@@ -273,7 +361,6 @@ document.addEventListener('DOMContentLoaded', () => {
             item.addEventListener('click', () => {
                 document.getElementById('whatif-asset-label').textContent = `${h.symbol} (${h.shares} sh)`;
                 document.getElementById('whatif-asset-label').classList.remove('text-slate-400');
-                document.getElementById('whatif-asset-label').classList.add('text-white');
                 whatIfAssetMenu.classList.add('hidden');
                 selectedWhatIfAsset = { symbol: h.symbol, shares: h.shares, cost: h.avgCost };
                 document.getElementById('whatif-avg-cost').value = `$${h.avgCost.toFixed(2)}`;
@@ -283,6 +370,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             whatIfAssetMenu.appendChild(item);
         });
+        modalWhatIf.classList.remove('hidden'); modalWhatIf.classList.add('flex');
+        setTimeout(() => { modalWhatIf.classList.remove('opacity-0'); modalWhatIfContent.classList.remove('translate-y-full'); }, 10);
     });
 
     document.getElementById('btn-close-whatif')?.addEventListener('click', () => {
@@ -312,6 +401,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const sym = document.getElementById('add-symbol').value.toUpperCase().trim(); const sh = parseFloat(document.getElementById('add-shares').value); const cost = parseFloat(document.getElementById('add-cost').value);
         if (!sym || sh <= 0 || cost < 0) return;
         const data = loadData(); if (!data.holdings) data.holdings = [];
+        
+        data.cash -= (sh * cost); // หัก Cash ตอนซื้อ
+
         const existing = data.holdings.find(h => h.symbol === sym);
         if (existing) { existing.avgCost = ((existing.shares * existing.avgCost) + (sh * cost)) / (existing.shares += sh); } 
         else { data.holdings.push({ symbol: sym, shares: sh, avgCost: cost, currentPrice: cost, previousClose: cost }); }
@@ -337,11 +429,14 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const sym = document.getElementById('sell-index').value; 
         const shToSell = parseFloat(document.getElementById('sell-shares').value);
+        const sellPrice = parseFloat(document.getElementById('sell-price').value); // ดึงราคาที่ปลดล็อก
         const data = loadData();
         
         if (data.holdings) {
             const targetIdx = data.holdings.findIndex(h => h.symbol === sym);
             if (targetIdx !== -1) {
+                data.cash += (shToSell * sellPrice); // คืน Cash ตอนขาย
+
                 data.holdings[targetIdx].shares -= shToSell;
                 if (data.holdings[targetIdx].shares <= 0.0001) data.holdings.splice(targetIdx, 1);
                 saveData(data); 
