@@ -457,14 +457,13 @@ document.addEventListener('DOMContentLoaded', () => {
  
     // ⚡ โหลดราคาก่อนทันที ไม่รอ API อื่น
     const loadPriceFirst = async () => {
-        const priceEl = document.getElementById('detail-price');
-        if (priceEl && priceEl.dataset.rawPrice && Number(priceEl.dataset.rawPrice) > 0) return;
         const quote = await fetchSafePrice();
         if (!quote || quote.c <= 0) return;
         let currencyCode = 'USD';
         if (symbol.includes('.HK')) currencyCode = 'HKD';
         else if (symbol.includes('.SS')) currencyCode = 'CNY';
         const isPositive = quote.d >= 0;
+        const priceEl = document.getElementById('detail-price');
         const changeEl = document.getElementById('detail-change');
         if (priceEl) {
             priceEl.textContent = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(quote.c);
@@ -680,7 +679,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error("Data Fetch Error:", e); }
     };
     loadPriceFirst();
-    setTimeout(loadPriceFirst, 1200);
     fetchStockData();
 
     // ==========================================
