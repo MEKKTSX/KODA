@@ -144,6 +144,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
         };
 
+        const showChartError = (message) => {
+            container.innerHTML = `
+                <div style="width:100%;height:100%;min-height:350px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;box-sizing:border-box;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:rgba(246,70,93,0.15);display:flex;align-items:center;justify-content:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6465d" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </div>
+                    <p style="color:#f6465d;font-size:13px;font-family:Inter,sans-serif;font-weight:700;">ไม่สามารถโหลดข้อมูลได้</p>
+                    <p style="color:#848e9c;font-size:11px;font-family:Inter,sans-serif;text-align:center;max-width:240px;">${message || 'แหล่งข้อมูลทั้งหมดไม่ตอบสนอง กรุณาลองใหม่อีกครั้ง'}</p>
+                    <button onclick="this.closest('#tv-widget-container') && window.__kodaRetryChart && window.__kodaRetryChart()" style="margin-top:4px;padding:6px 16px;background:rgba(52,168,235,0.15);border:1px solid rgba(52,168,235,0.4);border-radius:8px;color:#34a8eb;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;">ลองใหม่</button>
+                </div>`;
+            window.__kodaRetryChart = () => renderAdvancedSR();
+        };
+
         const renderTradingViewFallback = () => {
             if (kodaChartInstance) { kodaChartInstance.remove(); kodaChartInstance = null; }
             tfSelector.style.display = 'none';
@@ -256,7 +269,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error("🚨 Yahoo Proxies ทั้งหมดล้มเหลว", e);
             }
-            throw new Error('All data sources failed (เด้งเข้า TradingView)');
+
+            // 🔴 แหล่งข้อมูลทั้งหมดล้มเหลว — คืน null แทนการ throw เพื่อป้องกันโดดไป TradingView
+            console.warn(`🚨 All data sources failed for ${symbol} [${tfRange}]`);
+            return null;
         };
 
 
@@ -294,7 +310,16 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await loadLightweightCharts();
                 if (kodaChartInstance) { kodaChartInstance.remove(); kodaChartInstance = null; }
-                const { timestamps, opens, highs, lows, closes, volumes } = await fetchCandleData(currentTimeframe);
+
+                const candleResult = await fetchCandleData(currentTimeframe);
+
+                // ถ้าไม่ได้ข้อมูล แสดง error ใน KODA mode — ไม่โดดไป TradingView
+                if (!candleResult) {
+                    showChartError('แหล่งข้อมูลทั้งหมดไม่ตอบสนองในขณะนี้\nกรุณาลองใหม่อีกครั้ง หรือเปลี่ยน Timeframe');
+                    return;
+                }
+
+                const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
                 
                 let candles = timestamps.map((t, i) => ({ time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), volume: Number(volumes[i] || 0) }))
                     .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0))
@@ -353,8 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.addEventListener('beforeunload', () => ro.disconnect(), { once: true });
 
             } catch (e) {
-                console.error('Chart error', e);
-                renderTradingViewFallback(); 
+                console.error('KODA Chart error:', e);
+                // แสดง error message ใน KODA mode — ไม่โดดไป TradingView
+                showChartError('เกิดข้อผิดพลาดในการแสดงกราฟ\nกรุณาลองใหม่อีกครั้ง');
             }
         };
 
