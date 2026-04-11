@@ -1,12 +1,9 @@
-// 🚀 KODA Analytics Module (Real Swing Pivots + CORS-Safe API)
+// 🚀 KODA Analytics Module (Ultimate Stable Version)
 window.KodaAnalytics = {
     benchmarkChartInstance: null,
     activeBenchmark: 'SPY', 
     activeRange: '1mo',     
 
-    // ==========================================
-    // 📌 1. ระบบ KODA Lab (Trade Matrix หลัก 5 รับ 4 ต้าน)
-    // ==========================================
     tradeMatrixData: {
         capital: 1000,
         supports: [49.46, 47.68, 44.96, 42.98, 37.67],
@@ -64,7 +61,6 @@ window.KodaAnalytics = {
         const btnFetch = document.getElementById('btn-fetch-sr');
         const symInput = document.getElementById('lab-symbol-input');
 
-        // ระบบ Auto-complete Search คงเดิม
         if (symInput) {
             const parentDiv = symInput.closest('.flex-1');
             if (parentDiv) {
@@ -173,7 +169,6 @@ window.KodaAnalytics = {
             
             const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
-            // 1. Binance (Crypto)
             if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';
             if (sym.includes('USDT') || sym.includes('BINANCE:')) {
                 const coin = sym.replace('BINANCE:', '');
@@ -185,7 +180,6 @@ window.KodaAnalytics = {
                 }
             } 
             
-            // 2. Finnhub (US Stocks - ปลอดภัยบน Github Pages)
             if (!fetched && !sym.includes('.BK')) {
                 try {
                     const to = Math.floor(Date.now() / 1000);
@@ -200,26 +194,23 @@ window.KodaAnalytics = {
                 } catch(e) {}
             }
 
-            // 3. 📌 [FIX GITHUB PAGES CORS] ใช้ allorigins.win/get ทะลวงบล็อก
             if (!fetched) {
                 let yfSym = sym;
                 if (sym === 'XAUUSD') yfSym = 'GC=F';
                 else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
                 else if (sym.includes('.BK')) yfSym = sym; 
 
-                // Encode URL ให้เรียบร้อยเพื่อกัน Error
                 const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`);
                 const proxyUrl = `https://api.allorigins.win/get?url=${targetUrl}`;
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 8000); // ให้เวลาดึง 8 วิ
+                    const timeoutId = setTimeout(() => controller.abort(), 8000); 
                     const res = await fetch(proxyUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
                     
                     if (res.ok) {
                         const rawData = await res.json();
-                        // ดึงข้อมูล String ก้อนข้างในมาแปลงเป็น JSON
                         if (rawData.contents) {
                             const data = JSON.parse(rawData.contents);
                             if (data?.chart?.result?.[0]) {
@@ -233,20 +224,15 @@ window.KodaAnalytics = {
                             }
                         }
                     }
-                } catch(e) {
-                    console.warn("Yahoo API Fallback Failed", e);
-                }
+                } catch(e) {}
             }
 
             if (!fetched || closes.length === 0) throw new Error("No Data Found");
             const lastClose = closes[closes.length - 1];
 
-            // ==========================================
-            // 📌 [REAL INVESTOR S/R] Swing Pivots + Clustering
-            // ==========================================
             let swingHighs = [];
             let swingLows = [];
-            const lookback = 4; // ตรวจจับยอด/ฐานในรอบ 8 วัน (หน้า 4 หลัง 4)
+            const lookback = 4; 
             
             for (let i = lookback; i < closes.length - lookback; i++) {
                 let isHigh = true, isLow = true;
@@ -258,13 +244,11 @@ window.KodaAnalytics = {
                 if (isLow) swingLows.push(lows[i]);
             }
 
-            // เพิ่มจุดสูงสุด/ต่ำสุดในระยะสั้นกันเหนียว
             const recentHigh = Math.max(...highs.slice(-60));
             const recentLow = Math.min(...lows.slice(-60));
             swingHighs.push(recentHigh);
             swingLows.push(recentLow);
 
-            // ฟังก์ชันจัดกลุ่ม (Cluster) ราคาที่ซ้อนทับกัน (ห่างกันไม่เกิน 1.5%) ให้เป็นเส้นเดียว
             const clusterLevels = (levels) => {
                 let sorted = [...levels].sort((a, b) => a - b);
                 let clustered = [];
@@ -275,10 +259,10 @@ window.KodaAnalytics = {
                     } else {
                         let avg = currentCluster.reduce((a,b)=>a+b)/currentCluster.length;
                         if (Math.abs(sorted[i] - avg) / avg < 0.015) {
-                            currentCluster.push(sorted[i]); // อยู่กลุ่มเดียวกัน
+                            currentCluster.push(sorted[i]);
                         } else {
                             clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length);
-                            currentCluster = [sorted[i]]; // เริ่มกลุ่มใหม่
+                            currentCluster = [sorted[i]];
                         }
                     }
                 }
@@ -286,27 +270,23 @@ window.KodaAnalytics = {
                 return clustered;
             };
 
-            // แยกแนวรับ (ต่ำกว่าราคาปัจจุบัน) และ แนวต้าน (สูงกว่าราคาปัจจุบัน)
             let cleanResists = clusterLevels(swingHighs).filter(lvl => lvl > lastClose * 1.005).sort((a,b) => a - b);
-            let cleanSupports = clusterLevels(swingLows).filter(lvl => lvl < lastClose * 0.995).sort((a,b) => b - a); // เรียงจากใกล้ไปไกล
+            let cleanSupports = clusterLevels(swingLows).filter(lvl => lvl < lastClose * 0.995).sort((a,b) => b - a);
 
-            // คำนวณความผันผวนจริง (ATR) เพื่อใช้หาระยะห่างที่สมเหตุสมผล เผื่อกรณีราคาทำ All-time High/Low 
             let atrSum = 0;
             for(let i = closes.length-14; i<closes.length; i++) {
                 if(i>0) atrSum += Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));
             }
             let atr = (atrSum / 14) || (lastClose * 0.02);
-            // บีบให้ระยะห่างอยู่ที่ 1.5% ถึง 4% ตามหลักการเทรด (ไม่กว้างหรือแคบเกินไป)
             atr = Math.max(lastClose * 0.015, Math.min(atr, lastClose * 0.04));
 
-            // เติมช่องว่างให้ครบ 4 ต้าน 5 รับ
             while(cleanResists.length < 4) {
                 let nextR = cleanResists.length > 0 ? cleanResists[cleanResists.length-1] + atr : lastClose + atr;
                 cleanResists.push(nextR);
             }
             while(cleanSupports.length < 5) {
                 let nextS = cleanSupports.length > 0 ? cleanSupports[cleanSupports.length-1] - atr : lastClose - atr;
-                if (nextS <= 0) nextS = cleanSupports[cleanSupports.length-1] * 0.9; // กันราคาติดลบ
+                if (nextS <= 0) nextS = cleanSupports[cleanSupports.length-1] * 0.9; 
                 cleanSupports.push(nextS);
             }
 
@@ -322,7 +302,7 @@ window.KodaAnalytics = {
             if (symInput) symInput.value = sym;
 
         } catch(e) {
-            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (เกิดข้อผิดพลาดในการดึงข้อมูล)\nลองเลือกชื่อจาก Dropdown ตอนค้นหาดูครับ`);
+            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}"\nลองเลือกชื่อจาก Dropdown ตอนค้นหาดูครับ`);
         } finally {
             if(loading) {
                 loading.classList.remove('flex');
@@ -399,11 +379,8 @@ window.KodaAnalytics = {
         });
     },
 
-    // ==========================================
-    // 📌 2. ระบบแท็บย่อยใน Modal (คงเดิม)
-    // ==========================================
     initTabs: () => {
-        const tabs = ['simulator', 'avgcost', 'benchmark', 'metrics']; 
+        const tabs = ['simulator', 'avgcost', 'benchmark', 'metrics', 'aifund']; 
         tabs.forEach(tabId => {
             const btn = document.getElementById(`tab-${tabId}`);
             if (btn) {
@@ -444,9 +421,86 @@ window.KodaAnalytics = {
         });
     },
 
-    // ==========================================
-    // 📌 3. ระบบ DCA (คงเดิม)
-    // ==========================================
+    // 📌 [NEW] เพิ่มฟังก์ชัน Simulator 
+    initSimulator: () => {
+        let selectedWhatIfAsset = null;
+
+        const calculateWhatIf = () => {
+            if (!selectedWhatIfAsset) return;
+            const targetInput = document.getElementById('whatif-target');
+            const resultEl = document.getElementById('whatif-result');
+            const resultPctEl = document.getElementById('whatif-result-pct');
+            if (!targetInput || !resultEl || !resultPctEl) return;
+
+            const targetPrice = parseFloat(targetInput.value);
+            if (isNaN(targetPrice)) {
+                resultEl.textContent = "$0.00";
+                resultPctEl.textContent = "0.00%";
+                return;
+            }
+
+            const totalCost = selectedWhatIfAsset.shares * selectedWhatIfAsset.cost;
+            const projectedValue = selectedWhatIfAsset.shares * targetPrice;
+            const profit = projectedValue - totalCost;
+            const profitPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+            const isUp = profit >= 0;
+
+            resultEl.textContent = `${isUp ? '+' : ''}$${Math.abs(profit).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            resultEl.className = `text-3xl font-black text-center transition-colors ${isUp ? 'text-success' : 'text-danger'}`;
+            
+            resultPctEl.textContent = `${isUp ? '+' : ''}${profitPct.toFixed(2)}%`;
+            resultPctEl.className = `text-center text-sm font-bold mt-1 ${isUp ? 'text-success/80' : 'text-danger/80'}`;
+        };
+
+        const btn = document.getElementById('whatif-asset-btn');
+        const menu = document.getElementById('whatif-asset-menu');
+        const label = document.getElementById('whatif-asset-label');
+
+        if (btn && menu) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.classList.toggle('hidden');
+                
+                const data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
+                const holdings = data.holdings || [];
+                
+                menu.innerHTML = '';
+                if (holdings.length === 0) {
+                    menu.innerHTML = '<div class="px-4 py-3 text-slate-500 text-sm font-bold">Portfolio is empty</div>';
+                    return;
+                }
+
+                holdings.forEach(h => {
+                    const item = document.createElement('div');
+                    item.className = 'px-4 py-3 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white font-bold text-sm transition-colors flex justify-between items-center';
+                    item.innerHTML = `<span>${h.symbol}</span> <span class="text-slate-500 text-[10px] font-normal bg-background-dark px-2 py-0.5 rounded border border-border-dark">${h.shares} sh</span>`;
+                    
+                    item.addEventListener('click', () => {
+                        label.textContent = `${h.symbol} (${h.shares} sh)`;
+                        label.classList.remove('text-slate-400');
+                        label.classList.add('text-white');
+                        menu.classList.add('hidden');
+                        
+                        selectedWhatIfAsset = { symbol: h.symbol, shares: h.shares, cost: h.avgCost };
+                        document.getElementById('whatif-avg-cost').value = `$${h.avgCost.toFixed(2)}`;
+                        document.getElementById('whatif-target').value = (h.currentPrice || h.avgCost).toFixed(2);
+                        
+                        calculateWhatIf();
+                    });
+                    menu.appendChild(item);
+                });
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!btn.contains(e.target) && !menu.contains(e.target)) {
+                    menu.classList.add('hidden');
+                }
+            });
+        }
+
+        document.getElementById('whatif-target')?.addEventListener('input', calculateWhatIf);
+    },
+
     initDCA: () => {
         const calculateDCA = () => {
             const baseShares = parseFloat(document.getElementById('dca-base-shares').value) || 0;
@@ -470,68 +524,282 @@ window.KodaAnalytics = {
             document.getElementById('dca-total-value').textContent = '$' + totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         };
 
-        const dcaAssetBtn = document.getElementById('dca-asset-btn');
-        const dcaAssetMenu = document.getElementById('dca-asset-menu');
-        const dcaAssetLabel = document.getElementById('dca-asset-label');
-        const dcaBaseShares = document.getElementById('dca-base-shares');
-        const dcaBaseCost = document.getElementById('dca-base-cost');
+        const fetchSupportsForDCA = async (symbol, lastCloseFallback) => {
+            try {
+                let sym = symbol.toUpperCase().trim();
+                let highs = [], lows = [], closes = [];
+                let fetched = false;
+                const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
-        if (dcaAssetBtn) {
-            dcaAssetBtn.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                dcaAssetMenu.classList.toggle('hidden'); 
+                if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';
+                if (sym.includes('USDT') || sym.includes('BINANCE:')) {
+                    const coin = sym.replace('BINANCE:', '');
+                    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=180`);
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        data.forEach(k => { highs.push(parseFloat(k[2])); lows.push(parseFloat(k[3])); closes.push(parseFloat(k[4])); });
+                        fetched = true;
+                    }
+                } 
+                if (!fetched && !sym.includes('.BK')) {
+                    try {
+                        const to = Math.floor(Date.now() / 1000);
+                        const from = to - (180 * 24 * 60 * 60); 
+                        const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
+                        const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                        const fhData = await fhRes.json();
+                        if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
+                            highs = fhData.h; lows = fhData.l; closes = fhData.c;
+                            fetched = true;
+                        }
+                    } catch(e) {}
+                }
+                if (!fetched) {
+                    let yfSym = sym;
+                    if (sym === 'XAUUSD') yfSym = 'GC=F';
+                    else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
+                    else if (sym.includes('.BK')) yfSym = sym; 
+                    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`);
+                    const proxyUrl = `https://api.allorigins.win/get?url=${targetUrl}`;
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 5000); 
+                        const res = await fetch(proxyUrl, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+                        if (res.ok) {
+                            const rawData = await res.json();
+                            if (rawData.contents) {
+                                const data = JSON.parse(rawData.contents);
+                                if (data?.chart?.result?.[0]) {
+                                    const quote = data.chart.result[0].indicators.quote[0];
+                                    for (let i = 0; i < quote.close.length; i++) {
+                                        if (quote.close[i] !== null && quote.high[i] !== null && quote.low[i] !== null) {
+                                            highs.push(quote.high[i]); lows.push(quote.low[i]); closes.push(quote.close[i]);
+                                        }
+                                    }
+                                    if (closes.length > 10) fetched = true;
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                if (!fetched || closes.length === 0) throw new Error("No Data");
                 
-                const data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
-                const holdings = data.holdings || [];
-                
-                dcaAssetMenu.innerHTML = '';
-                if (holdings.length === 0) {
-                    dcaAssetMenu.innerHTML = '<div class="px-4 py-3 text-slate-500 text-sm font-bold">Portfolio is empty</div>';
-                    return;
+                const lastClose = closes[closes.length - 1];
+                let swingLows = [];
+                const lookback = 4; 
+                for (let i = lookback; i < closes.length - lookback; i++) {
+                    let isLow = true;
+                    for (let j = 1; j <= lookback; j++) { if (lows[i] > lows[i-j] || lows[i] > lows[i+j]) isLow = false; }
+                    if (isLow) swingLows.push(lows[i]);
+                }
+                swingLows.push(Math.min(...lows.slice(-60)));
+
+                const clusterLevels = (levels) => {
+                    let sorted = [...levels].sort((a, b) => a - b);
+                    let clustered = [];
+                    let currentCluster = [];
+                    for (let i = 0; i < sorted.length; i++) {
+                        if (currentCluster.length === 0) currentCluster.push(sorted[i]);
+                        else {
+                            let avg = currentCluster.reduce((a,b)=>a+b)/currentCluster.length;
+                            if (Math.abs(sorted[i] - avg) / avg < 0.015) currentCluster.push(sorted[i]);
+                            else { clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length); currentCluster = [sorted[i]]; }
+                        }
+                    }
+                    if (currentCluster.length > 0) clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length);
+                    return clustered;
+                };
+
+                let cleanSupports = clusterLevels(swingLows).filter(lvl => lvl < lastClose * 0.995).sort((a,b) => b - a);
+
+                let atrSum = 0;
+                for(let i = closes.length-14; i<closes.length; i++) {
+                    if(i>0) atrSum += Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));
+                }
+                let atr = (atrSum / 14) || (lastClose * 0.02);
+                atr = Math.max(lastClose * 0.015, Math.min(atr, lastClose * 0.04));
+
+                while(cleanSupports.length < 5) {
+                    let nextS = cleanSupports.length > 0 ? cleanSupports[cleanSupports.length-1] - atr : lastClose - atr;
+                    if (nextS <= 0) nextS = cleanSupports[cleanSupports.length-1] * 0.9; 
+                    cleanSupports.push(nextS);
                 }
                 
-                holdings.forEach(h => {
-                    const item = document.createElement('div');
-                    item.className = 'px-4 py-3 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white font-bold text-sm transition-colors flex justify-between items-center';
-                    item.innerHTML = `<span>${h.symbol}</span> <span class="text-slate-500 text-[10px] font-normal bg-background-dark px-2 py-0.5 rounded border border-border-dark">${h.shares} sh</span>`;
-                    item.addEventListener('click', () => {
-                        dcaAssetLabel.textContent = `${h.symbol} (${h.shares} sh)`;
-                        dcaAssetLabel.classList.remove('text-slate-400');
-                        dcaAssetLabel.classList.add('text-white');
-                        dcaAssetMenu.classList.add('hidden');
-                        
-                        dcaBaseShares.value = h.shares;
-                        dcaBaseCost.value = h.avgCost.toFixed(2);
-                        calculateDCA();
-                    });
-                    dcaAssetMenu.appendChild(item);
-                });
+                const decimals = lastClose < 1 ? 4 : 2;
+                return cleanSupports.slice(0, 5).map(v => parseFloat(v.toFixed(decimals)));
+            } catch (e) {
+                const p = lastCloseFallback || 100;
+                const decimals = p < 1 ? 4 : 2;
+                return [p*0.95, p*0.90, p*0.85, p*0.80, p*0.75].map(v => parseFloat(v.toFixed(decimals)));
+            }
+        };
+
+        const createRow = (idx, priceVal = '') => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-1.5 tranche-row mt-2';
+            row.innerHTML = `
+                <span class="text-slate-500 font-bold text-[10px] w-4 text-center shrink-0">S${idx}</span>
+                <input type="number" placeholder="Shares" class="flex-1 min-w-0 bg-surface-dark border border-border-dark rounded-md px-2 py-1.5 text-white text-xs font-medium outline-none focus:border-primary tranche-shares" step="any">
+                <span class="text-slate-600 font-bold text-[10px] shrink-0">x</span>
+                <div class="flex-1 min-w-0 relative">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-[10px] font-bold">$</span>
+                    <input type="number" placeholder="Price" class="w-full bg-surface-dark border border-border-dark rounded-md pl-5 pr-2 py-1.5 text-white text-xs font-medium outline-none focus:border-primary tranche-price" step="any" value="${priceVal}">
+                </div>
+                <button type="button" class="text-danger hover:text-red-400 p-1 btn-remove-tranche opacity-50 hover:opacity-100 shrink-0"><span class="material-symbols-outlined text-[14px]">close</span></button>
+            `;
+            return row;
+        };
+
+        const dcaAssetInput = document.getElementById('dca-asset-input');
+        const dcaAssetMenu = document.getElementById('dca-asset-menu');
+        const dcaBaseShares = document.getElementById('dca-base-shares');
+        const dcaBaseCost = document.getElementById('dca-base-cost');
+        const container = document.getElementById('dca-tranches');
+
+        if (dcaAssetInput && dcaAssetMenu) {
+            let searchTimeout;
+
+            dcaAssetInput.addEventListener('focus', () => {
+                if (dcaAssetInput.value.trim().length === 0) {
+                    const portData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
+                    const holdings = portData.holdings || [];
+                    
+                    if (holdings.length > 0) {
+                        dcaAssetMenu.classList.remove('hidden');
+                        dcaAssetMenu.innerHTML = `<div class="p-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest border-b border-border-dark/50">My Portfolio</div>` + 
+                        holdings.map(h => `
+                            <div class="px-3 py-2.5 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white text-sm transition-colors flex justify-between items-center dca-search-item" data-sym="${h.symbol}">
+                                <div class="flex items-center gap-1">
+                                    <span class="font-bold">${h.symbol}</span>
+                                    <span class="text-slate-400 text-[10px] ml-2 font-medium">(${h.shares} sh)</span>
+                                </div>
+                                <span class="material-symbols-outlined text-yellow-500 text-[14px] fill-icon drop-shadow-[0_0_5px_rgba(234,179,8,0.5)]">star</span>
+                            </div>
+                        `).join('');
+                        attachClickEvents(holdings);
+                    }
+                }
             });
 
+            dcaAssetInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim().toUpperCase();
+                clearTimeout(searchTimeout);
+                
+                const portData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
+                const holdings = portData.holdings || [];
+
+                if (query.length < 1) { 
+                    dcaAssetInput.dispatchEvent(new Event('focus'));
+                    return; 
+                }
+
+                dcaAssetMenu.classList.remove('hidden');
+                dcaAssetMenu.innerHTML = `<div class="p-3 text-center text-xs text-slate-500 animate-pulse">Searching global markets...</div>`;
+
+                searchTimeout = setTimeout(async () => {
+                    const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+                    try {
+                        const res = await fetch(`https://finnhub.io/api/v1/search?q=${query}&token=${FINNHUB_API_KEY}`);
+                        const data = await res.json();
+
+                        if (data && data.result && data.result.length > 0) {
+                            dcaAssetMenu.innerHTML = `<div class="p-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest border-b border-border-dark/50">Search Results</div>` + 
+                            data.result.slice(0, 6).map(item => {
+                                const sym = item.displaySymbol;
+                                const holding = holdings.find(h => h.symbol === sym);
+                                
+                                const starIcon = holding ? `<span class="material-symbols-outlined text-yellow-500 text-[14px] fill-icon drop-shadow-[0_0_5px_rgba(234,179,8,0.5)]">star</span>` : '';
+                                const sharesInfo = holding ? `<span class="text-slate-400 text-[10px] ml-2 font-medium">(${holding.shares} sh)</span>` : '';
+
+                                return `
+                                <div class="px-3 py-2.5 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white text-sm transition-colors flex justify-between items-center dca-search-item" data-sym="${sym}">
+                                    <div class="flex items-center gap-1 truncate pr-2">
+                                        <span class="font-bold">${sym}</span>
+                                        ${sharesInfo}
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0">
+                                        <span class="text-slate-500 text-[10px] truncate max-w-[120px]">${item.description}</span>
+                                        ${starIcon}
+                                    </div>
+                                </div>
+                            `}).join('');
+                            attachClickEvents(holdings);
+                        } else {
+                            dcaAssetMenu.innerHTML = `<div class="p-3 text-center text-xs text-slate-500">No results found</div>`;
+                        }
+                    } catch (err) {
+                        dcaAssetMenu.innerHTML = `<div class="p-3 text-center text-xs text-danger">Search failed</div>`;
+                    }
+                }, 300);
+            });
+
+            const attachClickEvents = (holdings) => {
+                document.querySelectorAll('.dca-search-item').forEach(el => {
+                    el.addEventListener('click', async () => {
+                        const sym = el.getAttribute('data-sym');
+                        dcaAssetInput.value = sym;
+                        dcaAssetMenu.classList.add('hidden');
+                        
+                        const holding = holdings.find(h => h.symbol === sym);
+                        
+                        if (holding) {
+                            dcaBaseShares.value = holding.shares;
+                            dcaBaseCost.value = holding.avgCost.toFixed(2);
+                        } else {
+                            dcaBaseShares.value = 0;
+                            dcaBaseCost.value = 0;
+                        }
+                        calculateDCA();
+
+                        dcaAssetInput.disabled = true;
+                        const origColor = dcaAssetInput.className;
+                        dcaAssetInput.classList.add('text-primary', 'animate-pulse');
+                        dcaAssetInput.value = `Calculating S/R for ${sym}...`;
+                        
+                        let currentPrice = holding ? (holding.currentPrice || holding.avgCost) : 100; 
+                        const supports = await fetchSupportsForDCA(sym, currentPrice);
+                        
+                        dcaAssetInput.value = sym;
+                        dcaAssetInput.className = origColor;
+                        dcaAssetInput.disabled = false;
+
+                        if(container) {
+                            container.innerHTML = ''; 
+                            supports.forEach((s, idx) => {
+                                const row = createRow(idx + 1, s);
+                                container.appendChild(row);
+                                row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', calculateDCA));
+                                row.querySelector('.btn-remove-tranche').addEventListener('click', (e) => {
+                                    e.target.closest('.tranche-row').remove();
+                                    calculateDCA();
+                                });
+                            });
+                            calculateDCA();
+                        }
+                    });
+                });
+            };
+
             document.addEventListener('click', (e) => {
-                if (!dcaAssetBtn.contains(e.target) && !dcaAssetMenu.contains(e.target)) {
+                if (!dcaAssetInput.contains(e.target) && !dcaAssetMenu.contains(e.target)) {
                     dcaAssetMenu.classList.add('hidden');
                 }
             });
         }
 
         document.getElementById('btn-add-tranche')?.addEventListener('click', () => {
-            const container = document.getElementById('dca-tranches');
-            const row = document.createElement('div');
-            row.className = 'flex items-center gap-2 tranche-row mt-2';
-            row.innerHTML = `
-                <input type="number" placeholder="Shares" class="flex-1 bg-surface-dark border border-border-dark rounded-lg px-3 py-2 text-white text-sm font-medium outline-none focus:border-primary tranche-shares" step="any">
-                <span class="text-slate-500 font-bold text-xs">x</span>
-                <input type="number" placeholder="Price ($)" class="flex-1 bg-surface-dark border border-border-dark rounded-lg px-3 py-2 text-white text-sm font-medium outline-none focus:border-primary tranche-price" step="any">
-                <button type="button" class="text-danger hover:text-red-400 p-1 btn-remove-tranche opacity-50 hover:opacity-100"><span class="material-symbols-outlined text-[16px]">close</span></button>
-            `;
-            container.appendChild(row);
-
-            row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', calculateDCA));
-            row.querySelector('.btn-remove-tranche').addEventListener('click', (e) => {
-                e.target.closest('.tranche-row').remove();
-                calculateDCA();
-            });
+            if(container) {
+                const currentRows = container.querySelectorAll('.tranche-row').length;
+                const row = createRow(currentRows + 1);
+                container.appendChild(row);
+                row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', calculateDCA));
+                row.querySelector('.btn-remove-tranche').addEventListener('click', (e) => {
+                    e.target.closest('.tranche-row').remove();
+                    calculateDCA();
+                });
+            }
         });
 
         document.querySelectorAll('.tranche-shares, .tranche-price').forEach(inp => inp.addEventListener('input', calculateDCA));
@@ -541,20 +809,15 @@ window.KodaAnalytics = {
         }));
     },
 
-        // ==========================================
-    // 📌 4. ระบบ Benchmark (Real API & Real Port P/L & Ultra Stable Proxies)
-    // ==========================================
     fetchIndexHistory: async (sym, range) => {
         const cacheKey = `koda_idx_${sym}_${range}`;
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        // แคช 1 ชม. ลดการยิง API ซ้ำซ้อน
         if (cached && (now - cached.timestamp < 3600000) && cached.data && cached.data.length > 0) return cached.data;
 
         const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
-        // 1. Binance สำหรับ Crypto (ไม่มีปัญหา CORS, เร็วที่สุด)
         if (sym === 'BTC-USD') {
             try {
                 let limit = 30; let interval = '1d';
@@ -571,7 +834,6 @@ window.KodaAnalytics = {
                 }
             } catch(e) {}
         } else {
-            // 2. ดึงจาก Finnhub (ถ้ามี API Key และไม่ติด Limit)
             if (FINNHUB_API_KEY) {
                 try {
                     const to = Math.floor(Date.now() / 1000);
@@ -593,7 +855,6 @@ window.KodaAnalytics = {
                 } catch(e) {}
             }
 
-            // 3. ทะลวง CORS ดึงจาก Yahoo Finance (เปลี่ยนมาใช้ท่อที่เสถียรที่สุด 3 ชั้น)
             const yfRange = range === '6mo' ? '6mo' : (range === '1y' ? '1y' : (range === '5y' ? '5y' : '1mo'));
             const yfInterval = range === '5y' ? '1wk' : '1d';
             const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=${yfRange}&interval=${yfInterval}`;
@@ -607,7 +868,7 @@ window.KodaAnalytics = {
             for (let proxyUrl of proxies) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000); // รอ 6 วิ ถ้าค้างให้ตัดไปท่ออื่น
+                    const timeoutId = setTimeout(() => controller.abort(), 6000); 
                     const res = await fetch(proxyUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
 
@@ -615,7 +876,6 @@ window.KodaAnalytics = {
                         const rawData = await res.json();
                         let yfData = rawData;
                         
-                        // ป้องกัน Error จาก AllOrigins ที่ชอบห่อ JSON มาเป็น String
                         if (rawData.contents) {
                             try { yfData = JSON.parse(rawData.contents); } catch(e) {}
                         }
@@ -636,14 +896,14 @@ window.KodaAnalytics = {
                             }
                         }
                     }
-                } catch(e) { /* ข้ามท่อที่พังไปทำท่อถัดไปแบบเงียบๆ */ }
+                } catch(e) { }
             }
         }
         
         return null;
     },
 
-        renderBenchmark: async () => {
+    renderBenchmark: async () => {
         const ctx = document.getElementById('benchmark-chart');
         if (!ctx) return;
 
@@ -658,7 +918,6 @@ window.KodaAnalytics = {
         document.getElementById('bench-index-val').textContent = "Loading...";
         document.getElementById('bench-index-val').className = "text-sm font-bold text-slate-500 mt-1 animate-pulse";
 
-        // 1. ดึงข้อมูลจริงจาก API แบบเสถียร
         const indexData = await window.KodaAnalytics.fetchIndexHistory(benchSym, range);
         
         if (!indexData || indexData.length === 0) { 
@@ -667,7 +926,6 @@ window.KodaAnalytics = {
             return; 
         }
 
-        // 2. คำนวณ P/L พอร์ตจริง (ตัด Cash ออก คิดแค่มูลค่าหุ้น vs ต้นทุนหุ้น)
         const portData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
         let totalCost = 0, totalVal = 0;
         (portData.holdings || []).forEach(h => {
@@ -676,18 +934,15 @@ window.KodaAnalytics = {
         });
         const actualPortPct = totalCost > 0 ? ((totalVal - totalCost) / totalCost) * 100 : 0;
 
-        // 3. เตรียมข้อมูลแกน X (วันที่) และ Y (Index)
         const labels = indexData.map(d => new Date(d.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: range === '5y' ? '2-digit' : undefined }));
         const indexBase = indexData[0].c;
         const indexPct = indexData.map(d => ((d.c - indexBase) / indexBase) * 100);
         const indexFinalPct = indexPct[indexPct.length - 1];
 
-        // 4. วาดกราฟพอร์ตจาก History จริงๆ ของผู้ใช้
         let portPct = new Array(indexData.length).fill(0);
         let portHistory = JSON.parse(localStorage.getItem('koda_equity_history') || '[]');
         
         if (portHistory.length > 0) {
-            // หาจุดเริ่มต้นจริงๆ ของพอร์ต (วันแรกที่เงิน > 0)
             let startIdx = 0;
             for (let i = 0; i < portHistory.length; i++) {
                 if (portHistory[i].value > 0) { startIdx = i; break; }
@@ -697,35 +952,28 @@ window.KodaAnalytics = {
             let valRange = endVal - startVal;
 
             for (let i = 0; i < indexData.length; i++) {
-                // จัด Format วันที่ให้ตรงกัน YYYY-MM-DD
                 let d = new Date(indexData[i].t);
                 let targetDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-                // หาข้อมูลพอร์ตของวันนั้น
                 let pEntry = portHistory.find(h => h.date === targetDate);
                 if (!pEntry) {
-                    // ถ้าไม่มี (เช่น เสาร์-อาทิตย์) ให้ย้อนไปหาวันทำการล่าสุด
                     let prevEntries = portHistory.filter(h => h.date <= targetDate);
                     if (prevEntries.length > 0) pEntry = prevEntries[prevEntries.length - 1];
                 }
 
-                // สร้างเส้นกราฟ
                 if (pEntry && pEntry.date >= portHistory[startIdx].date) {
                     if (valRange === 0) {
                         portPct[i] = (pEntry.value === startVal) ? 0 : actualPortPct;
                     } else {
-                        // ดึงรูปทรงกราฟจริง (รวมฝาก/ถอน) มาปรับสเกลให้ไปจบที่ actualPortPct
                         portPct[i] = actualPortPct * ((pEntry.value - startVal) / valRange);
                     }
                 } else {
-                    portPct[i] = 0; // ก่อนหน้าวันที่เริ่มพอร์ต ให้กราฟแบนราบที่ 0%
+                    portPct[i] = 0; 
                 }
             }
-            // ล็อคจุดสุดท้ายให้ตัวเลขตรงกับ Label UI 100%
             portPct[portPct.length - 1] = actualPortPct;
         }
 
-        // 5. อัปเดต UI 
         const pEl = document.getElementById('bench-port-val');
         pEl.textContent = `${actualPortPct >= 0 ? '+' : ''}${actualPortPct.toFixed(2)}%`;
         pEl.className = `text-xl font-black ${actualPortPct >= 0 ? 'text-success' : 'text-danger'}`;
@@ -753,7 +1001,7 @@ window.KodaAnalytics = {
             }
         });
     },
-    
+
     calculateMetrics: () => {
         const data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
         const holdings = data.holdings || [];
@@ -796,8 +1044,18 @@ window.KodaAnalytics = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    window.KodaAnalytics.initLabMode(); 
-    window.KodaAnalytics.initTabs();     
-    window.KodaAnalytics.initDCA();      
-});
+// 📌 [FIX] ระบบ Auto-Init ปลุกสคริปต์ให้ทำงาน 100%
+const initKodaAnalytics = () => {
+    if (window.KodaAnalytics) {
+        window.KodaAnalytics.initLabMode(); 
+        window.KodaAnalytics.initTabs();  
+        window.KodaAnalytics.initSimulator(); // 📌 เพิ่มฟังก์ชันนี้เข้ามาให้ปุ่มกดได้ 
+        window.KodaAnalytics.initDCA();   
+    }
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initKodaAnalytics);
+} else {
+    initKodaAnalytics(); 
+}

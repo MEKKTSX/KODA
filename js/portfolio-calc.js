@@ -349,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const whatIfAssetBtn = document.getElementById('whatif-asset-btn');
     const whatIfAssetMenu = document.getElementById('whatif-asset-menu');
     
-    whatIfAssetBtn?.addEventListener('click', (e) => { e.stopPropagation(); whatIfAssetMenu.classList.toggle('hidden'); });
+    //whatIfAssetBtn?.addEventListener('click', (e) => { e.stopPropagation(); whatIfAssetMenu.classList.toggle('hidden'); });
     document.getElementById('mode-whatif')?.addEventListener('click', () => {
         const holdings = loadData().holdings || [];
         if (holdings.length === 0) { alert("Your portfolio is empty."); return; }
