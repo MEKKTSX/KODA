@@ -314,12 +314,12 @@
                         <h4 class="text-slate-300 text-xs font-bold uppercase tracking-widest mb-3 border-b border-border-dark pb-2">1. Current Position</h4>
                         
                         <div class="relative mb-3" id="dca-dropdown-wrapper">
-                            <button type="button" id="dca-asset-btn" class="w-full flex items-center justify-between bg-surface-dark border border-border-dark hover:border-primary transition-colors rounded-xl px-4 py-3 text-white mt-1.5 font-bold outline-none">
-                                <span id="dca-asset-label" class="text-slate-400 text-sm">Select asset from portfolio...</span>
-                                <span class="material-symbols-outlined text-slate-400">expand_more</span>
-                            </button>
-                            <div id="dca-asset-menu" class="hidden absolute left-0 right-0 top-full mt-2 bg-surface-dark border border-border-dark rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-[200] max-h-[150px] overflow-y-auto no-scrollbar"></div>
-                        </div>
+                          <div class="flex items-center bg-surface-dark border border-border-dark rounded-xl px-3 py-2.5 mt-1.5 focus-within:border-primary transition-colors">
+                              <span class="material-symbols-outlined text-slate-500 text-[16px] mr-2">search</span>
+                              <input type="text" id="dca-asset-input" class="bg-transparent border-none text-white text-sm w-full focus:ring-0 p-0 uppercase placeholder-slate-500 font-bold" placeholder="Search asset..." autocomplete="off">
+                          </div>
+                          <div id="dca-asset-menu" class="hidden absolute left-0 right-0 top-full mt-2 bg-surface-dark border border-border-dark rounded-xl shadow-2xl z-[200] max-h-[220px] overflow-y-auto no-scrollbar"></div>
+                      </div>
 
                         <div class="flex gap-3">
                             <div class="flex-1">
@@ -340,14 +340,7 @@
                                 <span class="material-symbols-outlined text-[12px]">add</span> Row
                             </button>
                         </div>
-                        <div id="dca-tranches" class="space-y-2 max-h-[140px] overflow-y-auto no-scrollbar pr-1">
-                            <div class="flex items-center gap-2 tranche-row">
-                                <input type="number" placeholder="Shares" class="flex-1 bg-surface-dark border border-border-dark rounded-lg px-3 py-2 text-white text-sm font-medium outline-none focus:border-primary tranche-shares" step="any">
-                                <span class="text-slate-500 font-bold text-xs">x</span>
-                                <input type="number" placeholder="Price ($)" class="flex-1 bg-surface-dark border border-border-dark rounded-lg px-3 py-2 text-white text-sm font-medium outline-none focus:border-primary tranche-price" step="any">
-                                <button type="button" class="text-danger hover:text-red-400 p-1 btn-remove-tranche opacity-50 hover:opacity-100"><span class="material-symbols-outlined text-[16px]">close</span></button>
-                            </div>
-                        </div>
+                        <div id="dca-tranches" class="space-y-2 max-h-[140px] overflow-y-auto no-scrollbar pr-1"></div>
                     </div>
 
                     <div class="bg-primary/10 border border-primary/30 rounded-xl p-4 mt-2 shadow-inner text-center">
