@@ -1,4 +1,4 @@
-// 🚀 KODA Analytics Module (Price Action Swing Pivots + Fibonacci Matrix)
+// 🚀 KODA Analytics Module (Real Swing Pivots + CORS-Safe API)
 window.KodaAnalytics = {
     benchmarkChartInstance: null,
     activeBenchmark: 'SPY', 
@@ -63,6 +63,63 @@ window.KodaAnalytics = {
 
         const btnFetch = document.getElementById('btn-fetch-sr');
         const symInput = document.getElementById('lab-symbol-input');
+
+        // ระบบ Auto-complete Search คงเดิม
+        if (symInput) {
+            const parentDiv = symInput.closest('.flex-1');
+            if (parentDiv) {
+                parentDiv.classList.add('relative');
+                const dropdown = document.createElement('div');
+                dropdown.id = 'lab-search-dropdown';
+                dropdown.className = 'hidden absolute left-0 right-0 top-full mt-2 bg-surface-dark border border-border-dark rounded-xl shadow-2xl z-[200] max-h-[200px] overflow-y-auto no-scrollbar';
+                parentDiv.appendChild(dropdown);
+
+                let searchTimeout;
+                symInput.addEventListener('input', (e) => {
+                    const query = e.target.value.trim().toUpperCase();
+                    clearTimeout(searchTimeout);
+                    if (query.length < 1) { dropdown.classList.add('hidden'); return; }
+
+                    dropdown.classList.remove('hidden');
+                    dropdown.innerHTML = `<div class="p-3 text-center text-xs text-slate-500 animate-pulse">Searching...</div>`;
+
+                    searchTimeout = setTimeout(async () => {
+                        const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+                        try {
+                            const res = await fetch(`https://finnhub.io/api/v1/search?q=${query}&token=${FINNHUB_API_KEY}`);
+                            const data = await res.json();
+                            if (data && data.result && data.result.length > 0) {
+                                dropdown.innerHTML = data.result.slice(0, 5).map(item => `
+                                    <div class="px-3 py-2.5 border-b border-border-dark/50 hover:bg-slate-800 cursor-pointer text-white text-sm transition-colors flex justify-between items-center lab-search-item" data-sym="${item.displaySymbol}">
+                                        <span class="font-bold">${item.displaySymbol}</span>
+                                        <span class="text-slate-500 text-[10px] truncate max-w-[120px] ml-2">${item.description}</span>
+                                    </div>
+                                `).join('');
+
+                                document.querySelectorAll('.lab-search-item').forEach(el => {
+                                    el.addEventListener('click', () => {
+                                        symInput.value = el.getAttribute('data-sym');
+                                        dropdown.classList.add('hidden');
+                                        window.KodaAnalytics.fetchRealSR(symInput.value); 
+                                    });
+                                });
+                            } else {
+                                dropdown.innerHTML = `<div class="p-3 text-center text-xs text-slate-500">No results found</div>`;
+                            }
+                        } catch (err) {
+                            dropdown.innerHTML = `<div class="p-3 text-center text-xs text-danger">Search failed</div>`;
+                        }
+                    }, 300);
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!symInput.contains(e.target) && !dropdown.contains(e.target)) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
+            }
+        }
+
         if (btnFetch && symInput) {
             btnFetch.addEventListener('click', () => {
                 const sym = symInput.value.trim().toUpperCase();
@@ -116,9 +173,8 @@ window.KodaAnalytics = {
             
             const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
-            // 🚀 STEP 1: Crypto ดึงตรงจาก Binance
+            // 1. Binance (Crypto)
             if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';
-            
             if (sym.includes('USDT') || sym.includes('BINANCE:')) {
                 const coin = sym.replace('BINANCE:', '');
                 const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=180`);
@@ -129,7 +185,7 @@ window.KodaAnalytics = {
                 }
             } 
             
-            // 📌 แก้ไขที่ 1: ดัน Finnhub ขึ้นมาเป็นท่อหลักก่อน (เร็วกว่า Proxy) *ยกเว้นหุ้นไทย
+            // 2. Finnhub (US Stocks - ปลอดภัยบน Github Pages)
             if (!fetched && !sym.includes('.BK')) {
                 try {
                     const to = Math.floor(Date.now() / 1000);
@@ -144,37 +200,28 @@ window.KodaAnalytics = {
                 } catch(e) {}
             }
 
-            // 📌 แก้ไขที่ 2: Yahoo Finance Fallback เพิ่มการตัดจบ (Timeout) ป้องกันแอปหมุนค้าง
+            // 3. 📌 [FIX GITHUB PAGES CORS] ใช้ allorigins.win/get ทะลวงบล็อก
             if (!fetched) {
                 let yfSym = sym;
                 if (sym === 'XAUUSD') yfSym = 'GC=F';
                 else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
                 else if (sym.includes('.BK')) yfSym = sym; 
 
-                const yfUrls = [
-                    `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`,
-                    `https://query2.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`
-                ];
+                // Encode URL ให้เรียบร้อยเพื่อกัน Error
+                const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`);
+                const proxyUrl = `https://api.allorigins.win/get?url=${targetUrl}`;
 
-                const proxies = [
-                    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-                    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url + '&_=' + Date.now())}`,
-                    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`
-                ];
-
-                for (let url of yfUrls) {
-                    if (fetched) break;
-                    for (let proxy of proxies) {
-                        try {
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 5000); // 📌 5 วิ ตัดจบ ไม่รอค้าง
-                            const res = await fetch(proxy(url), { signal: controller.signal });
-                            clearTimeout(timeoutId);
-                            
-                            if (!res.ok) continue;
-                            const rawData = await res.json();
-                            const data = rawData.contents ? JSON.parse(rawData.contents) : rawData;
-                            
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 8000); // ให้เวลาดึง 8 วิ
+                    const res = await fetch(proxyUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    
+                    if (res.ok) {
+                        const rawData = await res.json();
+                        // ดึงข้อมูล String ก้อนข้างในมาแปลงเป็น JSON
+                        if (rawData.contents) {
+                            const data = JSON.parse(rawData.contents);
                             if (data?.chart?.result?.[0]) {
                                 const quote = data.chart.result[0].indicators.quote[0];
                                 for (let i = 0; i < quote.close.length; i++) {
@@ -182,10 +229,12 @@ window.KodaAnalytics = {
                                         highs.push(quote.high[i]); lows.push(quote.low[i]); closes.push(quote.close[i]);
                                     }
                                 }
-                                if (closes.length > 10) { fetched = true; break; }
+                                if (closes.length > 10) fetched = true;
                             }
-                        } catch(e) { continue; }
+                        }
                     }
+                } catch(e) {
+                    console.warn("Yahoo API Fallback Failed", e);
                 }
             }
 
@@ -193,61 +242,79 @@ window.KodaAnalytics = {
             const lastClose = closes[closes.length - 1];
 
             // ==========================================
-            // 📌 [SUPER ALGORITHM] "Swing Action + Fibonacci Clusters"
+            // 📌 [REAL INVESTOR S/R] Swing Pivots + Clustering
             // ==========================================
-            const macroHigh = Math.max(...highs);
-            const macroLow = Math.min(...lows);
-            const range = macroHigh - macroLow;
+            let swingHighs = [];
+            let swingLows = [];
+            const lookback = 4; // ตรวจจับยอด/ฐานในรอบ 8 วัน (หน้า 4 หลัง 4)
             
-            const fibRatios = [-0.618, -0.236, 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618];
-            const fibLevels = fibRatios.map(r => macroLow + (range * r));
-
-            let pivots = [];
-            const windowSize = 5; 
-            for (let i = windowSize; i < closes.length - windowSize; i++) {
+            for (let i = lookback; i < closes.length - lookback; i++) {
                 let isHigh = true, isLow = true;
-                for (let j = 1; j <= windowSize; j++) {
-                    if (highs[i] <= highs[i-j] || highs[i] <= highs[i+j]) isHigh = false;
-                    if (lows[i] >= lows[i-j] || lows[i] >= lows[i+j]) isLow = false;
+                for (let j = 1; j <= lookback; j++) {
+                    if (highs[i] < highs[i-j] || highs[i] < highs[i+j]) isHigh = false;
+                    if (lows[i] > lows[i-j] || lows[i] > lows[i+j]) isLow = false;
                 }
-                if (isHigh) pivots.push(highs[i]);
-                if (isLow) pivots.push(lows[i]);
+                if (isHigh) swingHighs.push(highs[i]);
+                if (isLow) swingLows.push(lows[i]);
             }
 
-            let allLevels = [...fibLevels, ...pivots, macroHigh, macroLow];
-            allLevels.sort((a, b) => a - b);
+            // เพิ่มจุดสูงสุด/ต่ำสุดในระยะสั้นกันเหนียว
+            const recentHigh = Math.max(...highs.slice(-60));
+            const recentLow = Math.min(...lows.slice(-60));
+            swingHighs.push(recentHigh);
+            swingLows.push(recentLow);
 
-            let uniqueLevels = [];
-            allLevels.forEach(lvl => {
-                if (uniqueLevels.length === 0) uniqueLevels.push(lvl);
-                else {
-                    const last = uniqueLevels[uniqueLevels.length - 1];
-                    if (Math.abs(lvl - last) / last > 0.015) {
-                        uniqueLevels.push(lvl);
+            // ฟังก์ชันจัดกลุ่ม (Cluster) ราคาที่ซ้อนทับกัน (ห่างกันไม่เกิน 1.5%) ให้เป็นเส้นเดียว
+            const clusterLevels = (levels) => {
+                let sorted = [...levels].sort((a, b) => a - b);
+                let clustered = [];
+                let currentCluster = [];
+                for (let i = 0; i < sorted.length; i++) {
+                    if (currentCluster.length === 0) {
+                        currentCluster.push(sorted[i]);
                     } else {
-                        uniqueLevels[uniqueLevels.length - 1] = (last + lvl) / 2; 
+                        let avg = currentCluster.reduce((a,b)=>a+b)/currentCluster.length;
+                        if (Math.abs(sorted[i] - avg) / avg < 0.015) {
+                            currentCluster.push(sorted[i]); // อยู่กลุ่มเดียวกัน
+                        } else {
+                            clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length);
+                            currentCluster = [sorted[i]]; // เริ่มกลุ่มใหม่
+                        }
                     }
                 }
-            });
+                if (currentCluster.length > 0) clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length);
+                return clustered;
+            };
 
-            let resist = uniqueLevels.filter(l => l > lastClose * 1.005); 
-            let supp = uniqueLevels.filter(l => l < lastClose * 0.995).reverse(); 
+            // แยกแนวรับ (ต่ำกว่าราคาปัจจุบัน) และ แนวต้าน (สูงกว่าราคาปัจจุบัน)
+            let cleanResists = clusterLevels(swingHighs).filter(lvl => lvl > lastClose * 1.005).sort((a,b) => a - b);
+            let cleanSupports = clusterLevels(swingLows).filter(lvl => lvl < lastClose * 0.995).sort((a,b) => b - a); // เรียงจากใกล้ไปไกล
 
+            // คำนวณความผันผวนจริง (ATR) เพื่อใช้หาระยะห่างที่สมเหตุสมผล เผื่อกรณีราคาทำ All-time High/Low 
             let atrSum = 0;
             for(let i = closes.length-14; i<closes.length; i++) {
                 if(i>0) atrSum += Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));
             }
             let atr = (atrSum / 14) || (lastClose * 0.02);
-            if(atr < lastClose * 0.015) atr = lastClose * 0.015;
-            
-            while(resist.length < 4) resist.push(resist.length > 0 ? resist[resist.length-1] + atr : lastClose + atr);
-            while(supp.length < 5) supp.push(supp.length > 0 ? supp[supp.length-1] - atr : lastClose - atr);
+            // บีบให้ระยะห่างอยู่ที่ 1.5% ถึง 4% ตามหลักการเทรด (ไม่กว้างหรือแคบเกินไป)
+            atr = Math.max(lastClose * 0.015, Math.min(atr, lastClose * 0.04));
 
-            const decimals = lastClose < 0.1 ? 5 : (lastClose < 10 ? 3 : 2);
+            // เติมช่องว่างให้ครบ 4 ต้าน 5 รับ
+            while(cleanResists.length < 4) {
+                let nextR = cleanResists.length > 0 ? cleanResists[cleanResists.length-1] + atr : lastClose + atr;
+                cleanResists.push(nextR);
+            }
+            while(cleanSupports.length < 5) {
+                let nextS = cleanSupports.length > 0 ? cleanSupports[cleanSupports.length-1] - atr : lastClose - atr;
+                if (nextS <= 0) nextS = cleanSupports[cleanSupports.length-1] * 0.9; // กันราคาติดลบ
+                cleanSupports.push(nextS);
+            }
+
+            const decimals = lastClose < 1 ? 4 : 2;
             const format = (v) => parseFloat(v.toFixed(decimals));
             
-            window.KodaAnalytics.tradeMatrixData.resistances = resist.slice(0, 4).map(format);
-            window.KodaAnalytics.tradeMatrixData.supports = supp.slice(0, 5).map(format);
+            window.KodaAnalytics.tradeMatrixData.resistances = cleanResists.slice(0, 4).map(format);
+            window.KodaAnalytics.tradeMatrixData.supports = cleanSupports.slice(0, 5).map(format);
             
             window.KodaAnalytics.renderTradeMatrix();
             
@@ -255,7 +322,7 @@ window.KodaAnalytics = {
             if (symInput) symInput.value = sym;
 
         } catch(e) {
-            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (อาจเป็นหุ้นใหม่ที่เพิ่ง IPO หรือเซิร์ฟเวอร์ขัดข้อง)\nกรุณาตรวจสอบชื่อย่ออีกครั้ง (เช่น TSLA, BTC)`);
+            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}" (เกิดข้อผิดพลาดในการดึงข้อมูล)\nลองเลือกชื่อจาก Dropdown ตอนค้นหาดูครับ`);
         } finally {
             if(loading) {
                 loading.classList.remove('flex');
@@ -333,7 +400,7 @@ window.KodaAnalytics = {
     },
 
     // ==========================================
-    // 📌 2. ระบบแท็บย่อยใน Modal
+    // 📌 2. ระบบแท็บย่อยใน Modal (คงเดิม)
     // ==========================================
     initTabs: () => {
         const tabs = ['simulator', 'avgcost', 'benchmark', 'metrics']; 
@@ -378,7 +445,7 @@ window.KodaAnalytics = {
     },
 
     // ==========================================
-    // 📌 3. ระบบ DCA 
+    // 📌 3. ระบบ DCA (คงเดิม)
     // ==========================================
     initDCA: () => {
         const calculateDCA = () => {
@@ -475,19 +542,17 @@ window.KodaAnalytics = {
     },
 
     // ==========================================
-    // 📌 4. ระบบ Benchmark & Metrics
+    // 📌 4. ระบบ Benchmark & Metrics (คงเดิม)
     // ==========================================
     fetchIndexHistory: async (sym, range) => {
         const cacheKey = `koda_idx_${sym}_${range}`;
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        // 📌 แก้ไขที่ 3: เพิ่มเวลา Cache เป็น 12 ชม. (43200000 ms) ป้องกันหน้า Benchmark โหลดช้า
         if (cached && (now - cached.timestamp < 43200000) && cached.data && cached.data.length > 0) return cached.data;
 
         const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
-        // 📌 แก้ไขที่ 4: Bypass Proxy ดึงตรงจากแหล่งที่น่าเชื่อถือ
         if (sym === 'BTC-USD') {
             try {
                 let limit = 30; let interval = '1d';
@@ -524,7 +589,6 @@ window.KodaAnalytics = {
             } catch(e) {}
         }
 
-        // 📌 แก้ไขที่ 5: Fallback กลับไปใช้ Proxy พร้อม Timeout
         const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${range === '5y' ? '1wk' : '1d'}`;
         const proxies = [
             `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
@@ -534,7 +598,7 @@ window.KodaAnalytics = {
         for (let proxy of proxies) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 📌 5 วิ ตัดจบ ไม่รอค้าง
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
                 const res = await fetch(proxy, { signal: controller.signal });
                 clearTimeout(timeoutId);
 
