@@ -541,18 +541,20 @@ window.KodaAnalytics = {
         }));
     },
 
-    // ==========================================
-    // 📌 4. ระบบ Benchmark & Metrics (คงเดิม)
+        // ==========================================
+    // 📌 4. ระบบ Benchmark (Real API & Real Port P/L & Ultra Stable Proxies)
     // ==========================================
     fetchIndexHistory: async (sym, range) => {
         const cacheKey = `koda_idx_${sym}_${range}`;
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        if (cached && (now - cached.timestamp < 43200000) && cached.data && cached.data.length > 0) return cached.data;
+        // แคช 1 ชม. ลดการยิง API ซ้ำซ้อน
+        if (cached && (now - cached.timestamp < 3600000) && cached.data && cached.data.length > 0) return cached.data;
 
         const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
+        // 1. Binance สำหรับ Crypto (ไม่มีปัญหา CORS, เร็วที่สุด)
         if (sym === 'BTC-USD') {
             try {
                 let limit = 30; let interval = '1d';
@@ -568,143 +570,190 @@ window.KodaAnalytics = {
                     return cleanData;
                 }
             } catch(e) {}
+        } else {
+            // 2. ดึงจาก Finnhub (ถ้ามี API Key และไม่ติด Limit)
+            if (FINNHUB_API_KEY) {
+                try {
+                    const to = Math.floor(Date.now() / 1000);
+                    let days = 30; let resType = 'D';
+                    if (range === '6mo') days = 180;
+                    else if (range === '1y') days = 365;
+                    else if (range === '5y') { days = 1825; resType = 'W'; }
+                    const from = to - (days * 24 * 60 * 60);
+
+                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=${resType}&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                    if (fhRes.ok) {
+                        const fhData = await fhRes.json();
+                        if (fhData && fhData.s === 'ok' && fhData.c && fhData.c.length > 0) {
+                            const cleanData = fhData.c.map((price, idx) => ({ t: fhData.t[idx] * 1000, c: price }));
+                            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
+                            return cleanData;
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            // 3. ทะลวง CORS ดึงจาก Yahoo Finance (เปลี่ยนมาใช้ท่อที่เสถียรที่สุด 3 ชั้น)
+            const yfRange = range === '6mo' ? '6mo' : (range === '1y' ? '1y' : (range === '5y' ? '5y' : '1mo'));
+            const yfInterval = range === '5y' ? '1wk' : '1d';
+            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=${yfRange}&interval=${yfInterval}`;
+            
+            const proxies = [
+                `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+                `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
+            ];
+            
+            for (let proxyUrl of proxies) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 6000); // รอ 6 วิ ถ้าค้างให้ตัดไปท่ออื่น
+                    const res = await fetch(proxyUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (res.ok) {
+                        const rawData = await res.json();
+                        let yfData = rawData;
+                        
+                        // ป้องกัน Error จาก AllOrigins ที่ชอบห่อ JSON มาเป็น String
+                        if (rawData.contents) {
+                            try { yfData = JSON.parse(rawData.contents); } catch(e) {}
+                        }
+
+                        if (yfData?.chart?.result?.[0]) {
+                            const result = yfData.chart.result[0];
+                            const closes = result.indicators.quote[0].close;
+                            const timestamps = result.timestamp;
+                            
+                            const cleanData = [];
+                            for(let i=0; i < closes.length; i++) {
+                                if(closes[i] !== null) cleanData.push({ t: timestamps[i] * 1000, c: closes[i] });
+                            }
+                            
+                            if (cleanData.length > 0) {
+                                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
+                                return cleanData;
+                            }
+                        }
+                    }
+                } catch(e) { /* ข้ามท่อที่พังไปทำท่อถัดไปแบบเงียบๆ */ }
+            }
         }
-
-        if ((sym === 'SPY' || sym === 'QQQ') && FINNHUB_API_KEY) {
-            try {
-                const to = Math.floor(Date.now() / 1000);
-                let days = 30; let resType = 'D';
-                if (range === '6mo') days = 180;
-                else if (range === '1y') days = 365;
-                else if (range === '5y') { days = 1825; resType = 'W'; }
-                const from = to - (days * 24 * 60 * 60);
-
-                const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=${resType}&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
-                const fhData = await fhRes.json();
-                if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
-                    const cleanData = fhData.c.map((price, idx) => ({ t: fhData.t[idx] * 1000, c: price }));
-                    localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
-                    return cleanData;
-                }
-            } catch(e) {}
-        }
-
-        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${range === '5y' ? '1wk' : '1d'}`;
-        const proxies = [
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-            `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
-        ];
         
-        for (let proxy of proxies) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-                const res = await fetch(proxy, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                if (!res.ok) continue;
-                
-                const rawData = await res.json();
-                const yfData = rawData.contents ? JSON.parse(rawData.contents) : rawData;
-
-                if (yfData && yfData.chart && yfData.chart.result && yfData.chart.result[0]) {
-                    const result = yfData.chart.result[0];
-                    const closes = result.indicators.quote[0].close;
-                    const timestamps = result.timestamp;
-                    
-                    const cleanData = [];
-                    for(let i=0; i < closes.length; i++) {
-                        if(closes[i] !== null) cleanData.push({ t: timestamps[i] * 1000, c: closes[i] });
-                    }
-                    
-                    if (cleanData.length > 0) {
-                        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
-                        return cleanData;
-                    }
-                }
-            } catch(e) { console.warn("Proxy fallback triggered/failed"); }
-        }
         return null;
     },
 
-    renderBenchmark: async () => {
+        renderBenchmark: async () => {
         const ctx = document.getElementById('benchmark-chart');
         if (!ctx) return;
 
-        try {
-            const portHistory = JSON.parse(localStorage.getItem('koda_equity_history') || '[]');
-            const portData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
-            let totalCost = 0;
-            (portData.holdings || []).forEach(h => { totalCost += (h.shares * h.avgCost); });
+        const benchSym = window.KodaAnalytics.activeBenchmark;
+        const range = window.KodaAnalytics.activeRange;
+        const benchNameMap = { 'SPY': 'S&P 500', 'QQQ': 'NASDAQ', 'BTC-USD': 'Bitcoin' };
+        const rangeNameMap = { '1mo': '1M', '6mo': '6M', '1y': '1Y', '5y': '5Y' };
+        
+        document.getElementById('bench-index-name').textContent = `${benchNameMap[benchSym]} (${rangeNameMap[range]})`;
+        document.getElementById('bench-port-name').textContent = `My Portfolio (${rangeNameMap[range]})`;
+        
+        document.getElementById('bench-index-val').textContent = "Loading...";
+        document.getElementById('bench-index-val').className = "text-sm font-bold text-slate-500 mt-1 animate-pulse";
 
-            const benchSym = window.KodaAnalytics.activeBenchmark;
-            const range = window.KodaAnalytics.activeRange;
-            
-            const benchNameMap = { 'SPY': 'S&P 500', 'QQQ': 'NASDAQ', 'BTC-USD': 'Bitcoin' };
-            const rangeNameMap = { '1mo': '1M', '6mo': '6M', '1y': '1Y', '5y': '5Y' };
-            
-            document.getElementById('bench-index-name').textContent = `${benchNameMap[benchSym]} (${rangeNameMap[range]})`;
-            document.getElementById('bench-port-name').textContent = `My Portfolio (${rangeNameMap[range]})`;
-            
-            document.getElementById('bench-index-val').textContent = "...";
-            document.getElementById('bench-index-val').className = "text-sm font-bold text-slate-500 mt-1 animate-pulse";
-
-            const indexData = await window.KodaAnalytics.fetchIndexHistory(benchSym, range);
-            
-            if (!indexData || indexData.length === 0) { 
-                document.getElementById('bench-index-val').textContent = "API Error"; 
-                document.getElementById('bench-index-val').className = "text-sm font-bold text-danger mt-1";
-                return; 
-            }
-
-            const labels = indexData.map(d => new Date(d.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: range === '5y' ? '2-digit' : undefined }));
-            const indexBase = indexData[0].c;
-            const indexPct = indexData.map(d => ((d.c - indexBase) / indexBase) * 100);
-
-            let portPct = new Array(indexData.length).fill(0); 
-            
-            if (portHistory.length > 0 && totalCost > 0) {
-                const validPortDays = Math.min(portHistory.length, indexData.length);
-                for (let i = 1; i <= validPortDays; i++) {
-                    const pVal = portHistory[portHistory.length - i].value;
-                    if (pVal > 0) portPct[indexData.length - i] = ((pVal - totalCost) / totalCost) * 100;
-                    else portPct[indexData.length - i] = 0;
-                }
-            }
-
-            const portFinalPct = portPct[portPct.length - 1] || 0;
-            const indexFinalPct = indexPct[indexPct.length - 1] || 0;
-
-            const pEl = document.getElementById('bench-port-val');
-            pEl.textContent = `${portFinalPct >= 0 ? '+' : ''}${portFinalPct.toFixed(2)}%`;
-            pEl.className = `text-xl font-black ${portFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
-
-            const iEl = document.getElementById('bench-index-val');
-            iEl.textContent = `${indexFinalPct >= 0 ? '+' : ''}${indexFinalPct.toFixed(2)}%`;
-            iEl.className = `text-xl font-black ${indexFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
-
-            if (window.KodaAnalytics.benchmarkChartInstance) window.KodaAnalytics.benchmarkChartInstance.destroy();
-
-            window.KodaAnalytics.benchmarkChartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: 'My Portfolio P/L', data: portPct, borderColor: '#34a8eb', borderWidth: 3, pointRadius: 0, tension: 0.3 },
-                        { label: benchNameMap[benchSym], data: indexPct, borderColor: '#64748b', borderDash: [5, 5], borderWidth: 2, pointRadius: 0, tension: 0.3 }
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw >= 0 ? '+' : ''}${ctx.raw.toFixed(2)}%` } } },
-                    scales: { x: { display: false }, y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8', callback: (val) => val + '%' } } }
-                }
-            });
-        } catch (error) {
-            document.getElementById('bench-index-val').textContent = "Chart Error"; 
+        // 1. ดึงข้อมูลจริงจาก API แบบเสถียร
+        const indexData = await window.KodaAnalytics.fetchIndexHistory(benchSym, range);
+        
+        if (!indexData || indexData.length === 0) { 
+            document.getElementById('bench-index-val').textContent = "Data Error"; 
             document.getElementById('bench-index-val').className = "text-sm font-bold text-danger mt-1";
+            return; 
         }
-    },
 
+        // 2. คำนวณ P/L พอร์ตจริง (ตัด Cash ออก คิดแค่มูลค่าหุ้น vs ต้นทุนหุ้น)
+        const portData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
+        let totalCost = 0, totalVal = 0;
+        (portData.holdings || []).forEach(h => {
+            totalCost += (h.shares * h.avgCost);
+            totalVal += (h.shares * (h.currentPrice || h.avgCost));
+        });
+        const actualPortPct = totalCost > 0 ? ((totalVal - totalCost) / totalCost) * 100 : 0;
+
+        // 3. เตรียมข้อมูลแกน X (วันที่) และ Y (Index)
+        const labels = indexData.map(d => new Date(d.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: range === '5y' ? '2-digit' : undefined }));
+        const indexBase = indexData[0].c;
+        const indexPct = indexData.map(d => ((d.c - indexBase) / indexBase) * 100);
+        const indexFinalPct = indexPct[indexPct.length - 1];
+
+        // 4. วาดกราฟพอร์ตจาก History จริงๆ ของผู้ใช้
+        let portPct = new Array(indexData.length).fill(0);
+        let portHistory = JSON.parse(localStorage.getItem('koda_equity_history') || '[]');
+        
+        if (portHistory.length > 0) {
+            // หาจุดเริ่มต้นจริงๆ ของพอร์ต (วันแรกที่เงิน > 0)
+            let startIdx = 0;
+            for (let i = 0; i < portHistory.length; i++) {
+                if (portHistory[i].value > 0) { startIdx = i; break; }
+            }
+            let startVal = portHistory[startIdx].value;
+            let endVal = portHistory[portHistory.length - 1].value;
+            let valRange = endVal - startVal;
+
+            for (let i = 0; i < indexData.length; i++) {
+                // จัด Format วันที่ให้ตรงกัน YYYY-MM-DD
+                let d = new Date(indexData[i].t);
+                let targetDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+                // หาข้อมูลพอร์ตของวันนั้น
+                let pEntry = portHistory.find(h => h.date === targetDate);
+                if (!pEntry) {
+                    // ถ้าไม่มี (เช่น เสาร์-อาทิตย์) ให้ย้อนไปหาวันทำการล่าสุด
+                    let prevEntries = portHistory.filter(h => h.date <= targetDate);
+                    if (prevEntries.length > 0) pEntry = prevEntries[prevEntries.length - 1];
+                }
+
+                // สร้างเส้นกราฟ
+                if (pEntry && pEntry.date >= portHistory[startIdx].date) {
+                    if (valRange === 0) {
+                        portPct[i] = (pEntry.value === startVal) ? 0 : actualPortPct;
+                    } else {
+                        // ดึงรูปทรงกราฟจริง (รวมฝาก/ถอน) มาปรับสเกลให้ไปจบที่ actualPortPct
+                        portPct[i] = actualPortPct * ((pEntry.value - startVal) / valRange);
+                    }
+                } else {
+                    portPct[i] = 0; // ก่อนหน้าวันที่เริ่มพอร์ต ให้กราฟแบนราบที่ 0%
+                }
+            }
+            // ล็อคจุดสุดท้ายให้ตัวเลขตรงกับ Label UI 100%
+            portPct[portPct.length - 1] = actualPortPct;
+        }
+
+        // 5. อัปเดต UI 
+        const pEl = document.getElementById('bench-port-val');
+        pEl.textContent = `${actualPortPct >= 0 ? '+' : ''}${actualPortPct.toFixed(2)}%`;
+        pEl.className = `text-xl font-black ${actualPortPct >= 0 ? 'text-success' : 'text-danger'}`;
+
+        const iEl = document.getElementById('bench-index-val');
+        iEl.textContent = `${indexFinalPct >= 0 ? '+' : ''}${indexFinalPct.toFixed(2)}%`;
+        iEl.className = `text-xl font-black ${indexFinalPct >= 0 ? 'text-success' : 'text-danger'}`;
+
+        if (window.KodaAnalytics.benchmarkChartInstance) window.KodaAnalytics.benchmarkChartInstance.destroy();
+
+        window.KodaAnalytics.benchmarkChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'My Portfolio P/L', data: portPct, borderColor: '#34a8eb', borderWidth: 3, pointRadius: 0, tension: 0.3 },
+                    { label: benchNameMap[benchSym], data: indexPct, borderColor: '#64748b', borderDash: [5, 5], borderWidth: 2, pointRadius: 0, tension: 0.3 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw >= 0 ? '+' : ''}${ctx.raw.toFixed(2)}%` } } },
+                scales: { x: { display: false }, y: { position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8', callback: (val) => val + '%' } } },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+    },
+    
     calculateMetrics: () => {
         const data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings":[]}');
         const holdings = data.holdings || [];
