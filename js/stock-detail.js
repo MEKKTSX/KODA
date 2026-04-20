@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
+    
+    // เอา ecosystem ออกจาก loadedTabs
     let loadedTabs = { chart: true, company: false, analysis: false, quarterly: false, financials: false, news: false };
 
     tabs.forEach(tab => {
@@ -105,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (กลับมาใช้โครงสร้างซ้าย-ขวาเดิม 100%)
+    // 📌 ดึงข้อมูลราคา (โครงสร้างซ้าย-ขวาเดิม)
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
@@ -188,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (extPrice !== null && extPrice !== undefined) {
             extContainer.classList.remove('hidden');
-            extContainer.classList.add('flex'); // กลับมาใช้ flex ด้านขวา
+            extContainer.classList.add('flex'); 
             extLabelEl.textContent = stateText;
             extPriceEl.textContent = fmtPrice(extPrice);
             document.getElementById('extended-currency').textContent = currencyCode;
@@ -785,7 +787,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAnalystRatings(cached.data.recommendation);
             await renderTargetPrice(cached.data.targets);
             
-            // Events สำหรับปุ่ม (กรณีดึงจาก Cache)
             document.querySelectorAll('.ta-mode-btn').forEach(btn => {
                 btn.onclick = (e) => {
                     document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
