@@ -11,6 +11,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0a0e17">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <script id="tailwind-config">
         tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#34a8eb", "success": "#00c076", "danger": "#ff4d4d", "background-dark": "#0a0e17", "surface-dark": "#161c2b", "border-dark": "#232b3e" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
     </script>
@@ -27,7 +30,7 @@
     </style>
 </head>
 <body class="bg-background-dark text-slate-100 min-h-screen font-display">
-<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative">
+<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative overflow-x-hidden">
     
     <header class="flex items-center p-4 justify-between sticky top-0 bg-background-dark/95 backdrop-blur-md z-30 border-b border-border-dark/30">
         <button onclick="window.history.back()" class="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors"><span class="material-symbols-outlined">arrow_back</span></button>
@@ -253,10 +256,10 @@
     <div id="bottom-nav-container"></div>   
     
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="js/nav.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
+        // เอา ecosystem.js ออกจากการโหลด
         const scripts = ["js/ai-helper.js", "js/stock-detail.js"];
         scripts.forEach(src => {
             const s = document.createElement('script');
