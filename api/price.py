@@ -6,6 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 import pytz
 import math
+import pandas as pd
 
 def clean_val(v):
     try:
@@ -154,15 +155,24 @@ class handler(BaseHTTPRequestHandler):
         except Exception: pass
             
         try:
-            # 🚀 บังคับดึง 40 แถวเพื่อให้มั่นใจว่าจะได้ 10 ไตรมาสย้อนหลัง
+            # 🚀 บังคับขุดประวัติ 40 แถว + แก้บัค Timezone ที่ทำให้ yfinance ดรอปข้อมูล
             earn = ticker.get_earnings_dates(limit=40)
-            import pandas as pd
             if earn is not None and not earn.empty:
-                now = pd.Timestamp.now(tz=earn.index.tz if earn.index.tz else 'UTC')
-                future = earn[earn.index >= now].sort_index()
-                if not future.empty: next_earnings = future.index[0].strftime('%Y-%m-%d')
+                now = pd.Timestamp.utcnow()
                 
-                past = earn[earn.index < now].sort_index(ascending=False).head(10)
+                # แปลง timezone ให้ตรงกัน เพื่อกันบัคเปรียบเทียบค่า
+                if earn.index.tz is None:
+                    earn.index = earn.index.tz_localize('UTC')
+                else:
+                    earn.index = earn.index.tz_convert('UTC')
+                    
+                future = earn[earn.index >= now].sort_index()
+                if not future.empty: 
+                    next_earnings = future.index[0].strftime('%Y-%m-%d')
+                
+                # ดึง 10 ไตรมาส และกรองแถวที่ข้อมูลว่างเปล่าออก
+                past = earn[earn.index < now].sort_index(ascending=False).dropna(subset=['Reported EPS', 'EPS Estimate'], how='all').head(10)
+                
                 for date_idx, row in past.iterrows():
                     try:
                         q_num = (date_idx.month - 1) // 3 + 1
@@ -171,8 +181,11 @@ class handler(BaseHTTPRequestHandler):
                         surp = clean_val(row.get("Surprise(%)"))
                         
                         earnings_data.append({
-                            "quarter": f"{q_num} Q{date_idx.year}", "year": date_idx.year,
-                            "estimate": est, "actual": act, "surprise": (surp * 100) if surp is not None else 0 
+                            "quarter": f"{q_num}Q{date_idx.year}", 
+                            "year": date_idx.year,
+                            "estimate": est, 
+                            "actual": act, 
+                            "surprise": (surp * 100) if surp is not None else 0 
                         })
                     except: pass
         except Exception: pass
