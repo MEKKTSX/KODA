@@ -46,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.kodaApiData = mockData;
     window.saveKodaData = () => localStorage.setItem('koda_portfolio_data', JSON.stringify(window.kodaApiData));
 
-    // 📌 Global Currency
     window.kodaTHBRate = 34.50; 
 
     const fetchGlobalTHBRate = async () => {
@@ -95,9 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.floor(diff / 86400) + 'd ago';
     };
 
-    // ==========================================
-    // 🚀 ระบบดึงราคาฉลาด (อิง Pre/Post Market อัตโนมัติจาก Python)
-    // ==========================================
     const fetchSafePrice = async (sym) => {
         if (sym.includes('BINANCE:') || sym.includes('COINBASE:')) {
             try {
@@ -137,9 +133,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!activePrice) activePrice = data.regularMarketPreviousClose;
 
                     return { 
-                        c: activePrice || 0, // สำหรับคำนวณพอร์ต (ดึงราคา Real-time ตลอดเวลา)
+                        c: activePrice || 0, 
                         pc: data.regularMarketPreviousClose || activePrice || 0,
-                        regularPrice: data.regularMarketPrice || activePrice || 0, // ส่งราคาหลัก
+                        regularPrice: data.regularMarketPrice || activePrice || 0, 
                         regularChangePct: data.regularMarketChangePercent !== undefined && data.regularMarketChangePercent !== null ? data.regularMarketChangePercent : 0,
                         extPrice: extPrice,
                         extPercent: extPercent,
@@ -183,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!freshData.watchlist) freshData.watchlist = [];
         if (!freshData.sectors) freshData.sectors = curData.sectors || [];
 
-        // 📌 ยัดข้อมูลราคาและเวลาตลาดลง Watchlist + Holdings
         freshData.holdings.forEach(h => { 
             if (priceMap[h.symbol]) { 
                 const p = priceMap[h.symbol];
@@ -224,6 +219,236 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof renderWatchlist === 'function') renderWatchlist();
         if (typeof renderAllSectors === 'function') renderAllSectors();
     };
+
+    // 🚀 เรนเดอร์หน้าจอหลัก (เปลี่ยน Top Gainer/Loser ใช้เปอร์เซ็นต์นอกเวลาทำการด้วย)
+    const renderHome = () => {
+        const totalValueEl = document.getElementById('total-value');
+        if (!totalValueEl) return;
+        
+        let cash = window.kodaApiData.cash || 0;
+        let total = cash, prevTotal = cash, best = null, worst = null; 
+
+        window.kodaApiData.holdings.forEach(s => {
+            total += (s.shares * s.currentPrice);
+            prevTotal += (s.shares * s.previousClose);
+
+            // 📌 ดึงเปอร์เซ็นต์เปลี่ยนไปใช้นอกเวลา (Pre/Post) ถ้าตลาดปิด
+            let pct = 0;
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPercent !== null && s.extPercent !== undefined) {
+                pct = s.extPercent; // ใช้ค่า Pre/Post 
+            } else {
+                pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
+            }
+
+            if (!best || pct > best.change) best = { symbol: s.symbol, change: pct };
+            if (!worst || pct < worst.change) worst = { symbol: s.symbol, change: pct };
+        });
+        
+        totalValueEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(total) : formatCurrency(total);
+        
+        const change = formatPercent(prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0);
+        const totalPctEl = document.getElementById('total-percent');
+        totalPctEl.className = `text-sm font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${change.colorClass} ${change.bgClass}`;
+        totalPctEl.innerHTML = `<span class="material-symbols-outlined text-sm">${change.icon}</span> ${change.text}`;
+
+        if (best) {
+            document.getElementById('top-gainer-ticker').textContent = best.symbol;
+            document.getElementById('top-gainer-percent').textContent = formatPercent(best.change).text;
+            document.getElementById('top-gainer-percent').className = 'text-success text-sm font-medium';
+        }
+        if (worst) {
+            document.getElementById('top-loser-ticker').textContent = worst.symbol;
+            document.getElementById('top-loser-percent').textContent = formatPercent(worst.change).text;
+            document.getElementById('top-loser-percent').className = 'text-danger text-sm font-medium';
+        }
+
+        const sectorContainer = document.getElementById('sector-container');
+        if (sectorContainer) {
+            sectorContainer.innerHTML = window.kodaApiData.sectors.slice(0, 4).map(sec => {
+                const c = formatPercent(sec.change);
+                return `<div class="min-w-[140px] bg-surface-dark border border-border-dark rounded-xl p-4 relative overflow-hidden">
+                    <div class="absolute inset-0 opacity-10 bg-gradient-to-br ${sec.change >= 0 ? 'from-success' : 'from-danger'} to-transparent"></div>
+                    <span class="material-symbols-outlined ${sec.change >= 0 ? 'text-success' : 'text-danger'} mb-2 text-xl">${sec.icon}</span>
+                    <p class="text-white font-bold text-sm truncate">${sec.name}</p>
+                    <p class="${c.colorClass} text-xs font-bold">${c.text} Today</p>
+                </div>`;
+            }).join('');
+        }
+    };
+
+    const renderAllSectors = () => {
+        const list = document.getElementById('all-sectors-list');
+        if (!list) return;
+        list.innerHTML = window.kodaApiData.sectors.map((sec, i) => {
+            const c = formatPercent(sec.change);
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+            return `<div class="flex items-center justify-between bg-background-dark/40 border border-border-dark p-4 rounded-2xl active:bg-slate-800 transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="size-11 rounded-xl bg-surface-dark border border-border-dark flex items-center justify-center relative">
+                        <span class="material-symbols-outlined ${sec.change >= 0 ? 'text-success' : 'text-danger'}">${sec.icon}</span>
+                        ${medal ? `<span class="absolute -top-2 -right-2 text-xs">${medal}</span>` : ''}
+                    </div>
+                    <div><p class="text-white font-bold">${sec.name}</p><p class="text-slate-500 text-[10px] font-bold tracking-widest">${sec.symbol}</p></div>
+                </div>
+                <div class="${c.bgClass} px-3 py-1.5 rounded-lg"><p class="${c.colorClass} text-sm font-bold flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm">${c.icon}</span> ${c.text}</p>
+                </div>
+            </div>`;
+        }).join('');
+    };
+
+    let isEditMode = false;
+    let symbolToDelete = null;
+
+    const renderWatchlist = () => {
+        const container = document.getElementById('watchlist-container');
+        if (!container) return;
+        if(!window.kodaApiData.watchlist || window.kodaApiData.watchlist.length === 0){ 
+            container.innerHTML = `<p class="py-10 text-center text-slate-500">No items in Watchlist.</p>`; 
+            return; 
+        }
+        
+        container.innerHTML = window.kodaApiData.watchlist.map(s => {
+            const mainPrice = s.regularPrice || s.currentPrice || 0;
+            const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
+            const c = formatPercent(pct);
+            
+            let extHtml = '';
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPrice !== undefined) {
+                const extStateText = s.marketState === 'PRE' ? '☀️ ก่อนตลาดเปิด' : '🌑 หลังตลาดปิด';
+                const isExtUp = s.extPercent > 0;
+                const isExtDown = s.extPercent < 0;
+                const extColor = isExtUp ? 'text-success' : (isExtDown ? 'text-danger' : 'text-slate-500');
+                const extSign = isExtUp ? '+' : '';
+                
+                extHtml = `
+                <div class="flex items-center justify-end gap-1 mt-0.5">
+                    <span class="text-[9px] text-slate-400 font-bold">${extStateText}</span>
+                    <span class="text-[10px] font-bold text-slate-300">${formatCurrency(s.extPrice)}</span>
+                    <span class="text-[10px] font-bold ${extColor}">${extSign}${s.extPercent.toFixed(2)}%</span>
+                </div>`;
+            }
+
+            const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
+            let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
+            if(s.symbol.includes('BINANCE:')) fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.replace('BINANCE:','').replace('USDT','')}.png`;
+
+            const itemContent = `
+                <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
+                    <span class="text-white font-bold text-[10px] absolute">${s.symbol.substring(0,2)}</span>
+                    <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}'; this.onerror=function(){this.style.display='none'};">
+                </div>
+                <div class="flex-1 flex justify-between items-center">
+                    <div>
+                        <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
+                        <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
+                    </div>
+                    <div class="flex flex-col items-end justify-center">
+                        <div class="flex items-center gap-1.5">
+                            <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
+                            <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
+                                <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
+                            </div>
+                        </div>
+                        ${extHtml}
+                    </div>
+                </div>
+            `;
+
+            if (isEditMode) {
+                return `<div class="bg-surface-dark p-3 py-2.5 border-b border-border-dark/50 flex items-center justify-between transition-colors watchlist-item" data-symbol="${s.symbol}">
+                    <div class="flex items-center gap-3 flex-1">
+                        <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger hover:bg-danger hover:text-white transition-colors shrink-0" data-symbol="${s.symbol}">
+                            <span class="material-symbols-outlined text-[14px] font-bold">remove</span>
+                        </button>
+                        ${itemContent}
+                    </div>
+                    <span class="material-symbols-outlined text-slate-600 text-xl cursor-grab active:cursor-grabbing drag-handle shrink-0">drag_indicator</span>
+                </div>`;
+            } else {
+                return `<div class="bg-surface-dark p-3 py-2.5 border-b border-border-dark/50 active:bg-slate-800 transition-colors watchlist-item" data-symbol="${s.symbol}">
+                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">
+                        ${itemContent}
+                    </a>
+                </div>`;
+            }
+        }).join('');
+
+        if (isEditMode) {
+            document.querySelectorAll('.btn-delete-item').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    symbolToDelete = btn.getAttribute('data-symbol');
+                    const textEl = document.getElementById('delete-symbol-text');
+                    if(textEl) textEl.textContent = symbolToDelete;
+                    const modalDel = document.getElementById('modal-delete-watchlist');
+                    const contentDel = document.getElementById('modal-delete-content');
+                    if(modalDel && contentDel) {
+                        modalDel.classList.remove('hidden'); modalDel.classList.add('flex');
+                        setTimeout(() => { modalDel.classList.remove('opacity-0'); contentDel.classList.remove('scale-95'); }, 10);
+                    }
+                });
+            });
+        }
+    };
+
+    const btnEditWatchlist = document.getElementById('btn-edit-watchlist');
+    if (btnEditWatchlist) {
+        btnEditWatchlist.addEventListener('click', () => {
+            isEditMode = !isEditMode;
+            btnEditWatchlist.textContent = isEditMode ? 'Done' : 'Edit';
+            btnEditWatchlist.className = isEditMode 
+                ? "text-xs font-bold text-white bg-primary uppercase tracking-wider px-3 py-1 rounded transition-colors" 
+                : "text-xs font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors";
+            renderWatchlist();
+        });
+    }
+
+    const btnCancelDel = document.getElementById('btn-cancel-delete');
+    const btnConfirmDel = document.getElementById('btn-confirm-delete');
+    const modalDel = document.getElementById('modal-delete-watchlist');
+    const contentDel = document.getElementById('modal-delete-content');
+
+    const closeDeleteModal = () => {
+        if(modalDel && contentDel) {
+            modalDel.classList.add('opacity-0');
+            contentDel.classList.add('scale-95');
+            setTimeout(() => {
+                modalDel.classList.add('hidden');
+                modalDel.classList.remove('flex');
+                symbolToDelete = null;
+            }, 200);
+        }
+    };
+
+    if (btnCancelDel) btnCancelDel.addEventListener('click', closeDeleteModal);
+    if (btnConfirmDel) {
+        btnConfirmDel.addEventListener('click', () => {
+            if (symbolToDelete) {
+                const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
+                if (savedData.watchlist) {
+                    savedData.watchlist = savedData.watchlist.filter(s => s.symbol !== symbolToDelete);
+                    localStorage.setItem('koda_portfolio_data', JSON.stringify(savedData));
+                    window.kodaApiData.watchlist = savedData.watchlist;
+                    renderWatchlist(); 
+                }
+            }
+            closeDeleteModal();
+        });
+    }
+
+    const mSectors = document.getElementById('modal-sectors');
+    const mContent = document.getElementById('modal-sectors-content');
+    if (mSectors && mContent) {
+        document.getElementById('btn-view-sectors')?.addEventListener('click', () => {
+            mSectors.classList.remove('hidden'); mSectors.classList.add('flex');
+            setTimeout(() => mContent.classList.remove('translate-y-full'), 10);
+        });
+        document.getElementById('btn-close-sectors')?.addEventListener('click', () => {
+            mContent.classList.add('translate-y-full');
+            setTimeout(() => { mSectors.classList.add('hidden'); mSectors.classList.remove('flex'); }, 300);
+        });
+    }
 
     window.kodaMixNews = (allNews, totalNeeded) => {
         if (!allNews || allNews.length === 0) return [];
@@ -383,230 +608,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     };
-
-    const renderHome = () => {
-        const totalValueEl = document.getElementById('total-value');
-        if (!totalValueEl) return;
-        
-        let cash = window.kodaApiData.cash || 0;
-        let total = cash, prevTotal = cash, best = null, worst = null; 
-
-        window.kodaApiData.holdings.forEach(s => {
-            total += (s.shares * s.currentPrice);
-            prevTotal += (s.shares * s.previousClose);
-
-            const pct = s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0;
-            if (!best || pct > best.change) best = { symbol: s.symbol, change: pct };
-            if (!worst || pct < worst.change) worst = { symbol: s.symbol, change: pct };
-        });
-        
-        totalValueEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(total) : formatCurrency(total);
-        
-        const change = formatPercent(prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0);
-        const totalPctEl = document.getElementById('total-percent');
-        totalPctEl.className = `text-sm font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${change.colorClass} ${change.bgClass}`;
-        totalPctEl.innerHTML = `<span class="material-symbols-outlined text-sm">${change.icon}</span> ${change.text}`;
-
-        if (best) {
-            document.getElementById('top-gainer-ticker').textContent = best.symbol;
-            document.getElementById('top-gainer-percent').textContent = formatPercent(best.change).text;
-            document.getElementById('top-gainer-percent').className = 'text-success text-sm font-medium';
-        }
-        if (worst) {
-            document.getElementById('top-loser-ticker').textContent = worst.symbol;
-            document.getElementById('top-loser-percent').textContent = formatPercent(worst.change).text;
-            document.getElementById('top-loser-percent').className = 'text-danger text-sm font-medium';
-        }
-
-        const sectorContainer = document.getElementById('sector-container');
-        if (sectorContainer) {
-            sectorContainer.innerHTML = window.kodaApiData.sectors.slice(0, 4).map(sec => {
-                const c = formatPercent(sec.change);
-                return `<div class="min-w-[140px] bg-surface-dark border border-border-dark rounded-xl p-4 relative overflow-hidden">
-                    <div class="absolute inset-0 opacity-10 bg-gradient-to-br ${sec.change >= 0 ? 'from-success' : 'from-danger'} to-transparent"></div>
-                    <span class="material-symbols-outlined ${sec.change >= 0 ? 'text-success' : 'text-danger'} mb-2 text-xl">${sec.icon}</span>
-                    <p class="text-white font-bold text-sm truncate">${sec.name}</p>
-                    <p class="${c.colorClass} text-xs font-bold">${c.text} Today</p>
-                </div>`;
-            }).join('');
-        }
-    };
-
-    const renderAllSectors = () => {
-        const list = document.getElementById('all-sectors-list');
-        if (!list) return;
-        list.innerHTML = window.kodaApiData.sectors.map((sec, i) => {
-            const c = formatPercent(sec.change);
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-            return `<div class="flex items-center justify-between bg-background-dark/40 border border-border-dark p-4 rounded-2xl active:bg-slate-800 transition-colors">
-                <div class="flex items-center gap-4">
-                    <div class="size-11 rounded-xl bg-surface-dark border border-border-dark flex items-center justify-center relative">
-                        <span class="material-symbols-outlined ${sec.change >= 0 ? 'text-success' : 'text-danger'}">${sec.icon}</span>
-                        ${medal ? `<span class="absolute -top-2 -right-2 text-xs">${medal}</span>` : ''}
-                    </div>
-                    <div><p class="text-white font-bold">${sec.name}</p><p class="text-slate-500 text-[10px] font-bold tracking-widest">${sec.symbol}</p></div>
-                </div>
-                <div class="${c.bgClass} px-3 py-1.5 rounded-lg"><p class="${c.colorClass} text-sm font-bold flex items-center gap-1">
-                    <span class="material-symbols-outlined text-sm">${c.icon}</span> ${c.text}</p>
-                </div>
-            </div>`;
-        }).join('');
-    };
-
-    let isEditMode = false;
-    let symbolToDelete = null;
-
-    // 📌 เรนเดอร์ Watchlist (เพิ่ม Pre/Post ใต้ราคาหลัก)
-    const renderWatchlist = () => {
-        const container = document.getElementById('watchlist-container');
-        if (!container) return;
-        if(!window.kodaApiData.watchlist || window.kodaApiData.watchlist.length === 0){ 
-            container.innerHTML = `<p class="py-10 text-center text-slate-500">No items in Watchlist.</p>`; 
-            return; 
-        }
-        
-        container.innerHTML = window.kodaApiData.watchlist.map(s => {
-            const mainPrice = s.regularPrice || s.currentPrice || 0;
-            const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
-            const c = formatPercent(pct);
-            
-            // 🚀 Logic เสริมสร้างราคา Pre/Post
-            let extHtml = '';
-            if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPrice !== undefined) {
-                const extStateText = s.marketState === 'PRE' ? '☀️ ก่อนตลาดเปิด' : '🌑 หลังตลาดปิด';
-                const isExtUp = s.extPercent > 0;
-                const isExtDown = s.extPercent < 0;
-                const extColor = isExtUp ? 'text-success' : (isExtDown ? 'text-danger' : 'text-slate-500');
-                const extSign = isExtUp ? '+' : '';
-                
-                extHtml = `
-                <div class="flex items-center justify-end gap-1 mt-0.5">
-                    <span class="text-[9px] text-slate-400 font-bold">${extStateText}</span>
-                    <span class="text-[10px] font-bold text-slate-300">${formatCurrency(s.extPrice)}</span>
-                    <span class="text-[10px] font-bold ${extColor}">${extSign}${s.extPercent.toFixed(2)}%</span>
-                </div>`;
-            }
-
-            const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
-            let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
-            if(s.symbol.includes('BINANCE:')) fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.replace('BINANCE:','').replace('USDT','')}.png`;
-
-            const itemContent = `
-                <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
-                    <span class="text-white font-bold text-[10px] absolute">${s.symbol.substring(0,2)}</span>
-                    <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}'; this.onerror=function(){this.style.display='none'};">
-                </div>
-                <div class="flex-1 flex justify-between items-center">
-                    <div>
-                        <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
-                        <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
-                    </div>
-                    <div class="flex flex-col items-end justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
-                            <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
-                                <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
-                            </div>
-                        </div>
-                        ${extHtml}
-                    </div>
-                </div>
-            `;
-
-            if (isEditMode) {
-                return `<div class="bg-surface-dark p-3 py-2.5 border-b border-border-dark/50 flex items-center justify-between transition-colors watchlist-item" data-symbol="${s.symbol}">
-                    <div class="flex items-center gap-3 flex-1">
-                        <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger hover:bg-danger hover:text-white transition-colors shrink-0" data-symbol="${s.symbol}">
-                            <span class="material-symbols-outlined text-[14px] font-bold">remove</span>
-                        </button>
-                        ${itemContent}
-                    </div>
-                    <span class="material-symbols-outlined text-slate-600 text-xl cursor-grab active:cursor-grabbing drag-handle shrink-0">drag_indicator</span>
-                </div>`;
-            } else {
-                return `<div class="bg-surface-dark p-3 py-2.5 border-b border-border-dark/50 active:bg-slate-800 transition-colors watchlist-item" data-symbol="${s.symbol}">
-                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">
-                        ${itemContent}
-                    </a>
-                </div>`;
-            }
-        }).join('');
-
-        if (isEditMode) {
-            document.querySelectorAll('.btn-delete-item').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    symbolToDelete = btn.getAttribute('data-symbol');
-                    const textEl = document.getElementById('delete-symbol-text');
-                    if(textEl) textEl.textContent = symbolToDelete;
-                    const modalDel = document.getElementById('modal-delete-watchlist');
-                    const contentDel = document.getElementById('modal-delete-content');
-                    if(modalDel && contentDel) {
-                        modalDel.classList.remove('hidden'); modalDel.classList.add('flex');
-                        setTimeout(() => { modalDel.classList.remove('opacity-0'); contentDel.classList.remove('scale-95'); }, 10);
-                    }
-                });
-            });
-        }
-    };
-
-    const btnEditWatchlist = document.getElementById('btn-edit-watchlist');
-    if (btnEditWatchlist) {
-        btnEditWatchlist.addEventListener('click', () => {
-            isEditMode = !isEditMode;
-            btnEditWatchlist.textContent = isEditMode ? 'Done' : 'Edit';
-            btnEditWatchlist.className = isEditMode 
-                ? "text-xs font-bold text-white bg-primary uppercase tracking-wider px-3 py-1 rounded transition-colors" 
-                : "text-xs font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors";
-            renderWatchlist();
-        });
-    }
-
-    const btnCancelDel = document.getElementById('btn-cancel-delete');
-    const btnConfirmDel = document.getElementById('btn-confirm-delete');
-    const modalDel = document.getElementById('modal-delete-watchlist');
-    const contentDel = document.getElementById('modal-delete-content');
-
-    const closeDeleteModal = () => {
-        if(modalDel && contentDel) {
-            modalDel.classList.add('opacity-0');
-            contentDel.classList.add('scale-95');
-            setTimeout(() => {
-                modalDel.classList.add('hidden');
-                modalDel.classList.remove('flex');
-                symbolToDelete = null;
-            }, 200);
-        }
-    };
-
-    if (btnCancelDel) btnCancelDel.addEventListener('click', closeDeleteModal);
-    if (btnConfirmDel) {
-        btnConfirmDel.addEventListener('click', () => {
-            if (symbolToDelete) {
-                const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
-                if (savedData.watchlist) {
-                    savedData.watchlist = savedData.watchlist.filter(s => s.symbol !== symbolToDelete);
-                    localStorage.setItem('koda_portfolio_data', JSON.stringify(savedData));
-                    window.kodaApiData.watchlist = savedData.watchlist;
-                    renderWatchlist(); 
-                }
-            }
-            closeDeleteModal();
-        });
-    }
-
-    const mSectors = document.getElementById('modal-sectors');
-    const mContent = document.getElementById('modal-sectors-content');
-    if (mSectors && mContent) {
-        document.getElementById('btn-view-sectors')?.addEventListener('click', () => {
-            mSectors.classList.remove('hidden'); mSectors.classList.add('flex');
-            setTimeout(() => mContent.classList.remove('translate-y-full'), 10);
-        });
-        document.getElementById('btn-close-sectors')?.addEventListener('click', () => {
-            mContent.classList.add('translate-y-full');
-            setTimeout(() => { mSectors.classList.add('hidden'); mSectors.classList.remove('flex'); }, 300);
-        });
-    }
 
     renderHome(); renderWatchlist(); renderAllSectors();
     fetchMarketNews(); fetchRealPrices(); 
