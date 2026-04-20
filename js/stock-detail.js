@@ -28,8 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
-    
-    // เอา ecosystem ออกจาก loadedTabs
     let loadedTabs = { chart: true, company: false, analysis: false, quarterly: false, financials: false, news: false };
 
     tabs.forEach(tab => {
@@ -107,11 +105,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (โครงสร้างซ้าย-ขวาเดิม)
+    // 📌 ดึงข้อมูลราคา (แก้ให้ Real-Time ไม่มีสะดุด)
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
-            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
+            // 🚀 ใส่ Cache-Buster `_=` ป้องกันเบราว์เซอร์แอบจำค่าเก่า
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}&_=${Date.now()}`, { cache: 'no-store' });
             if (!res.ok) return null;
             const data = await res.json();
             if (data.success) return data; 
@@ -192,7 +191,16 @@ document.addEventListener('DOMContentLoaded', () => {
             extContainer.classList.remove('hidden');
             extContainer.classList.add('flex'); 
             extLabelEl.textContent = stateText;
+            
+            // 🚀 เพิ่มอนิเมชันให้ราคาก่อน/หลังตลาด เวลามันอัปเดตจะได้รู้
+            if (extPriceEl.dataset.rawPrice && parseFloat(extPriceEl.dataset.rawPrice) !== extPrice) {
+                extPriceEl.classList.remove('price-update');
+                void extPriceEl.offsetWidth; 
+                extPriceEl.classList.add('price-update');
+            }
+            extPriceEl.dataset.rawPrice = extPrice;
             extPriceEl.textContent = fmtPrice(extPrice);
+            
             document.getElementById('extended-currency').textContent = currencyCode;
             
             if (extPercent === 0 || !extPercent) {
@@ -219,14 +227,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderPriceUI(yfData, 'yf');
                 } else {
                     const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-                    const fhData = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json());
+                    const fhData = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}&_=${Date.now()}`).then(r=>r.json());
                     if(fhData && fhData.c > 0) renderPriceUI(fhData, 'finnhub');
                 }
             } catch(e) {}
         };
         fetchAndUpdateYF(); 
         if(!isRealtimeRunning) {
-            setInterval(fetchAndUpdateYF, 45000); 
+            // 🚀 อัปเดตทุก 10 วินาที เพื่อให้เห็นมันขยับสมจริงขึ้น
+            setInterval(fetchAndUpdateYF, 5000); 
             isRealtimeRunning = true;
         }
     };
@@ -280,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPriceAndOHLC();
 
     // ==========================================
-    // 📌 ตัวดึงกราฟหลัก (อัปเกรดให้ดึง 2Y และ 5Y ได้)
+    // 📌 ตัวดึงกราฟหลัก
     // ==========================================
     const loadLightweightCharts = () => new Promise((resolve) => {
         if (window.LightweightCharts) { resolve(); return; }
@@ -588,7 +597,6 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = rows.join('');
     };
 
-    // 🚀 วาดกราฟเป้าหมาย แบบเส้นจริง (Webull Style)
     const renderTargetPrice = async (targets) => {
         const fmt = (num) => num ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
         const cur = targets.current;
@@ -607,26 +615,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
 
-        // ดึงกราฟราคาย้อนหลัง 1 ปี 
         const hist = await fetchCandleData('1Y');
         let chartPoints = [];
         if (hist && hist.closes) {
             chartPoints = hist.closes.filter(c => c !== null);
         } else {
-            chartPoints = [cur*0.8, cur*0.9, cur]; // Fallback
+            chartPoints = [cur*0.8, cur*0.9, cur]; 
         }
 
-        const paddingLen = Math.floor(chartPoints.length * 0.25); // เว้นที่ว่างด้านขวา 25% สำหรับป้ายราคา
+        const paddingLen = Math.floor(chartPoints.length * 0.25); 
         const labels = new Array(chartPoints.length + paddingLen).fill('');
         
-        // จัดเตรียม Data สำหรับเส้นต่างๆ
         const histData = [...chartPoints, ...new Array(paddingLen).fill(null)];
         const highLine = new Array(chartPoints.length + paddingLen).fill(null);
         const meanLine = new Array(chartPoints.length + paddingLen).fill(null);
         const lowLine = new Array(chartPoints.length + paddingLen).fill(null);
         const curLine = new Array(chartPoints.length + paddingLen).fill(null);
         
-        // วาดเส้นแนวนอนต่อจากจุดสุดท้ายของราคา
         for(let i = chartPoints.length - 1; i < labels.length; i++) {
             highLine[i] = high; meanLine[i] = mean; lowLine[i] = low; curLine[i] = cur;
         }
@@ -637,7 +642,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const yMin = Math.min(...chartPoints, low) * 0.95;
         const yMax = Math.max(...chartPoints, high) * 1.05;
 
-        // วาดกราฟด้วย Chart.js แบบ Multi-Dataset
         window.targetLineChartInstance = new Chart(ctx, {
             type: 'line',
             data: { 
@@ -658,7 +662,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 🚀 แปะ Badge ตัวเลขลงไปด้านขวาให้ตรงกับเส้น
         const badgesContainer = document.getElementById('target-badges-container');
         const yRange = yMax - yMin;
         const getTopPct = (val) => Math.max(0, Math.min(100, 100 - ((val - yMin) / yRange) * 100));
@@ -671,10 +674,9 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
-    let currentTAMode = 'short'; // short, medium, long
-    let currentTATF = 'daily'; // daily, weekly
+    let currentTAMode = 'short'; 
+    let currentTATF = 'daily'; 
     
-    // 🚀 กราฟวิเคราะห์ทางเทคนิค (ย้อน 2 ปี / 5 ปี)
     const renderTAChart = async () => {
         const container = document.getElementById('ta-chart-container');
         container.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
@@ -682,7 +684,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await loadLightweightCharts();
             
-            // เลือกระยะเวลาตามปุ่ม TF
             let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
             if (!candleResult) throw new Error("No data");
@@ -756,7 +757,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
             document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
 
-            // จัดการ Zoom ตามปุ่ม ระยะสั้น กลาง ยาว
             if (currentTAMode === 'short') {
                 const lookback = currentTATF === 'daily' ? 60 : 12; 
                 const from = chartData[Math.max(0, chartData.length - lookback)].time;
@@ -773,7 +773,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // 🚀 โหลดหน้า Analysis + Cache 15 วัน
     const fetchAnalysisData = async () => {
         document.getElementById('analysis-loading').classList.remove('hidden');
         document.getElementById('analysis-content').classList.add('hidden');
@@ -782,7 +781,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        // Cache 15 วัน
         if (cached && (now - cached.timestamp < 15 * 24 * 60 * 60 * 1000)) {
             renderAnalystRatings(cached.data.recommendation);
             await renderTargetPrice(cached.data.targets);
@@ -854,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (10 ไตรมาส)
+    // 📌 TAB 3: สรุปไตรมาส (10 ไตรมาส 100%)
     // ==========================================
     const fetchQuarterlyEarnings = async () => {
         const container = document.getElementById('quarterly-list');
@@ -875,41 +873,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            let earningsData = [];
-            let nextDateText = null;
+            
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
+            const data = await res.json();
 
-            try {
-                const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
-                const data = await res.json();
-                if (data.success && data.earnings && data.earnings.length > 0) {
-                    earningsData = data.earnings;
-                    if (data.nextEarningsDate) {
-                        nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-                    }
-                }
-            } catch(e) {}
-
-            if (earningsData.length === 0) {
-                const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
-                const fhData = await fhRes.json();
-                if (fhData && fhData.length > 0) {
-                    earningsData = fhData.map(q => ({
-                        quarter: `Q${Math.ceil((new Date(q.period).getMonth() + 1) / 3)} ${new Date(q.period).getFullYear()}`,
-                        estimate: q.estimate,
-                        actual: q.actual,
-                        surprise: q.surprisePercent || (q.actual && q.estimate ? ((q.actual - q.estimate)/Math.abs(q.estimate)*100) : 0)
-                    }));
-                }
+            if (!data.success || !data.earnings || data.earnings.length === 0) {
+                throw new Error("No data");
             }
 
-            if (earningsData.length === 0) throw new Error("No data");
-
-            if (nextDateText) {
+            let nextDateText = null;
+            if (data.nextEarningsDate) {
+                nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
                 nextDateEl.textContent = nextDateText;
                 nextDateEl.classList.remove('hidden');
             }
 
-            const html = earningsData.slice(0, 10).map(q => {
+            const html = data.earnings.map(q => {
                 const isSurprise = q.surprise > 0;
                 const actColor = (q.actual !== null && q.estimate !== null && q.actual >= q.estimate) ? 'text-success' : 'text-danger';
                 return `
