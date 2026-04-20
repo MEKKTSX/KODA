@@ -105,11 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (แก้ให้ Real-Time ไม่มีสะดุด)
+    // 📌 ดึงข้อมูลราคา 
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
-            // 🚀 ใส่ Cache-Buster `_=` ป้องกันเบราว์เซอร์แอบจำค่าเก่า
             const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}&_=${Date.now()}`, { cache: 'no-store' });
             if (!res.ok) return null;
             const data = await res.json();
@@ -192,7 +191,6 @@ document.addEventListener('DOMContentLoaded', () => {
             extContainer.classList.add('flex'); 
             extLabelEl.textContent = stateText;
             
-            // 🚀 เพิ่มอนิเมชันให้ราคาก่อน/หลังตลาด เวลามันอัปเดตจะได้รู้
             if (extPriceEl.dataset.rawPrice && parseFloat(extPriceEl.dataset.rawPrice) !== extPrice) {
                 extPriceEl.classList.remove('price-update');
                 void extPriceEl.offsetWidth; 
@@ -234,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         fetchAndUpdateYF(); 
         if(!isRealtimeRunning) {
-            // 🚀 อัปเดตทุก 10 วินาที เพื่อให้เห็นมันขยับสมจริงขึ้น
+            // 🚀 อัปเดตทุก 5 วินาที ตามที่ขอครับ
             setInterval(fetchAndUpdateYF, 5000); 
             isRealtimeRunning = true;
         }
@@ -289,7 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPriceAndOHLC();
 
     // ==========================================
-    // 📌 ตัวดึงกราฟหลัก
+    // 📌 ตัวดึงกราฟหลัก 
     // ==========================================
     const loadLightweightCharts = () => new Promise((resolve) => {
         if (window.LightweightCharts) { resolve(); return; }
@@ -299,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const fetchCandleData = async (tfRange) => {
+        // 🚀 รองรับ 5Y
         const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
         const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
         
@@ -313,9 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSym)}?range=${yfRange}&interval=${yfInterval}`;
         const proxies = [
+            u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, // เสถียรสุดสำหรับ JSON
             u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-            u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-            u => `https://corsproxy.io/?${encodeURIComponent(u)}`
+            u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
         ];
 
         for (let proxy of proxies) {
@@ -398,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const renderAdvancedSR = async () => {
-            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs">กำลังโหลดกราฟ...</p></div>`;
+            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs" id="koda-chart-status">กำลังโหลดกราฟ...</p></div>`;
             try {
                 await loadLightweightCharts();
                 
@@ -417,8 +416,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cachedCandles && (now - cachedCandles.timestamp < ONE_DAY)) {
                     candles = cachedCandles.data;
                 } else {
-                    const candleResult = await fetchCandleData(currentTimeframe);
-                    if (!candleResult) { kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">ดึงข้อมูลกราฟไม่ได้ ลองกดรีเฟรช</p>`; return; }
+                    // 🚀 ระบบดึงซ้ำจนกว่าจะได้ (Retry Loop ถึกทน 10 รอบ)
+                    let candleResult = null;
+                    let retries = 0;
+                    while (!candleResult && retries < 10) {
+                        if (retries > 0) {
+                            const statusEl = document.getElementById('koda-chart-status');
+                            if (statusEl) statusEl.textContent = `กำลังพยายามดึงข้อมูล (รอบที่ ${retries+1}/10)...`;
+                        }
+                        candleResult = await fetchCandleData(currentTimeframe);
+                        if (!candleResult) {
+                            retries++;
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // พัก 2 วิแล้วลองใหม่
+                        }
+                    }
+
+                    if (!candleResult) { 
+                        kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">เซิร์ฟเวอร์ปฏิเสธการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง</p>`; 
+                        return; 
+                    }
 
                     const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
                     candles = timestamps.map((t, i) => ({ time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), volume: Number(volumes[i] || 0) }))
