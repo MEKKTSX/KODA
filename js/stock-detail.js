@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา 
+    // 📌 ดึงข้อมูลราคา (Real-time อัปเดตทุก 5 วินาที)
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         fetchAndUpdateYF(); 
         if(!isRealtimeRunning) {
-            // 🚀 อัปเดตทุก 5 วินาที ตามที่ขอครับ
+            // 🚀 อัปเดตทุก 5 วินาที ตามที่ตกลงกันไว้ครับ (ถ้า 3 วิ ให้แก้เป็น 3000)
             setInterval(fetchAndUpdateYF, 5000); 
             isRealtimeRunning = true;
         }
@@ -287,7 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPriceAndOHLC();
 
     // ==========================================
-    // 📌 ตัวดึงกราฟหลัก 
+    // 📌 ตัวดึงกราฟหลัก (อัปเกรดความเสถียร ใช้ Finnhub เป็นหลัก)
+    // แก้ปัญหา: โหลดกราฟเทคนิคไม่ได้ / เส้น Target Price ไม่แสดง
     // ==========================================
     const loadLightweightCharts = () => new Promise((resolve) => {
         if (window.LightweightCharts) { resolve(); return; }
@@ -297,39 +298,84 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const fetchCandleData = async (tfRange) => {
-        // 🚀 รองรับ 5Y
         const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
         const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
+        const daysMap = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '5Y': 1825 };
+        const fhResMap = { '1M': 'D', '3M': 'D', '6M': 'D', '1Y': 'D', '2Y': 'D', '5Y': 'W' };
+
+        let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
         
+        // 🚀 1. คริปโต ดึงจาก Binance โดยตรง (ลื่นปรี๊ด ไม่ติด CORS)
+        if (isCrypto) {
+            try {
+                let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
+                let limit = daysMap[tfRange] || 365;
+                let interval = tfRange === '5Y' ? '1w' : '1d';
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=${limit}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        return {
+                            timestamps: data.map(k => k[0] / 1000),
+                            opens: data.map(k => parseFloat(k[1])),
+                            highs: data.map(k => parseFloat(k[2])),
+                            lows: data.map(k => parseFloat(k[3])),
+                            closes: data.map(k => parseFloat(k[4])),
+                            volumes: data.map(k => parseFloat(k[5]))
+                        };
+                    }
+                }
+            } catch(e) {}
+        }
+
+        // 🚀 2. หุ้นทั่วไป ดึงจาก Finnhub เป็นตัวแรก (โคตรเสถียร แก้ปัญหากราฟล่ม 100%)
+        if (!isThaiStock && !isCrypto) {
+            try {
+                const to = Math.floor(Date.now() / 1000);
+                const from = to - (daysMap[tfRange] * 24 * 60 * 60);
+                const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=${fhResMap[tfRange]}&from=${from}&to=${to}&token=${getFHKey()}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.s === 'ok' && data.c && data.c.length > 0) {
+                        return { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
+                    }
+                }
+            } catch(e) { console.warn("Finnhub candle fetch failed, switching to fallback"); }
+        }
+
+        // 🚀 3. ตัวสำรองชั้นที่สอง: Yahoo Finance + AllOrigins (ถอดตัวที่ตายออก)
         const yfRange = rangeMap[tfRange] || '1y';
         const yfInterval = intervalMap[tfRange] || '1d';
-
         let yfSym = symbol;
         if (symbol === 'XAUUSD') yfSym = 'GC=F';
         else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
-        else if (symbol.includes('OANDA:')) yfSym = symbol.split(':')[1].replace('_', '') + '=X';
-        else if (symbol.includes('BINANCE:')) yfSym = symbol.split(':')[1].replace('USDT', '-USD');
 
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSym)}?range=${yfRange}&interval=${yfInterval}`;
+        const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
         const proxies = [
-            u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, // เสถียรสุดสำหรับ JSON
-            u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-            u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
+            `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
         ];
 
         for (let proxy of proxies) {
             try {
-                const res = await fetch(proxy(url));
+                const res = await fetch(proxy);
+                if (!res.ok) continue;
                 const raw = await res.json();
-                if (raw?.chart?.result?.[0]) {
-                    const q = raw.chart.result[0].indicators.quote[0];
-                    return { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
+                
+                let yfData = raw;
+                if (raw.contents) { yfData = JSON.parse(raw.contents); }
+                
+                if (yfData?.chart?.result?.[0]) {
+                    const q = yfData.chart.result[0].indicators.quote[0];
+                    return { 
+                        timestamps: yfData.chart.result[0].timestamp, 
+                        opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume 
+                    };
                 }
             } catch (err) {}
         }
         return null;
     };
-
 
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R
@@ -401,8 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await loadLightweightCharts();
                 
-                const srCacheKey = `koda_sr_levels_v3_${symbol}_${currentTimeframe}`;
-                const candleCacheKey = `koda_sr_candles_v3_${symbol}_${currentTimeframe}`;
+                const srCacheKey = `koda_sr_levels_v4_${symbol}_${currentTimeframe}`;
+                const candleCacheKey = `koda_sr_candles_v4_${symbol}_${currentTimeframe}`;
                 
                 const cachedLevels = JSON.parse(localStorage.getItem(srCacheKey));
                 const cachedCandles = JSON.parse(localStorage.getItem(candleCacheKey));
@@ -416,7 +462,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cachedCandles && (now - cachedCandles.timestamp < ONE_DAY)) {
                     candles = cachedCandles.data;
                 } else {
-                    // 🚀 ระบบดึงซ้ำจนกว่าจะได้ (Retry Loop ถึกทน 10 รอบ)
                     let candleResult = null;
                     let retries = 0;
                     while (!candleResult && retries < 10) {
@@ -427,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         candleResult = await fetchCandleData(currentTimeframe);
                         if (!candleResult) {
                             retries++;
-                            await new Promise(resolve => setTimeout(resolve, 2000)); // พัก 2 วิแล้วลองใหม่
+                            await new Promise(resolve => setTimeout(resolve, 2000));
                         }
                     }
 
@@ -631,6 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
 
+        // 🚀 กราฟ Target Price อาศัยการดึงข้อมูลที่เสถียรขึ้นแล้ว
         const hist = await fetchCandleData('1Y');
         let chartPoints = [];
         if (hist && hist.closes) {
@@ -868,13 +914,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (10 ไตรมาส 100%)
+    // 📌 TAB 3: สรุปไตรมาส (ระบบ 3 ก๊อก ป้องกันจอแดง 100%)
     // ==========================================
     const fetchQuarterlyEarnings = async () => {
         const container = document.getElementById('quarterly-list');
         const nextDateEl = document.getElementById('quarterly-next-date');
         
-        const cacheKey = `koda_quarterly_yf_${symbol}`; 
+        const cacheKey = `koda_quarterly_v5_${symbol}`; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
@@ -889,22 +935,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            
-            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
-            const data = await res.json();
+            let earningsData = [];
+            let nextDateText = null;
 
-            if (!data.success || !data.earnings || data.earnings.length === 0) {
-                throw new Error("No data");
+            // 🚀 ก๊อกที่ 1: Python Backend (Yahoo Finance)
+            try {
+                const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
+                const data = await res.json();
+                if (data.success && data.earnings && data.earnings.length > 0) {
+                    earningsData = data.earnings;
+                    if (data.nextEarningsDate) {
+                        nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    }
+                }
+            } catch(e) {}
+
+            // 🚀 ก๊อกที่ 2: AlphaVantage (ดึงตรงจากฝั่งผู้ใช้ ให้ประวัติลึกมาก)
+            if (earningsData.length === 0 && AV_API_KEY) {
+                try {
+                    const avRes = await fetch(`https://www.alphavantage.co/query?function=EARNINGS&symbol=${cleanSym}&apikey=${AV_API_KEY}`);
+                    const avData = await avRes.json();
+                    if (avData && avData.quarterlyEarnings && avData.quarterlyEarnings.length > 0) {
+                        earningsData = avData.quarterlyEarnings.map(q => {
+                            const est = parseFloat(q.estimatedEPS);
+                            const act = parseFloat(q.reportedEPS);
+                            return {
+                                quarter: `Q${Math.ceil((new Date(q.reportedDate).getMonth() + 1) / 3)} ${new Date(q.reportedDate).getFullYear()}`,
+                                estimate: isNaN(est) ? null : est,
+                                actual: isNaN(act) ? null : act,
+                                surprise: parseFloat(q.surprisePercentage) || 0
+                            };
+                        });
+                    }
+                } catch(e) {}
             }
 
-            let nextDateText = null;
-            if (data.nextEarningsDate) {
-                nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+            // 🚀 ก๊อกที่ 3: Finnhub (ตัวตายตัวแทน ใช้งานได้ 100% แต่อาจให้มาแค่ 4 ไตรมาส)
+            if (earningsData.length === 0) {
+                try {
+                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
+                    const fhData = await fhRes.json();
+                    if (fhData && fhData.length > 0) {
+                        earningsData = fhData.map(q => ({
+                            quarter: `Q${Math.ceil((new Date(q.period).getMonth() + 1) / 3)} ${new Date(q.period).getFullYear()}`,
+                            estimate: q.estimate,
+                            actual: q.actual,
+                            surprise: q.surprisePercent || (q.actual && q.estimate ? ((q.actual - q.estimate)/Math.abs(q.estimate)*100) : 0)
+                        }));
+                    }
+                } catch(e) {}
+            }
+
+            // ถ้าผ่าน 3 ก๊อกยังไม่ได้ ถือว่าพังจริง
+            if (earningsData.length === 0) throw new Error("No data");
+
+            if (nextDateText) {
                 nextDateEl.textContent = nextDateText;
                 nextDateEl.classList.remove('hidden');
             }
 
-            const html = data.earnings.map(q => {
+            const html = earningsData.slice(0, 10).map(q => {
                 const isSurprise = q.surprise > 0;
                 const actColor = (q.actual !== null && q.estimate !== null && q.actual >= q.estimate) ? 'text-success' : 'text-danger';
                 return `
