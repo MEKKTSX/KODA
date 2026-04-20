@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     
-    const FINNHUB_API_KEY = window.ENV_KEYS.FINNHUB; 
+    const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || ''; 
 
     const SECTOR_ETFS = [
         { name: 'Technology', symbol: 'XLK', icon: 'memory', change: 0 },
@@ -25,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!mockData.sectors || mockData.sectors.length < 11) mockData.sectors = [...SECTOR_ETFS];
         if (!mockData.watchlist) mockData.watchlist = [];
         
-        // 📌 ล้างหุ้นซ้ำอัตโนมัติตอนโหลดแอป เพื่อความสะอาดของฐานข้อมูล
         const uniqueWl = [];
         const seenWl = new Set();
         mockData.watchlist.forEach(item => {
@@ -96,29 +95,76 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.floor(diff / 86400) + 'd ago';
     };
 
+    // ==========================================
+    // 🚀 ระบบดึงราคาฉลาด (อิง Pre/Post Market อัตโนมัติจาก Python)
+    // ==========================================
     const fetchSafePrice = async (sym) => {
         if (sym.includes('BINANCE:') || sym.includes('COINBASE:')) {
             try {
                 const coin = sym.split(':')[1];
                 const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}`).then(r=>r.json());
-                if (res && res.lastPrice) return { c: parseFloat(res.lastPrice), pc: parseFloat(res.lastPrice) - parseFloat(res.priceChange) };
+                if (res && res.lastPrice) return { 
+                    c: parseFloat(res.lastPrice), 
+                    pc: parseFloat(res.lastPrice) - parseFloat(res.priceChange),
+                    regularPrice: parseFloat(res.lastPrice),
+                    regularChangePct: parseFloat(res.priceChangePercent),
+                    marketState: 'REGULAR'
+                };
             } catch(e) {}
         }
         
         try {
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    const state = data.marketState;
+                    let activePrice = data.regularMarketPrice;
+                    let extPrice = null, extPercent = null;
+                    
+                    if (state === 'PRE' && data.preMarketPrice) {
+                        activePrice = data.preMarketPrice;
+                        extPrice = data.preMarketPrice;
+                        extPercent = data.preMarketChangePercent || 0;
+                    } else if ((state === 'POST' || state === 'CLOSED') && data.postMarketPrice) {
+                        activePrice = data.postMarketPrice;
+                        extPrice = data.postMarketPrice;
+                        extPercent = data.postMarketChangePercent || 0;
+                    } else if (state === 'REGULAR') {
+                        activePrice = data.regularMarketPrice;
+                    }
+
+                    if (!activePrice) activePrice = data.regularMarketPreviousClose;
+
+                    return { 
+                        c: activePrice || 0, // สำหรับคำนวณพอร์ต (ดึงราคา Real-time ตลอดเวลา)
+                        pc: data.regularMarketPreviousClose || activePrice || 0,
+                        regularPrice: data.regularMarketPrice || activePrice || 0, // ส่งราคาหลัก
+                        regularChangePct: data.regularMarketChangePercent !== undefined && data.regularMarketChangePercent !== null ? data.regularMarketChangePercent : 0,
+                        extPrice: extPrice,
+                        extPercent: extPercent,
+                        marketState: state 
+                    };
+                }
+            }
+        } catch(e) {
+            console.warn("Backend fetch failed for", sym);
+        }
+
+        try {
             let fSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
             const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${fSym}&token=${FINNHUB_API_KEY}`).then(r=>r.json());
-            if (res && res.c > 0) return { c: res.c, pc: res.pc };
+            if (res && res.c > 0) return { 
+                c: res.c, pc: res.pc, 
+                regularPrice: res.c, regularChangePct: res.dp, 
+                marketState: 'REGULAR', extPrice: null, extPercent: null 
+            };
         } catch(e) {}
 
-        return { c: 0, pc: 0 };
+        return { c: 0, pc: 0, regularPrice: 0, regularChangePct: 0, marketState: 'REGULAR', extPrice: null, extPercent: null };
     };
 
-    // 📌 [FIX] ระบบ Safe Merge: อัปเดตเฉพาะราคา ห้ามเซฟทับโครงสร้างแถวเด็ดขาด ป้องกันแอดแล้วหาย
     const fetchRealPrices = async () => {
-        if (!FINNHUB_API_KEY) return;
-        
-        // 1. สแกนว่ามีหุ้นอะไรต้องดึงบ้าง จาก LocalStorage ปัจจุบัน
         const curData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         const allSyms = new Set();
         (curData.holdings || []).forEach(h => allSyms.add(h.symbol));
@@ -127,28 +173,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const priceMap = {};
         
-        // 2. ดึงราคาทั้งหมด (Async กินเวลา 1-2 วิ)
         await Promise.allSettled(Array.from(allSyms).map(async (sym) => {
             const data = await fetchSafePrice(sym);
             if (data.c > 0) priceMap[sym] = data;
         }));
 
-        // 3. 🚨 รีโหลด LocalStorage ใหม่อีกครั้ง! (ป้องกันการเขียนทับสิ่งที่คุณเพิ่งลบ/เพิ่ม/เรียง ใน 2 วิที่ผ่านมา)
         const freshData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         if (!freshData.holdings) freshData.holdings = [];
         if (!freshData.watchlist) freshData.watchlist = [];
         if (!freshData.sectors) freshData.sectors = curData.sectors || [];
 
-        // 4. หยอดราคาใหม่ใส่เข้าไปเฉยๆ
-        freshData.holdings.forEach(h => { if (priceMap[h.symbol]) { h.currentPrice = priceMap[h.symbol].c; h.previousClose = priceMap[h.symbol].pc; } });
-        freshData.watchlist.forEach(w => { if (priceMap[w.symbol]) { w.currentPrice = priceMap[w.symbol].c; w.previousClose = priceMap[w.symbol].pc; } });
+        // 📌 ยัดข้อมูลราคาและเวลาตลาดลง Watchlist + Holdings
+        freshData.holdings.forEach(h => { 
+            if (priceMap[h.symbol]) { 
+                const p = priceMap[h.symbol];
+                h.currentPrice = p.c; 
+                h.previousClose = p.pc; 
+                h.regularPrice = p.regularPrice;
+                h.regularChangePct = p.regularChangePct;
+                h.extPrice = p.extPrice;
+                h.extPercent = p.extPercent;
+                h.marketState = p.marketState;
+            } 
+        });
+
+        freshData.watchlist.forEach(w => { 
+            if (priceMap[w.symbol]) { 
+                const p = priceMap[w.symbol];
+                w.currentPrice = p.c; 
+                w.previousClose = p.pc; 
+                w.regularPrice = p.regularPrice;
+                w.regularChangePct = p.regularChangePct;
+                w.extPrice = p.extPrice;
+                w.extPercent = p.extPercent;
+                w.marketState = p.marketState;
+            } 
+        });
+
         freshData.sectors.forEach(s => { 
             if (priceMap[s.symbol]) { s.change = priceMap[s.symbol].pc > 0 ? ((priceMap[s.symbol].c - priceMap[s.symbol].pc) / priceMap[s.symbol].pc) * 100 : 0; } 
         });
 
         freshData.sectors.sort((a, b) => b.change - a.change);
         
-        // 5. เซฟกลับอย่างปลอดภัย
         window.kodaApiData = freshData;
         localStorage.setItem('koda_portfolio_data', JSON.stringify(freshData));
         localStorage.setItem('koda_last_fetch_time', Date.now().toString());
@@ -317,11 +384,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-        const renderHome = () => {
+    const renderHome = () => {
         const totalValueEl = document.getElementById('total-value');
         if (!totalValueEl) return;
         
-        // 📌 ดึงยอด Cash มาเป็นค่าเริ่มต้น (ถ้าไม่มีให้เป็น 0)
         let cash = window.kodaApiData.cash || 0;
         let total = cash, prevTotal = cash, best = null, worst = null; 
 
@@ -390,6 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isEditMode = false;
     let symbolToDelete = null;
 
+    // 📌 เรนเดอร์ Watchlist (เพิ่ม Pre/Post ใต้ราคาหลัก)
     const renderWatchlist = () => {
         const container = document.getElementById('watchlist-container');
         if (!container) return;
@@ -399,9 +466,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         container.innerHTML = window.kodaApiData.watchlist.map(s => {
-            const pct = s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0;
+            const mainPrice = s.regularPrice || s.currentPrice || 0;
+            const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
             const c = formatPercent(pct);
             
+            // 🚀 Logic เสริมสร้างราคา Pre/Post
+            let extHtml = '';
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPrice !== undefined) {
+                const extStateText = s.marketState === 'PRE' ? '☀️ ก่อนตลาดเปิด' : '🌑 หลังตลาดปิด';
+                const isExtUp = s.extPercent > 0;
+                const isExtDown = s.extPercent < 0;
+                const extColor = isExtUp ? 'text-success' : (isExtDown ? 'text-danger' : 'text-slate-500');
+                const extSign = isExtUp ? '+' : '';
+                
+                extHtml = `
+                <div class="flex items-center justify-end gap-1 mt-0.5">
+                    <span class="text-[9px] text-slate-400 font-bold">${extStateText}</span>
+                    <span class="text-[10px] font-bold text-slate-300">${formatCurrency(s.extPrice)}</span>
+                    <span class="text-[10px] font-bold ${extColor}">${extSign}${s.extPercent.toFixed(2)}%</span>
+                </div>`;
+            }
+
             const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
             let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
             if(s.symbol.includes('BINANCE:')) fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.replace('BINANCE:','').replace('USDT','')}.png`;
@@ -416,11 +501,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
                         <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
                     </div>
-                    <div class="text-right">
-                        <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(s.currentPrice)}</p>
-                        <div class="inline-block px-1.5 py-0.5 rounded ${c.bgClass}">
-                            <p class="${c.colorClass} text-[10px] font-bold">${c.text}</p>
+                    <div class="flex flex-col items-end justify-center">
+                        <div class="flex items-center gap-1.5">
+                            <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
+                            <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
+                                <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
+                            </div>
                         </div>
+                        ${extHtml}
                     </div>
                 </div>
             `;
