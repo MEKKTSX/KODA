@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคาและข้อมูลทั่วไป
+    // 📌 ดึงข้อมูลราคา (กลับมาใช้โครงสร้างซ้าย-ขวาเดิม)
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
@@ -124,11 +124,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const extLabelEl = document.getElementById('extended-label');
         const extPriceEl = document.getElementById('extended-price');
         const extChangeEl = document.getElementById('extended-change');
-        const extIcon = document.getElementById('extended-icon');
         const dotEl = document.getElementById('market-status-dot');
 
         let currentPrice, change, percentChange, currencyCode, isPositive;
-        let extPrice = null, extChange = null, extPercent = null, stateText = '', iconText = '';
+        let extPrice = null, extChange = null, extPercent = null, stateText = '';
 
         if (source === 'yf') {
             currentPrice = data.regularMarketPrice || data.preMarketPrice || data.postMarketPrice;
@@ -141,14 +140,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (marketState === 'PRE') {
                 extPrice = data.preMarketPrice || data.regularMarketPreviousClose;
+                extChange = data.preMarketChange || 0;
                 extPercent = data.preMarketChangePercent || 0;
-                stateText = 'ก่อนตลาดเปิด'; iconText = '☀️';
+                stateText = '☀️ ก่อนตลาดเปิด';
             } else if (marketState === 'REGULAR') {
                 extPrice = null; 
             } else if (marketState === 'POST' || marketState === 'CLOSED') {
                 extPrice = data.postMarketPrice || currentPrice;
+                extChange = data.postMarketChange || 0;
                 extPercent = data.postMarketChangePercent || 0;
-                stateText = 'หลังตลาดปิด'; iconText = '🌑';
+                stateText = '🌑 หลังตลาดปิด';
             }
             
             if (marketState === 'REGULAR') {
@@ -179,29 +180,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         priceEl.dataset.rawPrice = currentPrice;
-        priceEl.textContent = `$${fmtPrice(currentPrice)}`;
+        priceEl.textContent = fmtPrice(currentPrice);
+        document.getElementById('detail-currency').textContent = currencyCode;
         
         changeEl.className = `text-sm font-bold flex items-center gap-1 mt-1 ${isPositive ? 'text-success' : 'text-danger'}`;
         changeEl.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isPositive ? 'arrow_upward' : 'arrow_downward'}</span> ${Math.abs(change).toFixed(2)} (${Math.abs(percentChange).toFixed(2)}%)`;
 
         if (extPrice !== null && extPrice !== undefined) {
             extContainer.classList.remove('hidden');
-            extContainer.classList.add('inline-flex', 'items-center');
-            extLabelEl.textContent = `${stateText}:`;
-            if (extIcon) extIcon.textContent = iconText;
-            extPriceEl.textContent = ` $${fmtPrice(extPrice)}`;
+            extContainer.classList.add('flex'); // กลับมาใช้ flex ด้านขวา
+            extLabelEl.textContent = stateText;
+            extPriceEl.textContent = fmtPrice(extPrice);
+            document.getElementById('extended-currency').textContent = currencyCode;
             
             if (extPercent === 0 || !extPercent) {
                 extChangeEl.textContent = `(0.00%)`;
-                extChangeEl.className = `ml-1 font-bold text-slate-500`;
+                extChangeEl.className = `font-bold text-[11px] mt-0.5 text-slate-500`;
             } else {
                 const isExtPos = extPercent > 0;
                 const sign = isExtPos ? '+' : ''; 
-                extChangeEl.textContent = `(${sign}${extPercent.toFixed(2)}%)`;
-                extChangeEl.className = `ml-1 font-bold ${isExtPos ? 'text-success' : 'text-danger'}`;
+                extChangeEl.textContent = `${sign}${extChange.toFixed(2)} (${sign}${extPercent.toFixed(2)}%)`;
+                extChangeEl.className = `font-bold text-[11px] mt-0.5 ${isExtPos ? 'text-success' : 'text-danger'}`;
             }
         } else {
-            extContainer.classList.remove('inline-flex', 'items-center');
+            extContainer.classList.remove('flex');
             extContainer.classList.add('hidden');
         }
     };
@@ -276,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPriceAndOHLC();
 
     // ==========================================
-    // 📌 ตัวดึงกราฟ (ใช้ซ้ำได้ใน TAB 1 และ TAB 3)
+    // 📌 ตัวดึงกราฟหลัก (อัปเกรดให้ดึง 2Y และ 5Y ได้)
     // ==========================================
     const loadLightweightCharts = () => new Promise((resolve) => {
         if (window.LightweightCharts) { resolve(); return; }
@@ -286,8 +288,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const fetchCandleData = async (tfRange) => {
-        const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '5Y': '5y' }; 
+        // รองรับ 2Y (รายวัน) และ 5Y (รายสัปดาห์)
+        const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
+        const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
+        
         const yfRange = rangeMap[tfRange] || '1y';
+        const yfInterval = intervalMap[tfRange] || '1d';
 
         let yfSym = symbol;
         if (symbol === 'XAUUSD') yfSym = 'GC=F';
@@ -295,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (symbol.includes('OANDA:')) yfSym = symbol.split(':')[1].replace('_', '') + '=X';
         else if (symbol.includes('BINANCE:')) yfSym = symbol.split(':')[1].replace('USDT', '-USD');
 
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSym)}?range=${yfRange}&interval=1d`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSym)}?range=${yfRange}&interval=${yfInterval}`;
         const proxies = [
             u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
             u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
@@ -581,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = rows.join('');
     };
 
-    const renderTargetPrice = (targets) => {
+    const renderTargetPrice = async (targets) => {
         const fmt = (num) => num ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
         const cur = targets.current;
         const high = targets.high;
@@ -604,21 +610,33 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('target-low-box').textContent = `ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%`;
         document.getElementById('target-current-box').textContent = fmt(cur);
 
-        // จัดตำแหน่งกล่องให้อยู่ในกราฟ (จำลอง)
         const range = high - low;
-        const curPosPct = Math.max(0, Math.min(100, ((cur - low) / range) * 100)); // 0 = Bottom, 100 = Top
+        const curPosPct = Math.max(0, Math.min(100, ((cur - low) / range) * 100)); 
         document.getElementById('target-current-box').style.bottom = `${curPosPct}%`;
 
-        // วาด Line Chart เล็กๆ ฝั่งซ้าย
+        // 🚀 ดึงกราฟราคาย้อนหลัง 1 ปี ของจริงมาวาดเส้นให้สมจริง
+        const hist = await fetchCandleData('1Y');
+        let chartPoints = [];
+        if (hist && hist.closes) {
+            chartPoints = hist.closes.filter(c => c !== null);
+        } else {
+            chartPoints = [cur*0.8, cur*0.9, cur]; // เผื่อ API ร่วง
+        }
+
         const ctx = document.getElementById('target-line-chart');
         if (window.targetLineChartInstance) window.targetLineChartInstance.destroy();
         
-        // จำลอง Data แบบเฉียงขึ้นไปหา Current
-        const fakeData = [cur*0.8, cur*0.85, cur*0.75, cur*0.9, cur];
         window.targetLineChartInstance = new Chart(ctx, {
             type: 'line',
-            data: { labels: ['1','2','3','4','5'], datasets: [{ data: fakeData, borderColor: '#34a8eb', borderWidth: 2, tension: 0.3, pointRadius: 0 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: low, max: high } } }
+            data: { 
+                labels: new Array(chartPoints.length).fill(''), 
+                datasets: [{ data: chartPoints, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 }] 
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, 
+                scales: { x: { display: false }, y: { display: false, min: Math.min(...chartPoints, low), max: Math.max(...chartPoints, high) } },
+                layout: { padding: { top: 10, bottom: 10 } }
+            }
         });
     };
 
@@ -632,12 +650,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await loadLightweightCharts();
             
-            // Map timeframe
-            let rangeToFetch = '1M';
-            if (currentTAMode === 'medium') rangeToFetch = '6M';
-            if (currentTAMode === 'long') rangeToFetch = '1Y';
-            
-            // ใช้ฟังก์ชัน fetchCandleData ที่มีอยู่แล้ว (มันดึงรายวันมาให้)
+            // 📌 ถ้ารายวัน = ย้อนหลัง 2 ปี, ถ้าสัปดาห์ = ย้อนหลัง 5 ปี
+            let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
             if (!candleResult) throw new Error("No data");
 
@@ -646,25 +660,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let chartData = timestamps.map((t, i) => ({ 
                 time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), value: Number(volumes[i] || 0) 
             })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
-
-            // ถ้าเลือก weekly ต้องจับกลุ่มข้อมูล (จำลองคร่าวๆ ด้วยการเลือกข้าม)
-            if (currentTATF === 'weekly' && chartData.length > 5) {
-                const weeklyData = [];
-                for (let i = 0; i < chartData.length; i+=5) {
-                    const chunk = chartData.slice(i, i+5);
-                    if(chunk.length > 0) {
-                        weeklyData.push({
-                            time: chunk[chunk.length-1].time,
-                            open: chunk[0].open,
-                            high: Math.max(...chunk.map(c=>c.high)),
-                            low: Math.min(...chunk.map(c=>c.low)),
-                            close: chunk[chunk.length-1].close,
-                            value: chunk.reduce((sum, c) => sum + c.value, 0)
-                        });
-                    }
-                }
-                chartData = weeklyData;
-            }
 
             container.innerHTML = '';
             if (taChartInstance) taChartInstance.remove();
@@ -687,7 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
 
-            // สร้าง Signal (Bull/Bear) แบบจำลองตาม SMA
+            // สร้าง Signal (Bull/Bear) 
             let bullCount = 0, bearCount = 0;
             const markers = [];
             const sma20 = [];
@@ -698,8 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const avg = slice.reduce((a,b)=>a+b.close,0)/20;
                     sma20.push({time: d.time, value: avg});
                     
-                    // หาจุดตัดขึ้นลง
-                    if (i > 25 && i % 5 === 0) { 
+                    if (i > 25 && i % Math.max(5, Math.floor(chartData.length/40)) === 0) { 
                         if (d.close > avg) { 
                             markers.push({ time: d.time, position: 'belowBar', color: '#00c076', shape: 'circle', text: 'B' });
                             bullCount++;
@@ -732,7 +726,18 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
             document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
 
-            taChartInstance.timeScale().fitContent();
+            // 📌 Logic การซูม (ระยะสั้น = 3 เดือน, กลาง = 6 เดือน, ยาว = ทั้งหมด)
+            if (currentTAMode === 'short') {
+                const lookback = currentTATF === 'daily' ? 60 : 12; 
+                const from = chartData[Math.max(0, chartData.length - lookback)].time;
+                taChartInstance.timeScale().setVisibleRange({ from: from, to: chartData[chartData.length-1].time });
+            } else if (currentTAMode === 'medium') {
+                const lookback = currentTATF === 'daily' ? 120 : 24; 
+                const from = chartData[Math.max(0, chartData.length - lookback)].time;
+                taChartInstance.timeScale().setVisibleRange({ from: from, to: chartData[chartData.length-1].time });
+            } else {
+                taChartInstance.timeScale().fitContent();
+            }
         } catch (e) {
             container.innerHTML = `<p class="text-danger text-xs text-center mt-10">โหลดกราฟเทคนิคไม่ได้</p>`;
         }
@@ -749,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.success) {
                 renderAnalystRatings(data.recommendation);
-                renderTargetPrice(data.targets);
+                await renderTargetPrice(data.targets);
                 
                 // จัดการปุ่มหมวดหมู่
                 document.querySelectorAll('.ta-mode-btn').forEach(btn => {
@@ -786,7 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (ดึงผ่าน Python Backend ของเราเอง 10 ไตรมาส)
+    // 📌 TAB 3: สรุปไตรมาส (เพิ่ม Fallback Finnhub ถ้า Yahoo ล่ม)
     // ==========================================
     const fetchQuarterlyEarnings = async () => {
         const container = document.getElementById('quarterly-list');
@@ -807,21 +812,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
-            const data = await res.json();
+            let earningsData = [];
+            let nextDateText = null;
 
-            if (!data.success || !data.earnings || data.earnings.length === 0) {
-                throw new Error("No data");
+            // 1. ลองดึงจาก Python Backend (Yahoo) ก่อน
+            try {
+                const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
+                const data = await res.json();
+                if (data.success && data.earnings && data.earnings.length > 0) {
+                    earningsData = data.earnings;
+                    if (data.nextEarningsDate) {
+                        nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    }
+                }
+            } catch(e) {}
+
+            // 2. 🚀 Fallback ก๊อกสอง: ถ้า Yahoo ไม่มีข้อมูล ให้ไปขุดจาก Finnhub แทน (การันตีขึ้น 100%)
+            if (earningsData.length === 0) {
+                const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
+                const fhData = await fhRes.json();
+                if (fhData && fhData.length > 0) {
+                    earningsData = fhData.map(q => ({
+                        quarter: `Q${Math.ceil((new Date(q.period).getMonth() + 1) / 3)} ${new Date(q.period).getFullYear()}`,
+                        estimate: q.estimate,
+                        actual: q.actual,
+                        surprise: q.surprisePercent || (q.actual && q.estimate ? ((q.actual - q.estimate)/Math.abs(q.estimate)*100) : 0)
+                    }));
+                }
             }
 
-            let nextDateText = null;
-            if (data.nextEarningsDate) {
-                nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+            if (earningsData.length === 0) throw new Error("No data");
+
+            if (nextDateText) {
                 nextDateEl.textContent = nextDateText;
                 nextDateEl.classList.remove('hidden');
             }
 
-            const html = data.earnings.map(q => {
+            const html = earningsData.slice(0, 10).map(q => {
                 const isSurprise = q.surprise > 0;
                 const actColor = (q.actual !== null && q.estimate !== null && q.actual >= q.estimate) ? 'text-success' : 'text-danger';
                 return `
@@ -829,11 +856,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="col-span-3">
                         <p class="text-white font-bold">${q.quarter}</p>
                     </div>
-                    <div class="col-span-3 text-right text-slate-400 font-medium">${q.estimate !== null ? q.estimate.toFixed(2) : '-'}</div>
-                    <div class="col-span-3 text-right ${actColor} font-bold">${q.actual !== null ? q.actual.toFixed(2) : '-'}</div>
+                    <div class="col-span-3 text-right text-slate-400 font-medium">${q.estimate !== null && q.estimate !== undefined ? q.estimate.toFixed(2) : '-'}</div>
+                    <div class="col-span-3 text-right ${actColor} font-bold">${q.actual !== null && q.actual !== undefined ? q.actual.toFixed(2) : '-'}</div>
                     <div class="col-span-3 text-right">
                         <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${isSurprise ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}">
-                            ${isSurprise ? '+' : ''}${q.surprise !== null ? q.surprise.toFixed(2) : '0.00'}%
+                            ${isSurprise ? '+' : ''}${q.surprise !== null && q.surprise !== undefined ? q.surprise.toFixed(2) : '0.00'}%
                         </span>
                     </div>
                 </div>`;
@@ -848,7 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ==========================================
-    // 📌 TAB 4: ข้อมูลการเงิน (ดึงผ่าน Python Backend เช่นกัน)
+    // 📌 TAB 4: ข้อมูลการเงิน
     // ==========================================
     let finDataCache = [];
     let currentFinMetric = 'totalRevenue';
@@ -977,7 +1004,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 📌 TAB 5: ข่าวล่าสุด 
+    // 📌 TAB 5: ข่าวล่าสุด
     // ==========================================
     const fetchLatestNews = async () => {
         const container = document.getElementById('stock-news-container');
