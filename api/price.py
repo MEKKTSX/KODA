@@ -7,7 +7,6 @@ from datetime import datetime
 import pytz
 import math
 
-# ฟังก์ชันกรองค่า Nan/Inf ให้ปลอดภัยก่อนแปลงเป็น JSON
 def clean_val(v):
     try:
         f = float(v)
@@ -96,8 +95,6 @@ class handler(BaseHTTPRequestHandler):
 
     def get_analysis(self, ticker, symbol):
         info = ticker.info
-        
-        # ดึงราคาเป้าหมาย
         targets = {
             "current": clean_val(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')),
             "high": clean_val(info.get('targetHighPrice')),
@@ -106,13 +103,10 @@ class handler(BaseHTTPRequestHandler):
             "median": clean_val(info.get('targetMedianPrice')),
             "analystCount": clean_val(info.get('numberOfAnalystOpinions'))
         }
-        
-        # ดึงข้อมูลการโหวตของนักวิเคราะห์
         rec_data = {
             "strongBuy": 0, "buy": 0, "hold": 0, "sell": 0, "strongSell": 0, 
             "consensus": info.get('recommendationKey', 'none')
         }
-        
         try:
             rec_df = ticker.recommendations
             if rec_df is not None and not rec_df.empty:
@@ -160,10 +154,11 @@ class handler(BaseHTTPRequestHandler):
         except Exception: pass
             
         try:
-            earn = ticker.earnings_dates
+            # 🚀 บังคับดึง 40 แถวเพื่อให้มั่นใจว่าจะได้ 10 ไตรมาสย้อนหลัง
+            earn = ticker.get_earnings_dates(limit=40)
             import pandas as pd
             if earn is not None and not earn.empty:
-                now = pd.Timestamp.now(tz=earn.index.tz)
+                now = pd.Timestamp.now(tz=earn.index.tz if earn.index.tz else 'UTC')
                 future = earn[earn.index >= now].sort_index()
                 if not future.empty: next_earnings = future.index[0].strftime('%Y-%m-%d')
                 
