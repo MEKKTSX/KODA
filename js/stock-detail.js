@@ -188,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (extPrice !== null && extPrice !== undefined) {
             extContainer.classList.remove('hidden');
-            extContainer.classList.add('flex'); 
+            extContainer.classList.add('flex'); // กลับมาใช้ flex ด้านขวา
             extLabelEl.textContent = stateText;
             extPriceEl.textContent = fmtPrice(extPrice);
             document.getElementById('extended-currency').textContent = currencyCode;
@@ -680,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await loadLightweightCharts();
             
-            // 📌 ถ้ารายวัน = ย้อนหลัง 2 ปี, ถ้าสัปดาห์ = ย้อนหลัง 5 ปี
+            // เลือกระยะเวลาตามปุ่ม TF
             let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
             if (!candleResult) throw new Error("No data");
@@ -754,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
             document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
 
-            // 📌 Logic การซูม (ระยะสั้น = 3 เดือน, กลาง = 6 เดือน, ยาว = ทั้งหมด)
+            // จัดการ Zoom ตามปุ่ม ระยะสั้น กลาง ยาว
             if (currentTAMode === 'short') {
                 const lookback = currentTATF === 'daily' ? 60 : 12; 
                 const from = chartData[Math.max(0, chartData.length - lookback)].time;
@@ -785,6 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAnalystRatings(cached.data.recommendation);
             await renderTargetPrice(cached.data.targets);
             
+            // Events สำหรับปุ่ม (กรณีดึงจาก Cache)
             document.querySelectorAll('.ta-mode-btn').forEach(btn => {
                 btn.onclick = (e) => {
                     document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
@@ -852,7 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (ดึงผ่าน Python Backend ของเราเอง 10 ไตรมาส 100%)
+    // 📌 TAB 3: สรุปไตรมาส (10 ไตรมาส)
     // ==========================================
     const fetchQuarterlyEarnings = async () => {
         const container = document.getElementById('quarterly-list');
@@ -873,23 +874,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            
-            // 🚀 ยิงตรงไปหา Python Backend (yfinance) ของเรา 100% ไม่มี Fallback Finnhub แล้ว
-            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
-            const data = await res.json();
+            let earningsData = [];
+            let nextDateText = null;
 
-            if (!data.success || !data.earnings || data.earnings.length === 0) {
-                throw new Error("No data");
+            try {
+                const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
+                const data = await res.json();
+                if (data.success && data.earnings && data.earnings.length > 0) {
+                    earningsData = data.earnings;
+                    if (data.nextEarningsDate) {
+                        nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    }
+                }
+            } catch(e) {}
+
+            if (earningsData.length === 0) {
+                const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
+                const fhData = await fhRes.json();
+                if (fhData && fhData.length > 0) {
+                    earningsData = fhData.map(q => ({
+                        quarter: `Q${Math.ceil((new Date(q.period).getMonth() + 1) / 3)} ${new Date(q.period).getFullYear()}`,
+                        estimate: q.estimate,
+                        actual: q.actual,
+                        surprise: q.surprisePercent || (q.actual && q.estimate ? ((q.actual - q.estimate)/Math.abs(q.estimate)*100) : 0)
+                    }));
+                }
             }
 
-            let nextDateText = null;
-            if (data.nextEarningsDate) {
-                nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+            if (earningsData.length === 0) throw new Error("No data");
+
+            if (nextDateText) {
                 nextDateEl.textContent = nextDateText;
                 nextDateEl.classList.remove('hidden');
             }
 
-            const html = data.earnings.map(q => {
+            const html = earningsData.slice(0, 10).map(q => {
                 const isSurprise = q.surprise > 0;
                 const actColor = (q.actual !== null && q.estimate !== null && q.actual >= q.estimate) ? 'text-success' : 'text-danger';
                 return `
