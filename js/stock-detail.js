@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (กลับมาใช้โครงสร้างซ้าย-ขวาเดิม)
+    // 📌 ดึงข้อมูลราคา (กลับมาใช้โครงสร้างซ้าย-ขวาเดิม 100%)
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
@@ -199,8 +199,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 const isExtPos = extPercent > 0;
                 const sign = isExtPos ? '+' : ''; 
-                extChangeEl.textContent = `${sign}${extChange.toFixed(2)} (${sign}${extPercent.toFixed(2)}%)`;
-                extChangeEl.className = `font-bold text-[11px] mt-0.5 ${isExtPos ? 'text-success' : 'text-danger'}`;
+                extChangeEl.textContent = `${sign}${extPercent.toFixed(2)}%`;
+                extChangeEl.className = `font-bold text-[11px] mt-0.5 ml-1 ${isExtPos ? 'text-success' : 'text-danger'}`;
             }
         } else {
             extContainer.classList.remove('flex');
@@ -288,7 +288,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const fetchCandleData = async (tfRange) => {
-        // รองรับ 2Y (รายวัน) และ 5Y (รายสัปดาห์)
         const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
         const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
         
@@ -542,7 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-refresh-summary').addEventListener('click', () => fetchCompanySummary(true));
 
     // ==========================================
-    // 📌 TAB ใหม่: บทวิเคราะห์ (Analyst / TA)
+    // 📌 TAB ใหม่: บทวิเคราะห์ (Analysis / TA) 
     // ==========================================
     let taChartInstance = null;
     let taSeries = null;
@@ -587,6 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = rows.join('');
     };
 
+    // 🚀 วาดกราฟเป้าหมาย แบบเส้นจริง (Webull Style)
     const renderTargetPrice = async (targets) => {
         const fmt = (num) => num ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
         const cur = targets.current;
@@ -605,44 +605,74 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
 
-        document.getElementById('target-high-box').textContent = `สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%`;
-        document.getElementById('target-mean-box').textContent = `เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%`;
-        document.getElementById('target-low-box').textContent = `ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%`;
-        document.getElementById('target-current-box').textContent = fmt(cur);
-
-        const range = high - low;
-        const curPosPct = Math.max(0, Math.min(100, ((cur - low) / range) * 100)); 
-        document.getElementById('target-current-box').style.bottom = `${curPosPct}%`;
-
-        // 🚀 ดึงกราฟราคาย้อนหลัง 1 ปี ของจริงมาวาดเส้นให้สมจริง
+        // ดึงกราฟราคาย้อนหลัง 1 ปี 
         const hist = await fetchCandleData('1Y');
         let chartPoints = [];
         if (hist && hist.closes) {
             chartPoints = hist.closes.filter(c => c !== null);
         } else {
-            chartPoints = [cur*0.8, cur*0.9, cur]; // เผื่อ API ร่วง
+            chartPoints = [cur*0.8, cur*0.9, cur]; // Fallback
+        }
+
+        const paddingLen = Math.floor(chartPoints.length * 0.25); // เว้นที่ว่างด้านขวา 25% สำหรับป้ายราคา
+        const labels = new Array(chartPoints.length + paddingLen).fill('');
+        
+        // จัดเตรียม Data สำหรับเส้นต่างๆ
+        const histData = [...chartPoints, ...new Array(paddingLen).fill(null)];
+        const highLine = new Array(chartPoints.length + paddingLen).fill(null);
+        const meanLine = new Array(chartPoints.length + paddingLen).fill(null);
+        const lowLine = new Array(chartPoints.length + paddingLen).fill(null);
+        const curLine = new Array(chartPoints.length + paddingLen).fill(null);
+        
+        // วาดเส้นแนวนอนต่อจากจุดสุดท้ายของราคา
+        for(let i = chartPoints.length - 1; i < labels.length; i++) {
+            highLine[i] = high; meanLine[i] = mean; lowLine[i] = low; curLine[i] = cur;
         }
 
         const ctx = document.getElementById('target-line-chart');
         if (window.targetLineChartInstance) window.targetLineChartInstance.destroy();
         
+        const yMin = Math.min(...chartPoints, low) * 0.95;
+        const yMax = Math.max(...chartPoints, high) * 1.05;
+
+        // วาดกราฟด้วย Chart.js แบบ Multi-Dataset
         window.targetLineChartInstance = new Chart(ctx, {
             type: 'line',
             data: { 
-                labels: new Array(chartPoints.length).fill(''), 
-                datasets: [{ data: chartPoints, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 }] 
+                labels: labels, 
+                datasets: [
+                    { data: histData, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 },
+                    { data: highLine, borderColor: '#00c076', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                    { data: meanLine, borderColor: '#26a69a', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                    { data: lowLine, borderColor: '#ff4d4d', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                    { data: curLine, borderColor: '#34a8eb', borderWidth: 1, borderDash: [2, 4], pointRadius: 0 }
+                ] 
             },
             options: { 
                 responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, 
-                scales: { x: { display: false }, y: { display: false, min: Math.min(...chartPoints, low), max: Math.max(...chartPoints, high) } },
-                layout: { padding: { top: 10, bottom: 10 } }
+                scales: { x: { display: false }, y: { display: false, min: yMin, max: yMax } },
+                layout: { padding: { top: 15, bottom: 15, right: 10 } },
+                animation: { duration: 0 } 
             }
         });
+
+        // 🚀 แปะ Badge ตัวเลขลงไปด้านขวาให้ตรงกับเส้น
+        const badgesContainer = document.getElementById('target-badges-container');
+        const yRange = yMax - yMin;
+        const getTopPct = (val) => Math.max(0, Math.min(100, 100 - ((val - yMin) / yRange) * 100));
+
+        badgesContainer.innerHTML = `
+            <div class="absolute right-0 bg-[#00c076] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-10" style="top: ${getTopPct(high)}%">สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%</div>
+            <div class="absolute right-0 bg-[#26a69a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-10" style="top: ${getTopPct(mean)}%">เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%</div>
+            <div class="absolute right-0 bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-20" style="top: ${getTopPct(cur)}%">${fmt(cur)}</div>
+            <div class="absolute right-0 bg-[#ff4d4d] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-10" style="top: ${getTopPct(low)}%">ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%</div>
+        `;
     };
 
     let currentTAMode = 'short'; // short, medium, long
     let currentTATF = 'daily'; // daily, weekly
     
+    // 🚀 กราฟวิเคราะห์ทางเทคนิค (ย้อน 2 ปี / 5 ปี)
     const renderTAChart = async () => {
         const container = document.getElementById('ta-chart-container');
         container.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
@@ -650,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await loadLightweightCharts();
             
-            // 📌 ถ้ารายวัน = ย้อนหลัง 2 ปี, ถ้าสัปดาห์ = ย้อนหลัง 5 ปี
+            // เลือกระยะเวลาตามปุ่ม TF
             let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
             if (!candleResult) throw new Error("No data");
@@ -682,7 +712,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
 
-            // สร้าง Signal (Bull/Bear) 
             let bullCount = 0, bearCount = 0;
             const markers = [];
             const sma20 = [];
@@ -707,7 +736,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (markers.length > 0) taSeries.setMarkers(markers);
             
-            // อัปเดตข้อความ Signal
             const titleEl = document.getElementById('ta-signal-title');
             if (bullCount > bearCount + 2) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาขึ้นที่แข็งแกร่งมาก';
@@ -726,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
             document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
 
-            // 📌 Logic การซูม (ระยะสั้น = 3 เดือน, กลาง = 6 เดือน, ยาว = ทั้งหมด)
+            // จัดการ Zoom ตามปุ่ม ระยะสั้น กลาง ยาว
             if (currentTAMode === 'short') {
                 const lookback = currentTATF === 'daily' ? 60 : 12; 
                 const from = chartData[Math.max(0, chartData.length - lookback)].time;
@@ -743,36 +771,70 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // 🚀 โหลดหน้า Analysis + Cache 15 วัน
     const fetchAnalysisData = async () => {
         document.getElementById('analysis-loading').classList.remove('hidden');
         document.getElementById('analysis-content').classList.add('hidden');
         
+        const cacheKey = `koda_analysis_v4_${symbol}`;
+        const cached = JSON.parse(localStorage.getItem(cacheKey));
+        const now = Date.now();
+
+        // Cache 15 วัน
+        if (cached && (now - cached.timestamp < 15 * 24 * 60 * 60 * 1000)) {
+            renderAnalystRatings(cached.data.recommendation);
+            await renderTargetPrice(cached.data.targets);
+            
+            // Events สำหรับปุ่ม (กรณีดึงจาก Cache)
+            document.querySelectorAll('.ta-mode-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
+                    e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
+                    currentTAMode = e.currentTarget.dataset.mode;
+                    renderTAChart();
+                };
+            });
+            document.querySelectorAll('.ta-tf-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
+                    e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
+                    currentTATF = e.currentTarget.dataset.tf;
+                    renderTAChart();
+                };
+            });
+
+            await renderTAChart();
+            document.getElementById('analysis-loading').classList.add('hidden');
+            document.getElementById('analysis-content').classList.remove('hidden');
+            return;
+        }
+
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
             const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=analysis`);
             const data = await res.json();
 
             if (data.success) {
+                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: data }));
                 renderAnalystRatings(data.recommendation);
                 await renderTargetPrice(data.targets);
                 
-                // จัดการปุ่มหมวดหมู่
                 document.querySelectorAll('.ta-mode-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
+                    btn.onclick = (e) => {
                         document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
                         e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
                         currentTAMode = e.currentTarget.dataset.mode;
                         renderTAChart();
-                    });
+                    };
                 });
 
                 document.querySelectorAll('.ta-tf-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
+                    btn.onclick = (e) => {
                         document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
                         e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
                         currentTATF = e.currentTarget.dataset.tf;
                         renderTAChart();
-                    });
+                    };
                 });
 
                 await renderTAChart();
@@ -791,7 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (เพิ่ม Fallback Finnhub ถ้า Yahoo ล่ม)
+    // 📌 TAB 3: สรุปไตรมาส (10 ไตรมาส)
     // ==========================================
     const fetchQuarterlyEarnings = async () => {
         const container = document.getElementById('quarterly-list');
@@ -815,7 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let earningsData = [];
             let nextDateText = null;
 
-            // 1. ลองดึงจาก Python Backend (Yahoo) ก่อน
             try {
                 const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
                 const data = await res.json();
@@ -827,7 +888,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch(e) {}
 
-            // 2. 🚀 Fallback ก๊อกสอง: ถ้า Yahoo ไม่มีข้อมูล ให้ไปขุดจาก Finnhub แทน (การันตีขึ้น 100%)
             if (earningsData.length === 0) {
                 const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
                 const fhData = await fhRes.json();
