@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (Real-time อัปเดตทุก 5 วินาที)
+    // 📌 ดึงข้อมูลราคา (Real-Time 5 วินาที)
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         fetchAndUpdateYF(); 
         if(!isRealtimeRunning) {
-            // 🚀 อัปเดตทุก 5 วินาที ตามที่ตกลงกันไว้ครับ (ถ้า 3 วิ ให้แก้เป็น 3000)
+            // 🚀 อัปเดตทุกๆ 5 วิ
             setInterval(fetchAndUpdateYF, 5000); 
             isRealtimeRunning = true;
         }
@@ -287,8 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPriceAndOHLC();
 
     // ==========================================
-    // 📌 ตัวดึงกราฟหลัก (อัปเกรดความเสถียร ใช้ Finnhub เป็นหลัก)
-    // แก้ปัญหา: โหลดกราฟเทคนิคไม่ได้ / เส้น Target Price ไม่แสดง
+    // 📌 ตัวดึงกราฟหลัก (อัปเกรด โหลดตรงไปตรงมา ไม่หมุนรอนาน)
     // ==========================================
     const loadLightweightCharts = () => new Promise((resolve) => {
         if (window.LightweightCharts) { resolve(); return; }
@@ -305,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
         
-        // 🚀 1. คริปโต ดึงจาก Binance โดยตรง (ลื่นปรี๊ด ไม่ติด CORS)
+        // 1. คริปโต (รันลื่นผ่าน Binance)
         if (isCrypto) {
             try {
                 let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
@@ -328,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
         }
 
-        // 🚀 2. หุ้นทั่วไป ดึงจาก Finnhub เป็นตัวแรก (โคตรเสถียร แก้ปัญหากราฟล่ม 100%)
+        // 2. หุ้นทั่วไป (พึ่ง Finnhub ก่อน ยิงตรงๆ เร็วๆ ไม่มี CORS)
         if (!isThaiStock && !isCrypto) {
             try {
                 const to = Math.floor(Date.now() / 1000);
@@ -340,10 +339,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         return { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
                     }
                 }
-            } catch(e) { console.warn("Finnhub candle fetch failed, switching to fallback"); }
+            } catch(e) {}
         }
 
-        // 🚀 3. ตัวสำรองชั้นที่สอง: Yahoo Finance + AllOrigins (ถอดตัวที่ตายออก)
+        // 3. Fallback (Yahoo Finance ผ่าน Proxy เผื่ออันข้างบนล่ม)
         const yfRange = rangeMap[tfRange] || '1y';
         const yfInterval = intervalMap[tfRange] || '1d';
         let yfSym = symbol;
@@ -352,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
         const proxies = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
             `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
         ];
 
@@ -376,6 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return null;
     };
+
 
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R
@@ -462,22 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cachedCandles && (now - cachedCandles.timestamp < ONE_DAY)) {
                     candles = cachedCandles.data;
                 } else {
-                    let candleResult = null;
-                    let retries = 0;
-                    while (!candleResult && retries < 10) {
-                        if (retries > 0) {
-                            const statusEl = document.getElementById('koda-chart-status');
-                            if (statusEl) statusEl.textContent = `กำลังพยายามดึงข้อมูล (รอบที่ ${retries+1}/10)...`;
-                        }
-                        candleResult = await fetchCandleData(currentTimeframe);
-                        if (!candleResult) {
-                            retries++;
-                            await new Promise(resolve => setTimeout(resolve, 2000));
-                        }
-                    }
-
+                    // 🚀 โหลดรอบเดียว จบๆ ไม่ต้องรอให้หงุดหงิด
+                    let candleResult = await fetchCandleData(currentTimeframe);
+                    
                     if (!candleResult) { 
-                        kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">เซิร์ฟเวอร์ปฏิเสธการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง</p>`; 
+                        kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><span class="material-symbols-outlined text-danger text-4xl mb-2">wifi_off</span><p class="text-danger text-xs font-bold">ไม่สามารถดึงข้อมูลกราฟได้ในขณะนี้</p><button class="mt-4 px-3 py-1 bg-slate-800 text-white text-xs rounded" onclick="location.reload()">รีเฟรชหน้าเว็บ</button></div>`; 
                         return; 
                     }
 
@@ -613,7 +602,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-refresh-summary').addEventListener('click', () => fetchCompanySummary(true));
 
     // ==========================================
-    // 📌 TAB ใหม่: บทวิเคราะห์ (Analysis / TA) 
+    // 📌 TAB ใหม่: บทวิเคราะห์ (Analysis / TA)
+    // 🚀 ปรับแก้วิธีวาดกราฟเป้าหมายให้เป็น Webull Clone (ใช้ HTML ซ้อนทับ ไม่พังชัวร์)
     // ==========================================
     let taChartInstance = null;
     let taSeries = null;
@@ -676,26 +666,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
 
-        // 🚀 กราฟ Target Price อาศัยการดึงข้อมูลที่เสถียรขึ้นแล้ว
+        // ดึงกราฟราคาย้อนหลัง 1 ปี 
         const hist = await fetchCandleData('1Y');
         let chartPoints = [];
-        if (hist && hist.closes) {
+        if (hist && hist.closes && hist.closes.length > 0) {
             chartPoints = hist.closes.filter(c => c !== null);
         } else {
-            chartPoints = [cur*0.8, cur*0.9, cur]; 
-        }
-
-        const paddingLen = Math.floor(chartPoints.length * 0.25); 
-        const labels = new Array(chartPoints.length + paddingLen).fill('');
-        
-        const histData = [...chartPoints, ...new Array(paddingLen).fill(null)];
-        const highLine = new Array(chartPoints.length + paddingLen).fill(null);
-        const meanLine = new Array(chartPoints.length + paddingLen).fill(null);
-        const lowLine = new Array(chartPoints.length + paddingLen).fill(null);
-        const curLine = new Array(chartPoints.length + paddingLen).fill(null);
-        
-        for(let i = chartPoints.length - 1; i < labels.length; i++) {
-            highLine[i] = high; meanLine[i] = mean; lowLine[i] = low; curLine[i] = cur;
+            // ถ้าเน็ตพัง ให้สร้างกราฟเฉียงขึ้นเนียนๆ
+            chartPoints = [cur*0.8, cur*0.85, cur*0.9, cur*0.95, cur]; 
         }
 
         const ctx = document.getElementById('target-line-chart');
@@ -704,41 +682,53 @@ document.addEventListener('DOMContentLoaded', () => {
         const yMin = Math.min(...chartPoints, low) * 0.95;
         const yMax = Math.max(...chartPoints, high) * 1.05;
 
+        // วาดแค่กราฟประวัติสีฟ้าอย่างเดียว
         window.targetLineChartInstance = new Chart(ctx, {
             type: 'line',
             data: { 
-                labels: labels, 
+                labels: new Array(chartPoints.length).fill(''), 
                 datasets: [
-                    { data: histData, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 },
-                    { data: highLine, borderColor: '#00c076', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
-                    { data: meanLine, borderColor: '#26a69a', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
-                    { data: lowLine, borderColor: '#ff4d4d', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
-                    { data: curLine, borderColor: '#34a8eb', borderWidth: 1, borderDash: [2, 4], pointRadius: 0 }
+                    { data: chartPoints, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 }
                 ] 
             },
             options: { 
                 responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, 
                 scales: { x: { display: false }, y: { display: false, min: yMin, max: yMax } },
-                layout: { padding: { top: 15, bottom: 15, right: 10 } },
+                // เว้นที่ว่างด้านขวาให้กล่อง Label 120px
+                layout: { padding: { top: 15, bottom: 15, right: 120 } },
                 animation: { duration: 0 } 
             }
         });
 
+        // 🚀 แปะ Badge ตัวเลขลงไปด้านขวา และลากเส้นประจากเส้นกราฟหลักให้เนียนๆ เหมือน Webull
         const badgesContainer = document.getElementById('target-badges-container');
         const yRange = yMax - yMin;
-        const getTopPct = (val) => Math.max(0, Math.min(100, 100 - ((val - yMin) / yRange) * 100));
+        const getTopPct = (val) => Math.max(5, Math.min(95, 100 - ((val - yMin) / yRange) * 100));
 
         badgesContainer.innerHTML = `
-            <div class="absolute right-0 bg-[#00c076] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-10" style="top: ${getTopPct(high)}%">สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%</div>
-            <div class="absolute right-0 bg-[#26a69a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-10" style="top: ${getTopPct(mean)}%">เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%</div>
-            <div class="absolute right-0 bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-20" style="top: ${getTopPct(cur)}%">${fmt(cur)}</div>
-            <div class="absolute right-0 bg-[#ff4d4d] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap -translate-y-1/2 z-10" style="top: ${getTopPct(low)}%">ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%</div>
+            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(high)}%; width: 100%;">
+                <div class="flex-1 border-t border-dashed border-[#00c076] opacity-50"></div>
+                <div class="bg-[#00c076] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%</div>
+            </div>
+            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(mean)}%; width: 100%;">
+                <div class="flex-1 border-t border-dashed border-[#26a69a] opacity-50"></div>
+                <div class="bg-[#26a69a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%</div>
+            </div>
+            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(cur)}%; width: 100%;">
+                <div class="flex-1 border-t border-dashed border-primary opacity-50"></div>
+                <div class="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">${fmt(cur)}</div>
+            </div>
+            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(low)}%; width: 100%;">
+                <div class="flex-1 border-t border-dashed border-[#ff4d4d] opacity-50"></div>
+                <div class="bg-[#ff4d4d] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%</div>
+            </div>
         `;
     };
 
     let currentTAMode = 'short'; 
     let currentTATF = 'daily'; 
     
+    // 🚀 กราฟวิเคราะห์ทางเทคนิค
     const renderTAChart = async () => {
         const container = document.getElementById('ta-chart-container');
         container.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
@@ -748,7 +738,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
-            if (!candleResult) throw new Error("No data");
+            
+            if (!candleResult) { 
+                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p></div>`;
+                return;
+            }
 
             const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
             
@@ -831,7 +825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 taChartInstance.timeScale().fitContent();
             }
         } catch (e) {
-            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">โหลดกราฟเทคนิคไม่ได้</p>`;
+            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p>`;
         }
     };
 
@@ -950,7 +944,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch(e) {}
 
-            // 🚀 ก๊อกที่ 2: AlphaVantage (ดึงตรงจากฝั่งผู้ใช้ ให้ประวัติลึกมาก)
+            // 🚀 ก๊อกที่ 2: AlphaVantage
             if (earningsData.length === 0 && AV_API_KEY) {
                 try {
                     const avRes = await fetch(`https://www.alphavantage.co/query?function=EARNINGS&symbol=${cleanSym}&apikey=${AV_API_KEY}`);
@@ -970,7 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch(e) {}
             }
 
-            // 🚀 ก๊อกที่ 3: Finnhub (ตัวตายตัวแทน ใช้งานได้ 100% แต่อาจให้มาแค่ 4 ไตรมาส)
+            // 🚀 ก๊อกที่ 3: Finnhub 
             if (earningsData.length === 0) {
                 try {
                     const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
@@ -986,7 +980,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch(e) {}
             }
 
-            // ถ้าผ่าน 3 ก๊อกยังไม่ได้ ถือว่าพังจริง
             if (earningsData.length === 0) throw new Error("No data");
 
             if (nextDateText) {
