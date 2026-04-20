@@ -110,7 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         try {
-            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
+            // 🚀 เพิ่ม Cache-Buster ป้องกันเบราว์เซอร์จำค่าราคาเก่า
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}&_=${Date.now()}`, { cache: 'no-store' });
             if (res.ok) {
                 const data = await res.json();
                 if (data.success) {
@@ -612,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderHome(); renderWatchlist(); renderAllSectors();
     fetchMarketNews(); fetchRealPrices(); 
 
-    setInterval(fetchRealPrices, 60000); 
+    // 🚀 เปลี่ยนเป็นอัปเดตทุก 5 วินาที
+    setInterval(fetchRealPrices, 5000); 
     setInterval(fetchMarketNews, 300000); 
 });
