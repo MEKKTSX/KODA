@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
-    let loadedTabs = { chart: true, company: false, quarterly: false, financials: false, news: false };
+    let loadedTabs = { chart: true, company: false, analysis: false, quarterly: false, financials: false, news: false };
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (targetId === 'tab-company' && !loadedTabs.company) { fetchCompanySummary(); loadedTabs.company = true; }
+            if (targetId === 'tab-analysis' && !loadedTabs.analysis) { fetchAnalysisData(); loadedTabs.analysis = true; }
             if (targetId === 'tab-quarterly' && !loadedTabs.quarterly) { fetchQuarterlyEarnings(); loadedTabs.quarterly = true; }
             if (targetId === 'tab-financials' && !loadedTabs.financials) { fetchFinancialData(); loadedTabs.financials = true; }
             if (targetId === 'tab-news' && !loadedTabs.news) { fetchLatestNews(); loadedTabs.news = true; }
@@ -104,20 +105,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (ย้ายไปดึงผ่าน Python Backend ของเราเอง)
+    // 📌 ดึงข้อมูลราคาและข้อมูลทั่วไป
     // ==========================================
     const fetchYFQuote = async (sym) => {
         try {
-            // เรียกไปยังไฟล์ api/price.py ของ Vercel
             const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
             if (!res.ok) return null;
             const data = await res.json();
-            if (data.success) {
-                return data; // รีเทิร์น data ที่จัดระเบียบมาแล้วจาก Python
-            }
-        } catch (e) {
-            console.warn("Backend fetch failed, using fallback...");
-        }
+            if (data.success) return data; 
+        } catch (e) {}
         return null;
     };
 
@@ -128,10 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const extLabelEl = document.getElementById('extended-label');
         const extPriceEl = document.getElementById('extended-price');
         const extChangeEl = document.getElementById('extended-change');
+        const extIcon = document.getElementById('extended-icon');
         const dotEl = document.getElementById('market-status-dot');
 
         let currentPrice, change, percentChange, currencyCode, isPositive;
-        let extPrice = null, extChange = null, extPercent = null, stateText = '';
+        let extPrice = null, extChange = null, extPercent = null, stateText = '', iconText = '';
 
         if (source === 'yf') {
             currentPrice = data.regularMarketPrice || data.preMarketPrice || data.postMarketPrice;
@@ -140,25 +137,18 @@ document.addEventListener('DOMContentLoaded', () => {
             currencyCode = data.currency || 'USD';
             isPositive = change >= 0;
 
-            const marketState = data.marketState; // Backend ส่งมาให้แล้ว ไม่ต้องคำนวณฝั่งนี้
+            const marketState = data.marketState;
 
-            // 📌 Logic เจาะจงเวลาตลาด ตามที่คุณสั่งเป๊ะๆ
             if (marketState === 'PRE') {
                 extPrice = data.preMarketPrice || data.regularMarketPreviousClose;
-                extChange = data.preMarketChange || 0;
                 extPercent = data.preMarketChangePercent || 0;
-                stateText = '☀️ ก่อนตลาดเปิด';
+                stateText = 'ก่อนตลาดเปิด'; iconText = '☀️';
             } else if (marketState === 'REGULAR') {
-                // ล็อคราคาฝั่งขวาไว้ที่ตอนก่อนตลาดเปิด 
-                extPrice = data.preMarketPrice || data.regularMarketPreviousClose;
-                extChange = data.preMarketChange || 0;
-                extPercent = data.preMarketChangePercent || 0;
-                stateText = '🟢 ตลาดเปิด (ล็อคค่า Pre)';
+                extPrice = null; 
             } else if (marketState === 'POST' || marketState === 'CLOSED') {
                 extPrice = data.postMarketPrice || currentPrice;
-                extChange = data.postMarketChange || 0;
                 extPercent = data.postMarketChangePercent || 0;
-                stateText = '🌑 หลังตลาดปิด';
+                stateText = 'หลังตลาดปิด'; iconText = '🌑';
             }
             
             if (marketState === 'REGULAR') {
@@ -169,17 +159,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 dotEl.classList.add('bg-slate-600'); 
             }
         } else {
-            // Finnhub Fallback (กรณี Backend เราพังจริงๆ)
             currentPrice = data.c;
             change = data.d;
             percentChange = data.dp;
             currencyCode = symbol.includes('.HK') ? 'HKD' : (symbol.includes('.SS') ? 'CNY' : 'USD');
             isPositive = change >= 0;
-            
-            extPrice = data.pc; 
-            extChange = 0;
-            extPercent = 0;
-            stateText = '📊 ราคาปิดก่อนหน้า';
+            extPrice = null;
             dotEl.classList.add('hidden');
         }
 
@@ -194,31 +179,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         priceEl.dataset.rawPrice = currentPrice;
-        priceEl.textContent = fmtPrice(currentPrice);
-        document.getElementById('detail-currency').textContent = currencyCode;
-
+        priceEl.textContent = `$${fmtPrice(currentPrice)}`;
+        
         changeEl.className = `text-sm font-bold flex items-center gap-1 mt-1 ${isPositive ? 'text-success' : 'text-danger'}`;
         changeEl.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isPositive ? 'arrow_upward' : 'arrow_downward'}</span> ${Math.abs(change).toFixed(2)} (${Math.abs(percentChange).toFixed(2)}%)`;
 
-        // แสดงผลฝั่งขวา
         if (extPrice !== null && extPrice !== undefined) {
-            extContainer.style.display = 'flex';
             extContainer.classList.remove('hidden');
-            
-            extLabelEl.textContent = stateText;
-            extPriceEl.textContent = fmtPrice(extPrice);
-            document.getElementById('extended-currency').textContent = currencyCode;
+            extContainer.classList.add('inline-flex', 'items-center');
+            extLabelEl.textContent = `${stateText}:`;
+            if (extIcon) extIcon.textContent = iconText;
+            extPriceEl.textContent = ` $${fmtPrice(extPrice)}`;
             
             if (extPercent === 0 || !extPercent) {
-                extChangeEl.textContent = `0.00 (0.00%)`;
-                extChangeEl.className = `font-bold text-[11px] mt-0.5 text-slate-500`;
+                extChangeEl.textContent = `(0.00%)`;
+                extChangeEl.className = `ml-1 font-bold text-slate-500`;
             } else {
                 const isExtPos = extPercent > 0;
                 const sign = isExtPos ? '+' : ''; 
-                
-                extChangeEl.textContent = `${sign}${extChange.toFixed(2)} (${sign}${extPercent.toFixed(2)}%)`;
-                extChangeEl.className = `font-bold text-[11px] mt-0.5 ${isExtPos ? 'text-success' : 'text-danger'}`;
+                extChangeEl.textContent = `(${sign}${extPercent.toFixed(2)}%)`;
+                extChangeEl.className = `ml-1 font-bold ${isExtPos ? 'text-success' : 'text-danger'}`;
             }
+        } else {
+            extContainer.classList.remove('inline-flex', 'items-center');
+            extContainer.classList.add('hidden');
         }
     };
 
@@ -238,8 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         fetchAndUpdateYF(); 
         if(!isRealtimeRunning) {
-            // เมื่อใช้ Backend เราเอง สามารถตั้งความถี่ได้ตามต้องการ (60 วิคือกำลังดี)
-            setInterval(fetchAndUpdateYF, 60000); 
+            setInterval(fetchAndUpdateYF, 45000); 
             isRealtimeRunning = true;
         }
     };
@@ -247,16 +230,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadPriceAndOHLC = async () => {
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            
-            // ให้ยิงไปหา Finnhub ก่อนเพื่อความรวดเร็วในการเปิดหน้าเว็บ
             const quoteRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}`);
             const quote = await quoteRes.json();
+            if (quote && quote.c > 0) renderPriceUI(quote, 'finnhub');
             
-            if (quote && quote.c > 0) {
-                renderPriceUI(quote, 'finnhub');
-            }
-            
-            // เริ่มลูปดึง Python Backend
             startRealtimeEngine(); 
 
             let metricObj = null, profile = null;
@@ -275,7 +252,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (quote && quote.c > 0) {
                 const fmt = (num, suffix='') => (num !== undefined && num !== null) ? num.toFixed(2) + suffix : '-';
-                
                 document.getElementById('stat-open').textContent = fmt(quote.o);
                 document.getElementById('stat-prev').textContent = fmt(quote.pc);
                 document.getElementById('stat-high').textContent = fmt(quote.h);
@@ -289,9 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('stat-ps').textContent = fmt(m.psTTM);
                     document.getElementById('stat-eps').textContent = fmt(m.epsTTM);
                     document.getElementById('stat-div').textContent = fmt(m.dividendYieldIndicatedAnnual, '%');
-                    document.getElementById('stat-beta').textContent = fmt(m.beta);
                 }
-
                 if (profile && profile.marketCapitalization) {
                     const mcap = profile.marketCapitalization;
                     document.getElementById('stat-mcap').textContent = mcap > 1000 ? (mcap/1000).toFixed(2)+'B' : mcap.toFixed(2)+'M';
@@ -302,7 +276,48 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPriceAndOHLC();
 
     // ==========================================
-    // 📌 TAB 1: กราฟ (TradingView vs KODA S/R) + 1 Month Cache
+    // 📌 ตัวดึงกราฟ (ใช้ซ้ำได้ใน TAB 1 และ TAB 3)
+    // ==========================================
+    const loadLightweightCharts = () => new Promise((resolve) => {
+        if (window.LightweightCharts) { resolve(); return; }
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
+        script.onload = resolve; document.head.appendChild(script);
+    });
+
+    const fetchCandleData = async (tfRange) => {
+        const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '5Y': '5y' }; 
+        const yfRange = rangeMap[tfRange] || '1y';
+
+        let yfSym = symbol;
+        if (symbol === 'XAUUSD') yfSym = 'GC=F';
+        else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
+        else if (symbol.includes('OANDA:')) yfSym = symbol.split(':')[1].replace('_', '') + '=X';
+        else if (symbol.includes('BINANCE:')) yfSym = symbol.split(':')[1].replace('USDT', '-USD');
+
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSym)}?range=${yfRange}&interval=1d`;
+        const proxies = [
+            u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+            u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+            u => `https://corsproxy.io/?${encodeURIComponent(u)}`
+        ];
+
+        for (let proxy of proxies) {
+            try {
+                const res = await fetch(proxy(url));
+                const raw = await res.json();
+                if (raw?.chart?.result?.[0]) {
+                    const q = raw.chart.result[0].indicators.quote[0];
+                    return { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
+                }
+            } catch (err) {}
+        }
+        return null;
+    };
+
+
+    // ==========================================
+    // 📌 TAB 1: กราฟ KODA S/R
     // ==========================================
     const renderChart = () => {
         const tvContainer = document.getElementById('tv-chart-container');
@@ -319,7 +334,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let tvSym = symbol;
             if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
             else if (symbol.includes(':')) tvSym = symbol;
-
             new TradingView.widget({
                 "autosize": true, "symbol": tvSym, "interval": "D",
                 "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
@@ -338,43 +352,6 @@ document.addEventListener('DOMContentLoaded', () => {
             script.onload = initTV;
             document.head.appendChild(script);
         }
-
-        const loadLightweightCharts = () => new Promise((resolve) => {
-            if (window.LightweightCharts) { resolve(); return; }
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
-            script.onload = resolve; document.head.appendChild(script);
-        });
-
-        const fetchCandleData = async (tfRange) => {
-            const rangeMap = { '3M': '3mo', '6M': '6mo', '1Y': '1y', '5Y': '5y' }; 
-            const yfRange = rangeMap[tfRange] || '1y';
-
-            let yfSym = symbol;
-            if (symbol === 'XAUUSD') yfSym = 'GC=F';
-            else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
-            else if (symbol.includes('OANDA:')) yfSym = symbol.split(':')[1].replace('_', '') + '=X';
-            else if (symbol.includes('BINANCE:')) yfSym = symbol.split(':')[1].replace('USDT', '-USD');
-
-            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yfSym)}?range=${yfRange}&interval=1d`;
-            const proxies = [
-                u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-                u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-                u => `https://corsproxy.io/?${encodeURIComponent(u)}`
-            ];
-
-            for (let proxy of proxies) {
-                try {
-                    const res = await fetch(proxy(url));
-                    const raw = await res.json();
-                    if (raw?.chart?.result?.[0]) {
-                        const q = raw.chart.result[0].indicators.quote[0];
-                        return { timestamps: raw.chart.result[0].timestamp, opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume };
-                    }
-                } catch (err) {}
-            }
-            return null;
-        };
 
         const calculateSupportResistance = (candles) => {
             if (!candles || candles.length < 20) return [];
@@ -405,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const renderAdvancedSR = async () => {
-            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs">กำลังโหลดกราฟและแนวรับ/ต้าน...</p></div>`;
+            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs">กำลังโหลดกราฟ...</p></div>`;
             try {
                 await loadLightweightCharts();
                 
@@ -432,9 +409,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0))
                         .sort((a, b) => a.time - b.time);
                     
-                    const rangeDays = currentTimeframe === '3M' ? 90 : currentTimeframe === '6M' ? 180 : currentTimeframe === '1Y' ? 365 : 1825;
-                    candles = candles.filter(c => c.time >= (now/1000) - (rangeDays * 86400));
-                    
                     localStorage.setItem(candleCacheKey, JSON.stringify({ timestamp: now, data: candles }));
                 }
 
@@ -457,14 +431,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 const candleSeries = kodaChartInstance.addCandlestickSeries({ 
-                    upColor: '#0ecb81', downColor: '#f6465d', borderUpColor: '#0ecb81', borderDownColor: '#f6465d', wickUpColor: '#0ecb81', wickDownColor: '#f6465d'
+                    upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
                 });
                 candleSeries.setData(candles);
 
                 levels.forEach(lvl => {
                     candleSeries.createPriceLine({
                         price: lvl.price,
-                        color: lvl.type === 'sup' ? 'rgba(14,203,129,0.85)' : 'rgba(246,70,93,0.85)',
+                        color: lvl.type === 'sup' ? 'rgba(0,192,118,0.85)' : 'rgba(255,77,77,0.85)',
                         lineWidth: lvl.strength === 3 ? 2 : 1, 
                         lineStyle: lvl.strength === 3 ? 0 : 2, 
                         axisLabelVisible: true, title: '' 
@@ -517,9 +491,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const cacheKey = `koda_company_summary_v3_${symbol}`;
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
-        const THREE_MONTHS = 90 * 24 * 60 * 60 * 1000;
 
-        if (!force && cached && (now - cached.timestamp < THREE_MONTHS)) {
+        if (!force && cached && (now - cached.timestamp < 90 * 24 * 60 * 60 * 1000)) {
             container.innerHTML = cached.html;
             dateEl.textContent = `Last updated: ${new Date(cached.timestamp).toLocaleDateString('th-TH')}`;
             return;
@@ -537,7 +510,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดสรุป Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${symbol} (${currentStockName}) อุตสาหกรรม: ${industry}
             ให้อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เข้าใจง่ายสำหรับนักลงทุนรายย่อย (หลีกเลี่ยงศัพท์แสงที่ยากเกินไป)
-            
             บังคับใช้โครงสร้าง HTML นี้ในการตอบ:
             <div style="margin-bottom: 12px;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> ...</div>
             <div style="margin-bottom: 12px;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> ...</div>
@@ -558,112 +530,325 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, html: aiHtml }));
             } else { throw new Error('AI Error'); }
         } catch(e) {
-            container.innerHTML = `<p class="text-danger text-sm text-center py-4">ไม่สามารถสรุปข้อมูลบริษัทได้ (โปรดตรวจสอบ API Key ใน keys.js)</p>`;
+            container.innerHTML = `<p class="text-danger text-sm text-center py-4">ไม่สามารถสรุปข้อมูลบริษัทได้</p>`;
         }
     };
     document.getElementById('btn-refresh-summary').addEventListener('click', () => fetchCompanySummary(true));
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (EPS 10 ไตรมาส)
+    // 📌 TAB ใหม่: บทวิเคราะห์ (Analyst / TA)
+    // ==========================================
+    let taChartInstance = null;
+    let taSeries = null;
+    let taVolumeSeries = null;
+
+    const renderAnalystRatings = (rec) => {
+        const total = rec.strongBuy + rec.buy + rec.hold + rec.sell + rec.strongSell;
+        const container = document.getElementById('analyst-bars');
+        const badge = document.getElementById('analyst-consensus-badge');
+        document.getElementById('analyst-subtitle').textContent = `อิงตามนักวิเคราะห์ ${total || '--'} คน`;
+
+        if (total === 0) {
+            badge.textContent = "N/A";
+            container.innerHTML = `<p class="text-slate-500 text-xs">ไม่มีข้อมูลนักวิเคราะห์</p>`;
+            return;
+        }
+
+        const mapTH = { 'strongBuy': 'ซื้อทันที', 'buy': 'ซื้อ', 'hold': 'ถือ', 'sell': 'ต่ำกว่าค่าเฉลี่ย', 'strongSell': 'ขาย' };
+        const colors = { 'strongBuy': '#00c076', 'buy': '#22c55e', 'hold': '#eab308', 'sell': '#64748b', 'strongSell': '#ff4d4d' };
+        
+        let consensusText = "N/A";
+        if (rec.consensus === 'strong_buy') consensusText = "ซื้อทันที";
+        else if (rec.consensus === 'buy') consensusText = "ซื้อ";
+        else if (rec.consensus === 'hold') consensusText = "ถือ";
+        else if (rec.consensus === 'underperform') consensusText = "ต่ำกว่าค่าเฉลี่ย";
+        else if (rec.consensus === 'sell') consensusText = "ขาย";
+
+        badge.textContent = consensusText;
+
+        const rows = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell'].map(key => {
+            const pct = Math.round((rec[key] / total) * 100);
+            return `
+            <div class="flex items-center gap-3">
+                <span class="text-slate-300 text-xs w-20 text-right">${mapTH[key]}</span>
+                <div class="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div class="h-full rounded-full" style="width: ${pct}%; background-color: ${colors[key]}"></div>
+                </div>
+                <span class="text-slate-400 text-xs w-8 text-right">${pct}%</span>
+            </div>`;
+        });
+        
+        container.innerHTML = rows.join('');
+    };
+
+    const renderTargetPrice = (targets) => {
+        const fmt = (num) => num ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
+        const cur = targets.current;
+        const high = targets.high;
+        const low = targets.low;
+        const mean = targets.mean;
+
+        if (!cur || !high || !low || !mean) {
+            document.getElementById('target-subtitle').textContent = "ไม่มีข้อมูลราคาเป้าหมาย";
+            return;
+        }
+
+        const highPct = ((high - cur) / cur) * 100;
+        const meanPct = ((mean - cur) / cur) * 100;
+        const lowPct = ((low - cur) / cur) * 100;
+
+        document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
+
+        document.getElementById('target-high-box').textContent = `สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%`;
+        document.getElementById('target-mean-box').textContent = `เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%`;
+        document.getElementById('target-low-box').textContent = `ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%`;
+        document.getElementById('target-current-box').textContent = fmt(cur);
+
+        // จัดตำแหน่งกล่องให้อยู่ในกราฟ (จำลอง)
+        const range = high - low;
+        const curPosPct = Math.max(0, Math.min(100, ((cur - low) / range) * 100)); // 0 = Bottom, 100 = Top
+        document.getElementById('target-current-box').style.bottom = `${curPosPct}%`;
+
+        // วาด Line Chart เล็กๆ ฝั่งซ้าย
+        const ctx = document.getElementById('target-line-chart');
+        if (window.targetLineChartInstance) window.targetLineChartInstance.destroy();
+        
+        // จำลอง Data แบบเฉียงขึ้นไปหา Current
+        const fakeData = [cur*0.8, cur*0.85, cur*0.75, cur*0.9, cur];
+        window.targetLineChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: { labels: ['1','2','3','4','5'], datasets: [{ data: fakeData, borderColor: '#34a8eb', borderWidth: 2, tension: 0.3, pointRadius: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: low, max: high } } }
+        });
+    };
+
+    let currentTAMode = 'short'; // short, medium, long
+    let currentTATF = 'daily'; // daily, weekly
+    
+    const renderTAChart = async () => {
+        const container = document.getElementById('ta-chart-container');
+        container.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
+        
+        try {
+            await loadLightweightCharts();
+            
+            // Map timeframe
+            let rangeToFetch = '1M';
+            if (currentTAMode === 'medium') rangeToFetch = '6M';
+            if (currentTAMode === 'long') rangeToFetch = '1Y';
+            
+            // ใช้ฟังก์ชัน fetchCandleData ที่มีอยู่แล้ว (มันดึงรายวันมาให้)
+            const candleResult = await fetchCandleData(rangeToFetch);
+            if (!candleResult) throw new Error("No data");
+
+            const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
+            
+            let chartData = timestamps.map((t, i) => ({ 
+                time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), value: Number(volumes[i] || 0) 
+            })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
+
+            // ถ้าเลือก weekly ต้องจับกลุ่มข้อมูล (จำลองคร่าวๆ ด้วยการเลือกข้าม)
+            if (currentTATF === 'weekly' && chartData.length > 5) {
+                const weeklyData = [];
+                for (let i = 0; i < chartData.length; i+=5) {
+                    const chunk = chartData.slice(i, i+5);
+                    if(chunk.length > 0) {
+                        weeklyData.push({
+                            time: chunk[chunk.length-1].time,
+                            open: chunk[0].open,
+                            high: Math.max(...chunk.map(c=>c.high)),
+                            low: Math.min(...chunk.map(c=>c.low)),
+                            close: chunk[chunk.length-1].close,
+                            value: chunk.reduce((sum, c) => sum + c.value, 0)
+                        });
+                    }
+                }
+                chartData = weeklyData;
+            }
+
+            container.innerHTML = '';
+            if (taChartInstance) taChartInstance.remove();
+            
+            taChartInstance = window.LightweightCharts.createChart(container, {
+                width: container.clientWidth, height: 220,
+                layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#848e9c', fontSize: 10 },
+                grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(42, 46, 57, 0.4)' } },
+                rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0)' },
+                timeScale: { borderColor: 'rgba(42, 46, 57, 0)', timeVisible: false }
+            });
+            
+            taSeries = taChartInstance.addCandlestickSeries({ 
+                upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
+            });
+            taSeries.setData(chartData);
+
+            taVolumeSeries = taChartInstance.addHistogramSeries({
+                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 }
+            });
+            taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
+
+            // สร้าง Signal (Bull/Bear) แบบจำลองตาม SMA
+            let bullCount = 0, bearCount = 0;
+            const markers = [];
+            const sma20 = [];
+            
+            chartData.forEach((d, i) => {
+                if (i >= 20) {
+                    const slice = chartData.slice(i-20, i);
+                    const avg = slice.reduce((a,b)=>a+b.close,0)/20;
+                    sma20.push({time: d.time, value: avg});
+                    
+                    // หาจุดตัดขึ้นลง
+                    if (i > 25 && i % 5 === 0) { 
+                        if (d.close > avg) { 
+                            markers.push({ time: d.time, position: 'belowBar', color: '#00c076', shape: 'circle', text: 'B' });
+                            bullCount++;
+                        } else {
+                            markers.push({ time: d.time, position: 'aboveBar', color: '#ff4d4d', shape: 'circle', text: 'S' });
+                            bearCount++;
+                        }
+                    }
+                }
+            });
+
+            if (markers.length > 0) taSeries.setMarkers(markers);
+            
+            // อัปเดตข้อความ Signal
+            const titleEl = document.getElementById('ta-signal-title');
+            if (bullCount > bearCount + 2) {
+                titleEl.textContent = 'หลักฐานสัญญาณขาขึ้นที่แข็งแกร่งมาก';
+                titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
+            } else if (bullCount > bearCount) {
+                titleEl.textContent = 'หลักฐานสัญญาณขาขึ้น';
+                titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
+            } else if (bearCount > bullCount) {
+                titleEl.textContent = 'หลักฐานสัญญาณขาลง';
+                titleEl.className = 'text-[#ff4d4d] text-base font-bold mb-1';
+            } else {
+                titleEl.textContent = 'สัญญาณผสม (ไม่มีเทรนด์ชัดเจน)';
+                titleEl.className = 'text-yellow-500 text-base font-bold mb-1';
+            }
+
+            document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
+            document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
+
+            taChartInstance.timeScale().fitContent();
+        } catch (e) {
+            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">โหลดกราฟเทคนิคไม่ได้</p>`;
+        }
+    };
+
+    const fetchAnalysisData = async () => {
+        document.getElementById('analysis-loading').classList.remove('hidden');
+        document.getElementById('analysis-content').classList.add('hidden');
+        
+        try {
+            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=analysis`);
+            const data = await res.json();
+
+            if (data.success) {
+                renderAnalystRatings(data.recommendation);
+                renderTargetPrice(data.targets);
+                
+                // จัดการปุ่มหมวดหมู่
+                document.querySelectorAll('.ta-mode-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
+                        e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
+                        currentTAMode = e.currentTarget.dataset.mode;
+                        renderTAChart();
+                    });
+                });
+
+                document.querySelectorAll('.ta-tf-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
+                        e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
+                        currentTATF = e.currentTarget.dataset.tf;
+                        renderTAChart();
+                    });
+                });
+
+                await renderTAChart();
+
+                document.getElementById('analysis-loading').classList.add('hidden');
+                document.getElementById('analysis-content').classList.remove('hidden');
+            } else {
+                throw new Error();
+            }
+        } catch(e) {
+            document.getElementById('analysis-loading').textContent = 'ไม่พบข้อมูลบทวิเคราะห์ของหุ้นตัวนี้';
+            document.getElementById('analysis-loading').classList.add('text-danger');
+            document.getElementById('analysis-loading').classList.remove('animate-pulse');
+        }
+    };
+
+
+    // ==========================================
+    // 📌 TAB 3: สรุปไตรมาส (ดึงผ่าน Python Backend ของเราเอง 10 ไตรมาส)
     // ==========================================
     const fetchQuarterlyEarnings = async () => {
         const container = document.getElementById('quarterly-list');
         const nextDateEl = document.getElementById('quarterly-next-date');
         
-        const cacheKey = `koda_quarterly_v4_${symbol}`;
+        const cacheKey = `koda_quarterly_yf_${symbol}`; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        if (cached) {
-            const isStale = cached.nextEarningsDate && now > (cached.nextEarningsDate + (2 * 60 * 60 * 1000));
-            if (!isStale && (now - cached.timestamp < 30 * 86400000)) {
-                container.innerHTML = cached.html;
-                if (cached.nextDateText) {
-                    nextDateEl.textContent = cached.nextDateText;
-                    nextDateEl.classList.remove('hidden');
-                }
-                return;
+        if (cached && (now - cached.timestamp < 12 * 60 * 60 * 1000)) { 
+            container.innerHTML = cached.html;
+            if (cached.nextDateText) {
+                nextDateEl.textContent = cached.nextDateText;
+                nextDateEl.classList.remove('hidden');
             }
+            return;
         }
 
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            let earnings = [];
-            let nextEarningsUnix = null;
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
+            const data = await res.json();
+
+            if (!data.success || !data.earnings || data.earnings.length === 0) {
+                throw new Error("No data");
+            }
+
             let nextDateText = null;
-
-            if (AV_API_KEY && !isThaiStock) {
-                try {
-                    const avRes = await fetch(`https://www.alphavantage.co/query?function=EARNINGS&symbol=${cleanSym}&apikey=${AV_API_KEY}`);
-                    const avData = await avRes.json();
-                    if (avData && avData.quarterlyEarnings) {
-                        earnings = avData.quarterlyEarnings.map(q => {
-                            const date = new Date(q.fiscalDateEnding);
-                            const qNum = Math.ceil((date.getMonth() + 1) / 3); 
-                            return {
-                                quarter: qNum,
-                                year: date.getFullYear(),
-                                estimate: parseFloat(q.estimatedEPS),
-                                actual: parseFloat(q.reportedEPS),
-                                surprise: parseFloat(q.surprisePercentage)
-                            };
-                        });
-                    }
-                } catch(e) {}
-            }
-
-            if (earnings.length === 0) {
-                const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
-                earnings = await fhRes.json() || [];
-            }
-            
-            const fromStr = new Date().toISOString().split('T')[0];
-            const toStr = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0]; 
-            const calRes = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${fromStr}&to=${toStr}&symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json()).catch(()=>null);
-            
-            if (calRes && calRes.earningsCalendar && calRes.earningsCalendar.length > 0) {
-                const nextE = calRes.earningsCalendar[0];
-                nextEarningsUnix = new Date(nextE.date).getTime();
-                nextDateText = `Next: ${new Date(nextE.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+            if (data.nextEarningsDate) {
+                nextDateText = `Next: ${new Date(data.nextEarningsDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
                 nextDateEl.textContent = nextDateText;
                 nextDateEl.classList.remove('hidden');
             }
 
-            if (earnings.length === 0) {
-                container.innerHTML = `<p class="text-center text-slate-500 text-xs py-8">ไม่พบประวัติงบการเงิน</p>`; return;
-            }
-
-            const recent = earnings.slice(0, 10); 
-            
-            const html = recent.map(q => {
+            const html = data.earnings.map(q => {
                 const isSurprise = q.surprise > 0;
                 const actColor = (q.actual !== null && q.estimate !== null && q.actual >= q.estimate) ? 'text-success' : 'text-danger';
                 return `
                 <div class="grid grid-cols-12 p-3 items-center text-xs hover:bg-slate-800 transition-colors">
                     <div class="col-span-3">
-                        <p class="text-white font-bold">${q.quarter} Q${q.year}</p>
+                        <p class="text-white font-bold">${q.quarter}</p>
                     </div>
-                    <div class="col-span-3 text-right text-slate-400 font-medium">${q.estimate ? q.estimate.toFixed(2) : '-'}</div>
-                    <div class="col-span-3 text-right ${actColor} font-bold">${q.actual ? q.actual.toFixed(2) : '-'}</div>
+                    <div class="col-span-3 text-right text-slate-400 font-medium">${q.estimate !== null ? q.estimate.toFixed(2) : '-'}</div>
+                    <div class="col-span-3 text-right ${actColor} font-bold">${q.actual !== null ? q.actual.toFixed(2) : '-'}</div>
                     <div class="col-span-3 text-right">
                         <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${isSurprise ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}">
-                            ${isSurprise ? '+' : ''}${q.surprise ? q.surprise.toFixed(2) : '0.00'}%
+                            ${isSurprise ? '+' : ''}${q.surprise !== null ? q.surprise.toFixed(2) : '0.00'}%
                         </span>
                     </div>
                 </div>`;
             }).join('');
 
             container.innerHTML = html;
-            
-            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, html: html, nextEarningsDate: nextEarningsUnix, nextDateText: nextDateText }));
+            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, html: html, nextDateText: nextDateText }));
 
         } catch(e) {
-            container.innerHTML = `<p class="text-center text-danger text-xs py-8">ดึงข้อมูลล้มเหลว (API Error)</p>`;
+            container.innerHTML = `<p class="text-center text-danger text-xs py-8">ไม่มีประวัติผลประกอบการ หรือ API ขัดข้อง</p>`;
         }
     };
 
     // ==========================================
-    // 📌 TAB 4: ข้อมูลการเงิน (Multi-Layer API)
+    // 📌 TAB 4: ข้อมูลการเงิน (ดึงผ่าน Python Backend เช่นกัน)
     // ==========================================
     let finDataCache = [];
     let currentFinMetric = 'totalRevenue';
@@ -689,98 +874,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchFinancialData = async () => {
         const errorEl = document.getElementById('fin-error-msg');
-        const cacheKey = `koda_fin_master_${symbol}`;
+        const cacheKey = `koda_fin_master_yf_${symbol}`; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        let isStale = false;
-        const qCache = JSON.parse(localStorage.getItem(`koda_quarterly_v4_${symbol}`) || 'null');
-        if (qCache && qCache.nextEarningsDate && now > (qCache.nextEarningsDate + (2 * 60 * 60 * 1000))) isStale = true;
-
-        if (cached && !isStale && (now - cached.timestamp < 30 * 86400000)) {
+        if (cached && (now - cached.timestamp < 12 * 60 * 60 * 1000)) {
             finDataCache = cached.data;
             renderFinChartAndLegend();
             return;
         }
 
         try {
-            let sortedData = null;
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
+            const data = await res.json();
 
-            if (AV_API_KEY && !isThaiStock && !isCrypto) {
-                try {
-                    const avRes = await fetch(`https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol=${cleanSym}&apikey=${AV_API_KEY}`);
-                    const avData = await avRes.json();
-                    if (avData && avData.quarterlyReports && avData.quarterlyReports.length > 0) {
-                        sortedData = avData.quarterlyReports.slice(0, 5).map(s => {
-                            const d = new Date(s.fiscalDateEnding);
-                            const quarter = `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`;
-                            return {
-                                dateRaw: s.fiscalDateEnding, quarter: quarter,
-                                totalRevenue: parseFloat(s.totalRevenue) || 0,
-                                grossProfit: parseFloat(s.grossProfit) || 0,
-                                operatingIncome: parseFloat(s.operatingIncome) || 0,
-                                netIncome: parseFloat(s.netIncome) || 0
-                            };
-                        }).reverse();
-                    }
-                } catch(e) {}
-            }
-
-            if (!sortedData) {
-                let yfSym = symbol;
-                if (symbol === 'XAUUSD') yfSym = 'GC=F';
-                else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
-
-                const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yfSym)}?modules=incomeStatementHistoryQuarterly`;
-                const proxies = [
-                    u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, 
-                    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
-                ];
-
-                for (let proxy of proxies) {
-                    try {
-                        const res = await fetch(proxy(url));
-                        const data = await res.json();
-                        let parsed = data;
-                        if (data.contents) parsed = JSON.parse(data.contents);
-
-                        if (parsed?.quoteSummary?.result?.[0]?.incomeStatementHistoryQuarterly?.incomeStatementHistory) {
-                            const statements = parsed.quoteSummary.result[0].incomeStatementHistoryQuarterly.incomeStatementHistory;
-                            if (statements.length > 0) {
-                                sortedData = statements.slice(0, 5).map(s => {
-                                    const d = new Date(s.endDate.fmt);
-                                    const quarter = `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`;
-                                    return {
-                                        dateRaw: s.endDate.fmt, quarter: quarter,
-                                        totalRevenue: s.totalRevenue?.raw || 0,
-                                        grossProfit: s.grossProfit?.raw || 0,
-                                        operatingIncome: s.operatingIncome?.raw || 0,
-                                        netIncome: s.netIncome?.raw || 0
-                                    };
-                                }).reverse();
-                                break;
-                            }
-                        }
-                    } catch(e) {}
-                }
-            }
-
-            if (sortedData && sortedData.length > 0) {
+            if (data.success && data.financials && data.financials.length > 0) {
+                const sortedData = [...data.financials].reverse(); 
                 finDataCache = sortedData;
                 localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: sortedData }));
                 errorEl.innerHTML = '';
                 renderFinChartAndLegend();
             } else {
-                throw new Error("API Limit");
+                throw new Error("No Financial Data");
             }
-
         } catch (e) {
             errorEl.innerHTML = `
             <div class="bg-background-dark border border-border-dark p-4 rounded-xl mt-6 text-center shadow-inner">
-                <span class="material-symbols-outlined text-danger text-3xl mb-2">api</span>
-                <p class="text-slate-400 text-xs leading-relaxed">ไม่สามารถดึงข้อมูลงบการเงินได้เนื่องจาก API Limit หรือถูกบล็อก<br>
-                <span class="text-primary font-bold">💡 คำแนะนำ:</span> ไปที่เว็บไซต์ <a href="https://www.alphavantage.co/support/#api-key" target="_blank" class="text-blue-400 underline">AlphaVantage</a> เพื่อขอรับ API Key ฟรี แล้วนำมาใส่ในไฟล์ <code class="bg-slate-800 px-1 rounded text-slate-300">keys.js</code></p>
+                <span class="material-symbols-outlined text-danger text-3xl mb-2">error</span>
+                <p class="text-slate-400 text-xs leading-relaxed">ระบบไม่พบข้อมูลการเงินรายไตรมาสของหุ้นตัวนี้<br>
             </div>`;
             document.getElementById('financials-legend').innerHTML = '';
             if (finChartInstance) finChartInstance.destroy();
@@ -807,10 +929,8 @@ document.addEventListener('DOMContentLoaded', () => {
         chartData.forEach((q, idx) => {
             const currentVal = q[currentFinMetric];
             const prevVal = finDataCache[startIndex + idx - 1]?.[currentFinMetric];
-            
             if (prevVal && prevVal !== 0) {
-                const pct = ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
-                pctChanges.push(pct);
+                pctChanges.push(((currentVal - prevVal) / Math.abs(prevVal)) * 100);
             } else {
                 pctChanges.push(0);
             }
@@ -823,53 +943,28 @@ document.addEventListener('DOMContentLoaded', () => {
             data: {
                 labels: chartData.map(d => d.quarter),
                 datasets: [
-                    {
-                        type: 'line',
-                        label: '% Change',
-                        data: pctChanges,
-                        borderColor: '#d946ef', 
-                        backgroundColor: '#d946ef',
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        yAxisID: 'y1',
-                        tension: 0.3
-                    },
-                    {
-                        type: 'bar',
-                        label: 'Value',
-                        data: chartData.map(d => d[currentFinMetric]),
-                        backgroundColor: `${metricColors[currentFinMetric]}80`, 
-                        borderColor: metricColors[currentFinMetric],
-                        borderWidth: 1,
-                        borderRadius: 4,
-                        yAxisID: 'y',
-                    }
+                    { type: 'line', label: '% Change', data: pctChanges, borderColor: '#d946ef', backgroundColor: '#d946ef', borderWidth: 2, pointRadius: 4, yAxisID: 'y1', tension: 0.3 },
+                    { type: 'bar', label: 'Value', data: chartData.map(d => d[currentFinMetric]), backgroundColor: `${metricColors[currentFinMetric]}80`, borderColor: metricColors[currentFinMetric], borderWidth: 1, borderRadius: 4, yAxisID: 'y' }
                 ]
             },
             options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 9 } } },
-                    y: { 
-                        type: 'linear', display: true, position: 'right',
-                        grid: { color: '#232b3e' }, 
-                        ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => formatB(v) } 
-                    },
+                    y: { type: 'linear', display: true, position: 'right', grid: { color: '#232b3e' }, ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => formatB(v) } },
                     y1: { type: 'linear', display: false, position: 'left', grid: { display: false } }
                 }
             }
         });
 
         let legendHtml = `<div class="flex flex-col gap-1.5 justify-end items-end pr-2 border-r border-border-dark py-1">
-            <span class="size-2 rounded-full bg-[${metricColors[currentFinMetric]}]" style="background-color: ${metricColors[currentFinMetric]}"></span>
+            <span class="size-2 rounded-full" style="background-color: ${metricColors[currentFinMetric]}"></span>
             <span class="size-2 rounded-full bg-fuchsia-500"></span>
         </div>`;
 
         chartData.forEach((q, idx) => {
             const pct = pctChanges[idx];
             const pctColor = pct >= 0 ? 'text-success' : 'text-danger';
-            
             legendHtml += `
             <div class="flex flex-col gap-1 items-center justify-end py-1">
                 <span class="text-[9px] text-slate-400 font-bold">${q.quarter}</span>
@@ -877,13 +972,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="text-[10px] font-bold ${pctColor}">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>
             </div>`;
         });
-        
         legendContainer.innerHTML = legendHtml;
     };
 
 
     // ==========================================
-    // 📌 TAB 5: ข่าวล่าสุด (ดึงข่าว 15 วันทั้งหมด)
+    // 📌 TAB 5: ข่าวล่าสุด 
     // ==========================================
     const fetchLatestNews = async () => {
         const container = document.getElementById('stock-news-container');
@@ -900,26 +994,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const htmlPromises = newsData.map(async n => {
                     const dateStr = new Date(n.datetime*1000).toLocaleDateString('th-TH');
-                    let rawDesc = n.summary ? (n.summary.substring(0, 150) + '...') : '';
                     let imgUrl = n.image || 'https://images.unsplash.com/photo-1611974714652-96574f9d48b1?q=80&w=400';
                     let finalHeadline = n.headline;
-                    
                     if (isTranslateOn && window.KodaAI && !/[\u0E00-\u0E7F]/.test(finalHeadline)) {
                         finalHeadline = await window.KodaAI.translateText(n.headline);
                     }
-
                     return `
                     <div onclick="window.openNewsModal(\`${encodeURIComponent(n.headline)}\`, \`${encodeURIComponent(n.summary || '')}\`, \`${n.url}\`, \`${n.source || 'News'}\`, \`${dateStr}\`, \`${imgUrl}\`)" class="block bg-surface-dark border-l-2 border-primary rounded-r-xl p-3 flex gap-3 active:scale-[0.98] hover:bg-slate-800 transition-all shadow-sm cursor-pointer mb-3">
                         <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                             <div class="flex items-center justify-between mb-1.5"><span class="text-primary text-[10px] font-bold uppercase truncate mr-2">${n.source || 'News'}</span><span class="text-slate-500 text-[10px]">${dateStr}</span></div>
                             <h4 class="text-white text-sm font-semibold line-clamp-2 leading-snug">${finalHeadline}</h4>
                         </div>
-                        <div class="size-20 rounded-lg bg-slate-900 shrink-0 overflow-hidden border border-border-dark/50">
-                            <img src="${imgUrl}" class="w-full h-full object-cover">
-                        </div>
+                        <div class="size-20 rounded-lg bg-slate-900 shrink-0 overflow-hidden border border-border-dark/50"><img src="${imgUrl}" class="w-full h-full object-cover"></div>
                     </div>`;
                 });
-
                 container.innerHTML = (await Promise.all(htmlPromises)).join('');
             } else {
                 container.innerHTML = `<p class="text-slate-500 text-sm text-center py-8">ไม่พบข่าวล่าสุดในช่วง 15 วันที่ผ่านมา</p>`;
