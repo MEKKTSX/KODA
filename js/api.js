@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.kodaApiData = mockData;
     window.saveKodaData = () => localStorage.setItem('koda_portfolio_data', JSON.stringify(window.kodaApiData));
 
-    window.kodaTHBRate = 34.50; 
+    window.kodaTHBRate = 32.20; 
 
     const fetchGlobalTHBRate = async () => {
         const cacheKey = 'koda_thb_rate_data_v2'; 
@@ -64,6 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data && data.rates && data.rates.THB) {
                 window.kodaTHBRate = data.rates.THB;
                 localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rates.THB, timestamp: now }));
+                
+                // 📌 แก้บัค: สั่งให้หน้าจออัปเดตยอดเงินทันทีที่ได้เรทใหม่ ไม่ต้องรอราคาหุ้น
+                if (typeof renderHome === 'function') renderHome();
             }
         } catch (e) {
             window.kodaTHBRate = cached ? cached.rate : 34.50; 
@@ -162,6 +165,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchRealPrices = async () => {
+        // 📌 เปิด Effect กระพริบเพื่อให้รู้ว่ากำลังอัปเดตราคาล่าสุด
+        const totalValueEl = document.getElementById('total-value');
+        if (totalValueEl) {
+            totalValueEl.classList.add('animate-pulse', 'opacity-50', 'transition-opacity', 'duration-300');
+        }
+
         const curData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         const allSyms = new Set();
         (curData.holdings || []).forEach(h => allSyms.add(h.symbol));
@@ -216,6 +225,11 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('koda_portfolio_data', JSON.stringify(freshData));
         localStorage.setItem('koda_last_fetch_time', Date.now().toString());
         
+        // 📌 ปิด Effect กระพริบเมื่อข้อมูลดึงมาเสร็จสมบูรณ์ และพร้อมแสดงผล
+        if (totalValueEl) {
+            totalValueEl.classList.remove('animate-pulse', 'opacity-50');
+        }
+
         if (typeof renderHome === 'function') renderHome();
         if (typeof renderWatchlist === 'function') renderWatchlist();
         if (typeof renderAllSectors === 'function') renderAllSectors();
