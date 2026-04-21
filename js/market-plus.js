@@ -1,19 +1,18 @@
-// 🚀 KODA Market Plus Module (Phase 2 - TradingView Heatmap Integration)
+// 🚀 KODA Market Plus Module (TradingView Heatmap - 30s Auto Refresh)
 window.KodaMarketPlus = {
-    loadHeatmap: () => {
+    injectTradingViewWidget: () => {
         const container = document.getElementById('tv-heatmap-container');
         if (!container) return;
         
-        // ป้องกันการโหลดสคริปต์ซ้ำซ้อนถ้ามีกราฟอยู่แล้ว
-        if (container.innerHTML !== '') return;
+        // ล้างกราฟเก่าทิ้งก่อน (ถ้ามี)
+        container.innerHTML = '';
 
-        // ดึง Widget จาก TradingView มาฝัง
+        // ดึง Widget จาก TradingView มาฝังใหม่
         const script = document.createElement('script');
         script.type = 'text/javascript';
         script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js';
         script.async = true;
         
-        // ตั้งค่า Config ของ Heatmap (S&P 500, Dark Mode, ซ่อน Topbar เพื่อความคลีน)
         script.innerHTML = JSON.stringify({
           "exchanges": [],
           "dataSource": "SPX500",
@@ -35,11 +34,17 @@ window.KodaMarketPlus = {
     },
 
     initDynamics: () => {
-        window.KodaMarketPlus.loadHeatmap();
+        // โหลดครั้งแรกทันทีที่เปิดหน้าเว็บ
+        window.KodaMarketPlus.injectTradingViewWidget();
+
+        // 📌 บังคับรีเฟรชกราฟทุกๆ 30 วินาที (30000 ms)
+        setInterval(() => {
+            window.KodaMarketPlus.injectTradingViewWidget();
+        }, 30000); 
     }
 };
 
-// 📌 ตรวจสอบและรันสคริปต์
+// 📌 ตรวจสอบและรันสคริปต์เมื่อโหลดหน้าเว็บเสร็จ
 const initMarketPlusApp = () => {
     if (document.getElementById('tv-heatmap-container')) {
         window.KodaMarketPlus.initDynamics();
