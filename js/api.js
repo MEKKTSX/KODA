@@ -46,29 +46,24 @@ document.addEventListener('DOMContentLoaded', () => {
     window.kodaApiData = mockData;
     window.saveKodaData = () => localStorage.setItem('koda_portfolio_data', JSON.stringify(window.kodaApiData));
 
-    window.kodaTHBRate = 32.20; 
+    window.kodaTHBRate = 34.50; 
 
     const fetchGlobalTHBRate = async () => {
-        const cacheKey = 'koda_thb_rate_data_v3'; 
+        const cacheKey = 'koda_thb_rate_data_v2'; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
         
-        // ลดเวลา Cache ลงเหลือ 1 นาที (60000 ms) เพื่อให้ Real-time ตามหลังบ้าน
-        if (cached && (now - cached.timestamp < 60000)) {
+        if (cached && (now - cached.timestamp < 21600000)) {
             window.kodaTHBRate = cached.rate;
             return;
         }
         
         try {
-            // เปลี่ยนมายิง API หลังบ้านของเราแทน
-            const res = await fetch('/api/exchange-rate?base=USD&target=THB');
+            const res = await fetch('https://open.er-api.com/v6/latest/USD');
             const data = await res.json();
-            
-            if (data && data.success && data.rate) {
-                window.kodaTHBRate = data.rate;
-                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rate, timestamp: now }));
-                
-                if (typeof renderHome === 'function') renderHome();
+            if (data && data.rates && data.rates.THB) {
+                window.kodaTHBRate = data.rates.THB;
+                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rates.THB, timestamp: now }));
             }
         } catch (e) {
             window.kodaTHBRate = cached ? cached.rate : 34.50; 
@@ -167,12 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchRealPrices = async () => {
-        // 📌 เปิด Effect กระพริบเพื่อให้รู้ว่ากำลังอัปเดตราคาล่าสุด
-        const totalValueEl = document.getElementById('total-value');
-        if (totalValueEl) {
-            totalValueEl.classList.add('animate-pulse', 'opacity-50', 'transition-opacity', 'duration-300');
-        }
-
         const curData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         const allSyms = new Set();
         (curData.holdings || []).forEach(h => allSyms.add(h.symbol));
@@ -227,11 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('koda_portfolio_data', JSON.stringify(freshData));
         localStorage.setItem('koda_last_fetch_time', Date.now().toString());
         
-        // 📌 ปิด Effect กระพริบเมื่อข้อมูลดึงมาเสร็จสมบูรณ์ และพร้อมแสดงผล
-        if (totalValueEl) {
-            totalValueEl.classList.remove('animate-pulse', 'opacity-50');
-        }
-
         if (typeof renderHome === 'function') renderHome();
         if (typeof renderWatchlist === 'function') renderWatchlist();
         if (typeof renderAllSectors === 'function') renderAllSectors();
