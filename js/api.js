@@ -46,44 +46,48 @@ document.addEventListener('DOMContentLoaded', () => {
     window.kodaApiData = mockData;
     window.saveKodaData = () => localStorage.setItem('koda_portfolio_data', JSON.stringify(window.kodaApiData));
 
-    window.kodaTHBRate = 34.50; 
+    // 📌 ดึงเรทเงินล่าสุดที่เคยเก็บไว้ในเครื่องมาใช้เป็นค่าตั้งต้นทันที
+    const cachedFx = JSON.parse(localStorage.getItem('koda_thb_rate_data_v3'));
+    window.kodaTHBRate = (cachedFx && cachedFx.rate) ? cachedFx.rate : 34.50;
 
     const fetchGlobalTHBRate = async () => {
-        const cacheKey = 'koda_thb_rate_data_v3'; 
-        const cached = JSON.parse(localStorage.getItem(cacheKey));
-        const now = Date.now();
-        
-        // Cache 1 นาที เพื่อไม่ให้ยิง Server ถี่เกินไปแต่ยังคงความ Real-time
-        if (cached && (now - cached.timestamp < 60000)) {
-            window.kodaTHBRate = cached.rate;
-            return;
-        }
-        
         try {
-            // 📌 แก้ไขบรรทัดนี้ ให้ยิงไปที่ /api/price?mode=fx แทน
             const res = await fetch(`/api/price?mode=fx&base=USD&target=THB&_=${Date.now()}`, { cache: 'no-store' });
             const data = await res.json();
             
             if (data && data.success && data.rate) {
                 window.kodaTHBRate = data.rate;
-                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rate, timestamp: now }));
-                
-                if (typeof renderHome === 'function') renderHome();
+                // 💾 บันทึกค่าลงเครื่อง เพื่อให้การเปิดเว็บครั้งหน้าไม่ต้องรอ และเลขไม่โดด
+                localStorage.setItem('koda_thb_rate_data_v3', JSON.stringify({ 
+                    rate: data.rate, 
+                    timestamp: Date.now() 
+                }));
+                renderHome(); // อัปเดตตัวเลขบนหน้าจอทันทีที่เรทจริงมาถึง
             }
         } catch (e) {
-            window.kodaTHBRate = cached ? cached.rate : 34.50; 
+            console.error("FX Update Error:", e);
         }
     };
     fetchGlobalTHBRate();
 
     window.formatKodaMoney = (amount, decimals = 2) => {
         const currency = localStorage.getItem('koda_currency') || 'USD';
-        const rate = window.kodaTHBRate || 34.50;
+        const rate = window.kodaTHBRate; // ใช้เรทล่าสุดที่มีในเครื่อง
         
         if (currency === 'THB') {
-            return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(amount * rate);
+            return new Intl.NumberFormat('th-TH', { 
+                style: 'currency', 
+                currency: 'THB', 
+                minimumFractionDigits: decimals, 
+                maximumFractionDigits: decimals 
+            }).format(amount * rate);
         }
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(amount);
+        return new Intl.NumberFormat('en-US', { 
+            style: 'currency', 
+            currency: 'USD', 
+            minimumFractionDigits: decimals, 
+            maximumFractionDigits: decimals 
+        }).format(amount);
     };
     
     const formatCurrency = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
@@ -615,10 +619,31 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    renderHome(); renderWatchlist(); renderAllSectors();
-    fetchMarketNews(); fetchRealPrices(); 
+    // 1. เพิ่มฟังก์ชันจัดการ Flow เข้าไป
+    const bootKodaApp = async () => {
+        // [A] แสดงผลด้วยข้อมูลเก่าจาก Cache ทันที (เลขจะไม่เด้งไป 108,000)
+        renderHome(); 
+        renderWatchlist(); 
+        renderAllSectors();
 
-    // 🚀 เปลี่ยนเป็นอัปเดตทุก 5 วินาที
-    setInterval(fetchRealPrices, 5000); 
-    setInterval(fetchMarketNews, 300000); 
-});
+        // [B] ดึงเรทเงินบาทล่าสุดมาทับ (ถ้าได้ใหม่เลขจะขยับนิดเดียว)
+        await fetchGlobalTHBRate(); 
+        
+        // [C] ดึงราคาหุ้นจริงมาทับ
+        fetchRealPrices(); 
+        fetchMarketNews(); 
+        
+        // [D] ตั้งเวลาอัปเดตต่อเนื่อง (Loop)
+        setInterval(async () => {
+            await fetchGlobalTHBRate();
+            fetchRealPrices();
+        }, 5000); 
+        
+        setInterval(fetchMarketNews, 300000); 
+    };
+
+    // 2. ลบบรรทัด renderHome(); fetchRealPrices(); ฯลฯ ของเก่าทิ้ง 
+    // แล้วใส่บรรทัดนี้เพื่อเริ่มทำงานแทน:
+    bootKodaApp();
+
+}); // ปิดท้าย DOMContentLoaded
