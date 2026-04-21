@@ -97,27 +97,15 @@
             </div>
         </section>
 
-        <section id="section-dynamics" class="px-4 pt-6">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <div class="flex items-center justify-between mb-2">
+        <section id="section-heatmap" class="px-4 pt-6">
+            <div class="flex items-center justify-between mb-3">
                 <h3 class="text-white text-sm font-bold flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-primary text-[16px]">thermostat</span> RSI Heatmap
+                    <span class="material-symbols-outlined text-primary text-[16px]">grid_view</span> Market Heatmap (S&P 500)
                 </h3>
-                    <span id="btn-refresh-rsi" class="material-symbols-outlined text-slate-400 hover:text-primary cursor-pointer text-[16px] transition-colors">sync</span>
-              </div>
-            <div id="rsi-heatmap-container"></div>
-          </div>
-        <div>
-            <div class="flex items-center justify-between mb-2">
-                <h3 class="text-white text-sm font-bold flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-primary text-[16px]">public</span> Market Indices
-                </h3>
-                    <span id="btn-refresh-indices" class="material-symbols-outlined text-slate-400 hover:text-primary cursor-pointer text-[16px] transition-colors">sync</span>
             </div>
-                <div id="indices-container"></div>
+            <div class="bg-surface-dark border border-border-dark rounded-xl overflow-hidden shadow-sm relative w-full h-[400px]">
+                <div id="tv-heatmap-container" class="absolute inset-0"></div>
             </div>
-          </div>
         </section>
 
         <section id="section-watchlist" class="px-4 pt-8">
