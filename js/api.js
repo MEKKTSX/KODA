@@ -49,23 +49,25 @@ document.addEventListener('DOMContentLoaded', () => {
     window.kodaTHBRate = 32.20; 
 
     const fetchGlobalTHBRate = async () => {
-        const cacheKey = 'koda_thb_rate_data_v2'; 
+        const cacheKey = 'koda_thb_rate_data_v3'; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
         
-        if (cached && (now - cached.timestamp < 21600000)) {
+        // ลดเวลา Cache ลงเหลือ 1 นาที (60000 ms) เพื่อให้ Real-time ตามหลังบ้าน
+        if (cached && (now - cached.timestamp < 60000)) {
             window.kodaTHBRate = cached.rate;
             return;
         }
         
         try {
-            const res = await fetch('https://open.er-api.com/v6/latest/USD');
+            // เปลี่ยนมายิง API หลังบ้านของเราแทน
+            const res = await fetch('/api/exchange-rate?base=USD&target=THB');
             const data = await res.json();
-            if (data && data.rates && data.rates.THB) {
-                window.kodaTHBRate = data.rates.THB;
-                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rates.THB, timestamp: now }));
+            
+            if (data && data.success && data.rate) {
+                window.kodaTHBRate = data.rate;
+                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rate, timestamp: now }));
                 
-                // 📌 แก้บัค: สั่งให้หน้าจออัปเดตยอดเงินทันทีที่ได้เรทใหม่ ไม่ต้องรอราคาหุ้น
                 if (typeof renderHome === 'function') renderHome();
             }
         } catch (e) {
