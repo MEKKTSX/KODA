@@ -49,21 +49,26 @@ document.addEventListener('DOMContentLoaded', () => {
     window.kodaTHBRate = 34.50; 
 
     const fetchGlobalTHBRate = async () => {
-        const cacheKey = 'koda_thb_rate_data_v2'; 
+        const cacheKey = 'koda_thb_rate_data_v3'; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
         
-        if (cached && (now - cached.timestamp < 21600000)) {
+        // Cache 1 นาที เพื่อไม่ให้ยิง Server ถี่เกินไปแต่ยังคงความ Real-time
+        if (cached && (now - cached.timestamp < 60000)) {
             window.kodaTHBRate = cached.rate;
             return;
         }
         
         try {
-            const res = await fetch('https://open.er-api.com/v6/latest/USD');
+            // 📌 แก้ไขบรรทัดนี้ ให้ยิงไปที่ /api/price?mode=fx แทน
+            const res = await fetch(`/api/price?mode=fx&base=USD&target=THB&_=${Date.now()}`, { cache: 'no-store' });
             const data = await res.json();
-            if (data && data.rates && data.rates.THB) {
-                window.kodaTHBRate = data.rates.THB;
-                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rates.THB, timestamp: now }));
+            
+            if (data && data.success && data.rate) {
+                window.kodaTHBRate = data.rate;
+                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rate, timestamp: now }));
+                
+                if (typeof renderHome === 'function') renderHome();
             }
         } catch (e) {
             window.kodaTHBRate = cached ? cached.rate : 34.50; 
