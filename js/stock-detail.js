@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
-    
-    // 📌 1. ดึง Keys ปลอดภัย
+
+    // ==========================================
+    // 📌 1. Keys & Config
+    // ==========================================
     const finnhubKeys = (window.ENV_KEYS?.FINNHUB_ARRAY && window.ENV_KEYS.FINNHUB_ARRAY.length > 0) 
                         ? window.ENV_KEYS.FINNHUB_ARRAY 
                         : (window.ENV_KEYS?.FINNHUB ? window.ENV_KEYS.FINNHUB.split(',').map(k => k.trim()).filter(Boolean) : ['']);
@@ -15,16 +17,44 @@ document.addEventListener('DOMContentLoaded', () => {
     const AV_API_KEY = window.ENV_KEYS?.ALPHAVANTAGE || ''; 
 
     const urlParams = new URLSearchParams(window.location.search);
-    const symbol = urlParams.get('symbol') || 'TSLA'; 
+    const symbol = urlParams.get('symbol') || 'TSLA';
+    let currentStockName = symbol;
 
     document.getElementById('detail-symbol').textContent = symbol.toUpperCase();
-    let currentStockName = symbol; 
 
     const isCrypto = symbol.includes('BINANCE:') || symbol.includes('COINBASE:');
     const isThaiStock = symbol.includes('.BK');
 
+    // Global สำหรับ TA Chart
+    let currentTAMode = 'short';
+    let currentTATF = 'daily';
+    let taChartInstance = null;
+    let taSeries = null;
+    let taVolumeSeries = null;
+
     // ==========================================
-    // 📌 ระบบ TABS 
+    // 📌 2. SWR Caching
+    // ==========================================
+    async function fetchWithSWR(endpoint, cacheKey, renderCallback, forceRefresh = false) {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached && !forceRefresh) {
+            try { renderCallback(JSON.parse(cached)); } catch(e){}
+        }
+
+        try {
+            const res = await fetch(endpoint, { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                localStorage.setItem(cacheKey, JSON.stringify(data));
+                renderCallback(data);
+            }
+        } catch (error) {
+            console.error(`SWR failed: ${endpoint}`, error);
+        }
+    }
+
+    // ==========================================
+    // 📌 3. TABS
     // ==========================================
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
@@ -39,20 +69,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const targetId = tab.getAttribute('data-target');
             contents.forEach(c => {
-                if (c.id === targetId) { c.classList.remove('hidden'); c.classList.add('block'); } 
-                else { c.classList.remove('block'); c.classList.add('hidden'); }
+                c.classList.toggle('hidden', c.id !== targetId);
+                c.classList.toggle('block', c.id === targetId);
             });
 
-            if (targetId === 'tab-company' && !loadedTabs.company) { fetchCompanySummary(); loadedTabs.company = true; }
-            if (targetId === 'tab-analysis' && !loadedTabs.analysis) { fetchAnalysisData(); loadedTabs.analysis = true; }
-            if (targetId === 'tab-quarterly' && !loadedTabs.quarterly) { fetchQuarterlyEarnings(); loadedTabs.quarterly = true; }
-            if (targetId === 'tab-financials' && !loadedTabs.financials) { fetchFinancialData(); loadedTabs.financials = true; }
-            if (targetId === 'tab-news' && !loadedTabs.news) { fetchLatestNews(); loadedTabs.news = true; }
+            if (targetId === 'tab-company' && !loadedTabs.company) {
+                fetchCompanySummary();
+                loadedTabs.company = true;
+            }
+            if (targetId === 'tab-analysis' && !loadedTabs.analysis) {
+                fetchAnalysisData();
+                loadedTabs.analysis = true;
+            }
+            if (targetId === 'tab-quarterly' && !loadedTabs.quarterly) {
+                fetchQuarterlyEarnings();
+                loadedTabs.quarterly = true;
+            }
+            if (targetId === 'tab-financials' && !loadedTabs.financials) {
+                fetchFinancialData();
+                loadedTabs.financials = true;
+            }
+            if (targetId === 'tab-news' && !loadedTabs.news) {
+                fetchLatestNews();
+                loadedTabs.news = true;
+            }
         });
     });
 
     // ==========================================
-    // 📌 Watchlist (Star) 
+    // 📌 4. Watchlist Star
     // ==========================================
     const btnStar = document.getElementById('btn-toggle-star');
     const iconStar = document.getElementById('icon-star');
@@ -105,19 +150,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 📌 ดึงข้อมูลราคา (Real-Time 5 วินาที)
+    // 📌 5. Render Price UI
     // ==========================================
-    const fetchYFQuote = async (sym) => {
-        try {
-            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}&_=${Date.now()}`, { cache: 'no-store' });
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (data.success) return data; 
-        } catch (e) {}
-        return null;
-    };
-
-    const renderPriceUI = (data, source = 'yf') => {
+    function renderPriceUI(data) {
         const priceEl = document.getElementById('detail-price');
         const changeEl = document.getElementById('detail-change');
         const extContainer = document.getElementById('extended-price-container');
@@ -126,67 +161,53 @@ document.addEventListener('DOMContentLoaded', () => {
         const extChangeEl = document.getElementById('extended-change');
         const dotEl = document.getElementById('market-status-dot');
 
-        let currentPrice, change, percentChange, currencyCode, isPositive;
+        let currentPrice = data.regularMarketPrice || data.preMarketPrice || data.postMarketPrice || data.c || 0;
+        let change = data.regularMarketChange !== undefined ? data.regularMarketChange : (data.d || 0);
+        let percentChange = data.regularMarketChangePercent !== undefined ? data.regularMarketChangePercent : (data.dp || 0);
+        let currencyCode = data.currency || (symbol.includes('.HK') ? 'HKD' : (symbol.includes('.SS') ? 'CNY' : 'USD'));
+        let isPositive = change >= 0;
+
         let extPrice = null, extChange = null, extPercent = null, stateText = '';
+        const marketState = data.marketState || 'REGULAR';
 
-        if (source === 'yf') {
-            currentPrice = data.regularMarketPrice || data.preMarketPrice || data.postMarketPrice;
-            change = data.regularMarketChange !== undefined ? data.regularMarketChange : 0;
-            percentChange = data.regularMarketChangePercent !== undefined ? data.regularMarketChangePercent : 0;
-            currencyCode = data.currency || 'USD';
-            isPositive = change >= 0;
-
-            const marketState = data.marketState;
-
-            if (marketState === 'PRE') {
-                extPrice = data.preMarketPrice || data.regularMarketPreviousClose;
-                extChange = data.preMarketChange || 0;
-                extPercent = data.preMarketChangePercent || 0;
-                stateText = '☀️ ก่อนตลาดเปิด';
-            } else if (marketState === 'REGULAR') {
-                extPrice = null; 
-            } else if (marketState === 'POST' || marketState === 'CLOSED') {
-                extPrice = data.postMarketPrice || currentPrice;
-                extChange = data.postMarketChange || 0;
-                extPercent = data.postMarketChangePercent || 0;
-                stateText = '🌑 หลังตลาดปิด';
-            }
-            
-            if (marketState === 'REGULAR') {
-                dotEl.classList.remove('hidden', 'bg-slate-600');
-                dotEl.classList.add('bg-success'); 
-            } else {
-                dotEl.classList.remove('hidden', 'bg-success');
-                dotEl.classList.add('bg-slate-600'); 
-            }
-        } else {
-            currentPrice = data.c;
-            change = data.d;
-            percentChange = data.dp;
-            currencyCode = symbol.includes('.HK') ? 'HKD' : (symbol.includes('.SS') ? 'CNY' : 'USD');
-            isPositive = change >= 0;
-            extPrice = null;
-            dotEl.classList.add('hidden');
+        if (marketState === 'PRE') {
+            extPrice = data.preMarketPrice || data.regularMarketPreviousClose;
+            extChange = data.preMarketChange || 0;
+            extPercent = data.preMarketChangePercent || 0;
+            stateText = '☀️ ก่อนตลาดเปิด';
+        } else if (marketState === 'POST' || marketState === 'CLOSED') {
+            extPrice = data.postMarketPrice || currentPrice;
+            extChange = data.postMarketChange || 0;
+            extPercent = data.postMarketChangePercent || 0;
+            stateText = '🌑 หลังตลาดปิด';
         }
-
-        if (currentPrice === undefined || currentPrice === null) return;
+        
+        if (marketState === 'REGULAR') {
+            if(dotEl) { dotEl.classList.remove('hidden', 'bg-slate-600'); dotEl.classList.add('bg-success'); }
+        } else {
+            if(dotEl) { dotEl.classList.remove('hidden', 'bg-success'); dotEl.classList.add('bg-slate-600'); }
+        }
 
         const fmtPrice = (num) => num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
-        if (priceEl.dataset.rawPrice && parseFloat(priceEl.dataset.rawPrice) !== currentPrice) {
+        if (priceEl && priceEl.dataset.rawPrice && parseFloat(priceEl.dataset.rawPrice) !== currentPrice) {
             priceEl.classList.remove('price-update');
             void priceEl.offsetWidth; 
             priceEl.classList.add('price-update');
         }
         
-        priceEl.dataset.rawPrice = currentPrice;
-        priceEl.textContent = fmtPrice(currentPrice);
-        document.getElementById('detail-currency').textContent = currencyCode;
+        if(priceEl) {
+            priceEl.dataset.rawPrice = currentPrice;
+            priceEl.textContent = fmtPrice(currentPrice);
+        }
+        if(document.getElementById('detail-currency')) document.getElementById('detail-currency').textContent = currencyCode;
         
-        changeEl.className = `text-sm font-bold flex items-center gap-1 mt-1 ${isPositive ? 'text-success' : 'text-danger'}`;
-        changeEl.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isPositive ? 'arrow_upward' : 'arrow_downward'}</span> ${Math.abs(change).toFixed(2)} (${Math.abs(percentChange).toFixed(2)}%)`;
+        if(changeEl) {
+            changeEl.className = `text-sm font-bold flex items-center gap-1 mt-1 ${isPositive ? 'text-success' : 'text-danger'}`;
+            changeEl.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isPositive ? 'arrow_upward' : 'arrow_downward'}</span> ${Math.abs(change).toFixed(2)} (${Math.abs(percentChange).toFixed(2)}%)`;
+        }
 
-        if (extPrice !== null && extPrice !== undefined) {
+        if (extContainer && extPrice !== null && extPrice !== undefined) {
             extContainer.classList.remove('hidden');
             extContainer.classList.add('flex'); 
             extLabelEl.textContent = stateText;
@@ -199,103 +220,26 @@ document.addEventListener('DOMContentLoaded', () => {
             extPriceEl.dataset.rawPrice = extPrice;
             extPriceEl.textContent = fmtPrice(extPrice);
             
-            document.getElementById('extended-currency').textContent = currencyCode;
+            if(document.getElementById('extended-currency')) document.getElementById('extended-currency').textContent = currencyCode;
             
             if (extPercent === 0 || !extPercent) {
-                extChangeEl.textContent = `(0.00%)`;
-                extChangeEl.className = `font-bold text-[11px] mt-0.5 text-slate-500`;
+                if(extChangeEl) extChangeEl.textContent = `(0.00%)`;
+                if(extChangeEl) extChangeEl.className = `font-bold text-[11px] mt-0.5 text-slate-500`;
             } else {
                 const isExtPos = extPercent > 0;
                 const sign = isExtPos ? '+' : ''; 
-                extChangeEl.textContent = `${sign}${extPercent.toFixed(2)}%`;
-                extChangeEl.className = `font-bold text-[11px] mt-0.5 ml-1 ${isExtPos ? 'text-success' : 'text-danger'}`;
+                if(extChangeEl) extChangeEl.textContent = `${sign}${extPercent.toFixed(2)}%`;
+                if(extChangeEl) extChangeEl.className = `font-bold text-[11px] mt-0.5 ml-1 ${isExtPos ? 'text-success' : 'text-danger'}`;
             }
-        } else {
+        } else if (extContainer) {
             extContainer.classList.remove('flex');
             extContainer.classList.add('hidden');
         }
-    };
-
-    let isRealtimeRunning = false;
-    const startRealtimeEngine = () => {
-        const fetchAndUpdateYF = async () => {
-            try {
-                const yfData = await fetchYFQuote(symbol);
-                if (yfData) {
-                    renderPriceUI(yfData, 'yf');
-                } else {
-                    const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-                    const fhData = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}&_=${Date.now()}`).then(r=>r.json());
-                    if(fhData && fhData.c > 0) renderPriceUI(fhData, 'finnhub');
-                }
-            } catch(e) {}
-        };
-        fetchAndUpdateYF(); 
-        if(!isRealtimeRunning) {
-            // 🚀 อัปเดตทุกๆ 5 วิ
-            setInterval(fetchAndUpdateYF, 5000); 
-            isRealtimeRunning = true;
-        }
-    };
-
-    const loadPriceAndOHLC = async () => {
-        try {
-            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            const quoteRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${getFHKey()}`);
-            const quote = await quoteRes.json();
-            if (quote && quote.c > 0) renderPriceUI(quote, 'finnhub');
-            
-            startRealtimeEngine(); 
-
-            let metricObj = null, profile = null;
-            if (!isThaiStock && !isCrypto) {
-                const [mRes, pRes] = await Promise.all([
-                    fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${getFHKey()}`).then(r=>r.json()),
-                    fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json())
-                ]);
-                metricObj = mRes; profile = pRes;
-            }
-
-            if (profile && profile.name) {
-                currentStockName = profile.name;
-                document.getElementById('detail-name').textContent = profile.name;
-            }
-
-            if (quote && quote.c > 0) {
-                const fmt = (num, suffix='') => (num !== undefined && num !== null) ? num.toFixed(2) + suffix : '-';
-                document.getElementById('stat-open').textContent = fmt(quote.o);
-                document.getElementById('stat-prev').textContent = fmt(quote.pc);
-                document.getElementById('stat-high').textContent = fmt(quote.h);
-                document.getElementById('stat-low').textContent = fmt(quote.l);
-                
-                if (metricObj && metricObj.metric) {
-                    const m = metricObj.metric;
-                    document.getElementById('stat-52high').textContent = fmt(m['52WeekHigh']);
-                    document.getElementById('stat-52low').textContent = fmt(m['52WeekLow']);
-                    document.getElementById('stat-pe').textContent = fmt(m.peExclExtraTTM);
-                    document.getElementById('stat-ps').textContent = fmt(m.psTTM);
-                    document.getElementById('stat-eps').textContent = fmt(m.epsTTM);
-                    document.getElementById('stat-div').textContent = fmt(m.dividendYieldIndicatedAnnual, '%');
-                }
-                if (profile && profile.marketCapitalization) {
-                    const mcap = profile.marketCapitalization;
-                    document.getElementById('stat-mcap').textContent = mcap > 1000 ? (mcap/1000).toFixed(2)+'B' : mcap.toFixed(2)+'M';
-                }
-            }
-        } catch (e) { console.error("OHLC fetch error:", e); }
-    };
-    loadPriceAndOHLC();
+    }
 
     // ==========================================
-    // 📌 ตัวดึงกราฟหลัก (อัปเกรด โหลดตรงไปตรงมา ไม่หมุนรอนาน)
+    // 📌 6. Fetch Candle Data
     // ==========================================
-    const loadLightweightCharts = () => new Promise((resolve) => {
-        if (window.LightweightCharts) { resolve(); return; }
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
-        script.onload = resolve; document.head.appendChild(script);
-    });
-
     const fetchCandleData = async (tfRange) => {
         const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
         const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
@@ -304,7 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
         
-        // 1. คริปโต (รันลื่นผ่าน Binance)
         if (isCrypto) {
             try {
                 let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
@@ -327,7 +270,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
         }
 
-        // 2. หุ้นทั่วไป (พึ่ง Finnhub ก่อน ยิงตรงๆ เร็วๆ ไม่มี CORS)
         if (!isThaiStock && !isCrypto) {
             try {
                 const to = Math.floor(Date.now() / 1000);
@@ -342,7 +284,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
         }
 
-        // 3. Fallback (Yahoo Finance ผ่าน Proxy เผื่ออันข้างบนล่ม)
         const yfRange = rangeMap[tfRange] || '1y';
         const yfInterval = intervalMap[tfRange] || '1d';
         let yfSym = symbol;
@@ -360,9 +301,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(proxy);
                 if (!res.ok) continue;
                 const raw = await res.json();
-                
                 let yfData = raw;
-                if (raw.contents) { yfData = JSON.parse(raw.contents); }
+                if (raw.contents) yfData = JSON.parse(raw.contents);
                 
                 if (yfData?.chart?.result?.[0]) {
                     const q = yfData.chart.result[0].indicators.quote[0];
@@ -376,20 +316,61 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     };
 
+    function loadLightweightCharts() {
+        return new Promise(resolve => {
+            if (window.LightweightCharts) return resolve();
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
+            script.onload = resolve;
+            document.head.appendChild(script);
+        });
+    }
 
     // ==========================================
-    // 📌 TAB 1: กราฟ KODA S/R
+    // 📌 7. KODA Realtime Chart + WebSocket
     // ==========================================
-    const renderChart = () => {
+    let chartInstance = null;
+    let candleSeries = null;
+    let activePriceLines = [];
+    let chartWebSocket = null;
+
+    async function initKodaChart() {
+        const container = document.getElementById('koda-chart-container');
+        if (chartInstance) return;
+
+        await loadLightweightCharts();
+
+        chartInstance = window.LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: 380,
+            layout: { background: { type: 'solid', color: '#0a0e17' }, textColor: '#848e9c' },
+            grid: { vertLines: { color: 'rgba(42,46,57,0.2)' }, horzLines: { color: 'rgba(42,46,57,0.2)' } },
+            rightPriceScale: { borderColor: 'rgba(42,46,57,0.8)' },
+            timeScale: { borderColor: 'rgba(42,46,57,0.8)', timeVisible: true }
+        });
+
+        candleSeries = chartInstance.addCandlestickSeries({
+            upColor: '#00c076', downColor: '#ff4d4d',
+            borderUpColor: '#00c076', borderDownColor: '#ff4d4d',
+            wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
+        });
+
+        // โหลดข้อมูลประวัติศาสตร์ 1Y ครั้งแรก
+        const initialDataRaw = await fetchCandleData('1Y');
+        if (initialDataRaw) {
+            const candles = initialDataRaw.timestamps.map((t, i) => ({ 
+                time: t, open: Number(initialDataRaw.opens[i]), high: Number(initialDataRaw.highs[i]), 
+                low: Number(initialDataRaw.lows[i]), close: Number(initialDataRaw.closes[i]) 
+            })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
+            
+            candleSeries.setData(candles);
+            chartInstance.timeScale().fitContent();
+        }
+
+        // TradingView Button Logic
         const tvContainer = document.getElementById('tv-chart-container');
-        const kodaContainer = document.getElementById('koda-chart-container');
         const btnTV = document.getElementById('btn-chart-tv');
         const btnKoda = document.getElementById('btn-chart-koda');
-        const tfSelector = document.getElementById('tf-selector');
-        
-        let currentChartMode = 'tv';
-        let currentTimeframe = '1Y';
-        let kodaChartInstance = null;
 
         const initTV = () => {
             let tvSym = symbol;
@@ -414,488 +395,119 @@ document.addEventListener('DOMContentLoaded', () => {
             document.head.appendChild(script);
         }
 
-        const calculateSupportResistance = (candles) => {
-            if (!candles || candles.length < 20) return [];
-            const currentPrice = candles[candles.length - 1].close, highs = candles.map(c => c.high), lows = candles.map(c => c.low), n = candles.length;
-            const lookback = Math.max(3, Math.floor(n / 25));
-            const swingHighs = [], swingLows = [];
-            for (let i = lookback; i < n - lookback; i++) {
-                let isHigh = true, isLow = true;
-                for (let j = 1; j <= lookback; j++) {
-                    if (highs[i] <= highs[i - j] || highs[i] <= highs[i + j]) isHigh = false;
-                    if (lows[i] >= lows[i - j] || lows[i] >= lows[i + j]) isLow = false;
-                }
-                if (isHigh) swingHighs.push({ price: highs[i], score: (i/n) });
-                if (isLow) swingLows.push({ price: lows[i], score: (i/n) });
-            }
-            const threshold = currentPrice * 0.015;
-            const pick = (items, filter) => {
-                const res = [];
-                items.sort((a,b)=>b.score - a.score);
-                for (let it of items) {
-                    if (filter(it.price) && !res.some(p => Math.abs(p.price - it.price) < threshold)) res.push(it);
-                    if (res.length >= 4) break;
-                }
-                return res;
-            };
-            const toLvl = (items, type) => items.map((it, idx) => ({ price: it.price, type, strength: idx === 0 ? 3 : 1 }));
-            return [...toLvl(pick(swingHighs, p => p > currentPrice), 'res'), ...toLvl(pick(swingLows, p => p < currentPrice), 'sup')];
-        };
-
-        const renderAdvancedSR = async () => {
-            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs" id="koda-chart-status">กำลังโหลดกราฟ...</p></div>`;
-            try {
-                await loadLightweightCharts();
-                
-                const srCacheKey = `koda_sr_levels_v4_${symbol}_${currentTimeframe}`;
-                const candleCacheKey = `koda_sr_candles_v4_${symbol}_${currentTimeframe}`;
-                
-                const cachedLevels = JSON.parse(localStorage.getItem(srCacheKey));
-                const cachedCandles = JSON.parse(localStorage.getItem(candleCacheKey));
-                
-                const now = Date.now();
-                const ONE_MONTH = 30 * 24 * 60 * 60 * 1000;
-                const ONE_DAY = 24 * 60 * 60 * 1000; 
-                
-                let candles, levels;
-
-                if (cachedCandles && (now - cachedCandles.timestamp < ONE_DAY)) {
-                    candles = cachedCandles.data;
-                } else {
-                    // 🚀 โหลดรอบเดียว จบๆ ไม่ต้องรอให้หงุดหงิด
-                    let candleResult = await fetchCandleData(currentTimeframe);
-                    
-                    if (!candleResult) { 
-                        kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><span class="material-symbols-outlined text-danger text-4xl mb-2">wifi_off</span><p class="text-danger text-xs font-bold">ไม่สามารถดึงข้อมูลกราฟได้ในขณะนี้</p><button class="mt-4 px-3 py-1 bg-slate-800 text-white text-xs rounded" onclick="location.reload()">รีเฟรชหน้าเว็บ</button></div>`; 
-                        return; 
-                    }
-
-                    const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
-                    candles = timestamps.map((t, i) => ({ time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), volume: Number(volumes[i] || 0) }))
-                        .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0))
-                        .sort((a, b) => a.time - b.time);
-                    
-                    localStorage.setItem(candleCacheKey, JSON.stringify({ timestamp: now, data: candles }));
-                }
-
-                if (cachedLevels && (now - cachedLevels.timestamp < ONE_MONTH)) {
-                    levels = cachedLevels.data;
-                } else {
-                    levels = calculateSupportResistance(candles);
-                    localStorage.setItem(srCacheKey, JSON.stringify({ timestamp: now, data: levels }));
-                }
-
-                kodaContainer.innerHTML = '';
-                if (kodaChartInstance) { kodaChartInstance.remove(); }
-                
-                kodaChartInstance = window.LightweightCharts.createChart(kodaContainer, {
-                    width: kodaContainer.clientWidth, height: 380,
-                    layout: { background: { type: 'solid', color: '#0a0e17' }, textColor: '#848e9c', fontSize: 12 },
-                    grid: { vertLines: { color: 'rgba(42, 46, 57, 0.2)' }, horzLines: { color: 'rgba(42, 46, 57, 0.2)' } },
-                    rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0.8)', autoScale: true },
-                    timeScale: { borderColor: 'rgba(42, 46, 57, 0.8)', timeVisible: true }
-                });
-                
-                const candleSeries = kodaChartInstance.addCandlestickSeries({ 
-                    upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
-                });
-                candleSeries.setData(candles);
-
-                levels.forEach(lvl => {
-                    candleSeries.createPriceLine({
-                        price: lvl.price,
-                        color: lvl.type === 'sup' ? 'rgba(0,192,118,0.85)' : 'rgba(255,77,77,0.85)',
-                        lineWidth: lvl.strength === 3 ? 2 : 1, 
-                        lineStyle: lvl.strength === 3 ? 0 : 2, 
-                        axisLabelVisible: true, title: '' 
-                    });
-                });
-                kodaChartInstance.timeScale().fitContent();
-            } catch (e) { console.error('KODA Chart error:', e); kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">เกิดข้อผิดพลาดในการวาดกราฟ</p>`; }
-        };
-
         btnKoda.addEventListener('click', () => {
-            currentChartMode = 'koda';
             btnKoda.className = "px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors";
             btnTV.className = "px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors";
-            tfSelector.style.display = 'flex';
             tvContainer.style.display = 'none';
-            kodaContainer.style.display = 'block';
-            renderAdvancedSR();
+            container.style.display = 'block';
         });
 
         btnTV.addEventListener('click', () => {
-            currentChartMode = 'tv';
             btnTV.className = "px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors";
             btnKoda.className = "px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors";
-            tfSelector.style.display = 'none';
             tvContainer.style.display = 'block';
-            kodaContainer.style.display = 'none';
+            container.style.display = 'none';
         });
 
-        document.querySelectorAll('.tf-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                currentTimeframe = btn.dataset.tf;
-                document.querySelectorAll('.tf-btn').forEach(b => {
-                    b.classList.remove('text-primary', 'bg-primary/10');
-                    b.classList.add('text-slate-500');
-                });
-                btn.classList.add('text-primary', 'bg-primary/10');
-                btn.classList.remove('text-slate-500');
-                if (currentChartMode === 'koda') renderAdvancedSR();
-            });
-        });
-    };
-    renderChart();
+        connectWebSocket();
+    }
+
+    function connectWebSocket() {
+        if (chartWebSocket) chartWebSocket.close();
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        chartWebSocket = new WebSocket(`${protocol}//${window.location.host}/ws/chart/${symbol}`);
+
+        chartWebSocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'chart_update') {
+                renderPriceUI(data.price);
+
+                if (data.sr_levels && candleSeries) {
+                    activePriceLines.forEach(line => candleSeries.removePriceLine(line));
+                    activePriceLines = [];
+
+                    data.sr_levels.forEach(lvl => {
+                        const line = candleSeries.createPriceLine({
+                            price: lvl.price,
+                            color: lvl.type === 'sup' ? 'rgba(0,192,118,0.85)' : 'rgba(255,77,77,0.85)',
+                            lineWidth: lvl.strength === 3 ? 2 : 1,
+                            lineStyle: lvl.strength === 3 ? 0 : 2,
+                            axisLabelVisible: true
+                        });
+                        activePriceLines.push(line);
+                    });
+                }
+            }
+        };
+
+        chartWebSocket.onclose = () => setTimeout(connectWebSocket, 3000);
+    }
 
     // ==========================================
-    // 📌 TAB 2: สรุปบริษัท AI 
+    // 📌 8. Company Summary (POST)
     // ==========================================
-    const fetchCompanySummary = async (force = false) => {
-        const container = document.getElementById('ai-company-content');
-        const dateEl = document.getElementById('ai-summary-date');
-        const cacheKey = `koda_company_summary_v3_${symbol}`;
-        const cached = JSON.parse(localStorage.getItem(cacheKey));
-        const now = Date.now();
-
-        if (!force && cached && (now - cached.timestamp < 90 * 24 * 60 * 60 * 1000)) {
-            container.innerHTML = cached.html;
-            dateEl.textContent = `Last updated: ${new Date(cached.timestamp).toLocaleDateString('th-TH')}`;
+    async function fetchCompanySummary(force = false) {
+        const cacheKey = `koda_company_${symbol}`;
+        const cached = localStorage.getItem(cacheKey);
+        
+        if (cached && !force) {
+            renderCompanySummary(JSON.parse(cached));
             return;
         }
 
-        container.innerHTML = `<div class="flex flex-col items-center justify-center py-6"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3"></div><p class="text-primary font-bold text-xs animate-pulse">AI กำลังวิเคราะห์ปัจจัยพื้นฐาน...</p></div>`;
+        document.getElementById('ai-company-content').innerHTML = `<div class="flex flex-col items-center justify-center py-6"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3"></div><p class="text-primary font-bold text-xs animate-pulse">AI กำลังวิเคราะห์ปัจจัยพื้นฐาน...</p></div>`;
 
         try {
-            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            const profile = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json());
-            const industry = profile.finnhubIndustry || 'General';
-            
-            const GEMINI_API_KEY = window.ENV_KEYS?.GEMINI ? window.ENV_KEYS.GEMINI[0] : '';
-            if (!GEMINI_API_KEY) throw new Error('No Gemini Key');
-
-            const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดสรุป Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${symbol} (${currentStockName}) อุตสาหกรรม: ${industry}
-            ให้อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เข้าใจง่ายสำหรับนักลงทุนรายย่อย (หลีกเลี่ยงศัพท์แสงที่ยากเกินไป)
-            บังคับใช้โครงสร้าง HTML นี้ในการตอบ:
-            <div style="margin-bottom: 12px;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> ...</div>
-            <div style="margin-bottom: 12px;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> ...</div>
-            <div style="margin-bottom: 12px;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> ...</div>
-            <div style="padding: 12px; background: rgba(52,168,235,0.1); border-radius: 8px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> ...</div>
-            ตอบด้วยรหัส HTML ล้วน ห้ามมีเครื่องหมาย \`\`\`html`;
-
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+            const res = await fetch('/api/company-summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: symbol, companyName: currentStockName })
             });
             const data = await res.json();
-            
-            if (data.candidates && data.candidates[0].content.parts[0].text) {
-                const aiHtml = data.candidates[0].content.parts[0].text.replace(/```html/g, '').replace(/```/g, '').trim();
-                container.innerHTML = aiHtml;
-                dateEl.textContent = `Last updated: ${new Date().toLocaleDateString('th-TH')}`;
-                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, html: aiHtml }));
-            } else { throw new Error('AI Error'); }
-        } catch(e) {
-            container.innerHTML = `<p class="text-danger text-sm text-center py-4">ไม่สามารถสรุปข้อมูลบริษัทได้</p>`;
-        }
-    };
-    document.getElementById('btn-refresh-summary').addEventListener('click', () => fetchCompanySummary(true));
-
-    // ==========================================
-    // 📌 TAB ใหม่: บทวิเคราะห์ (Analysis / TA)
-    // 🚀 ปรับแก้วิธีวาดกราฟเป้าหมายให้เป็น Webull Clone (ใช้ HTML ซ้อนทับ ไม่พังชัวร์)
-    // ==========================================
-    let taChartInstance = null;
-    let taSeries = null;
-    let taVolumeSeries = null;
-
-    const renderAnalystRatings = (rec) => {
-        const total = rec.strongBuy + rec.buy + rec.hold + rec.sell + rec.strongSell;
-        const container = document.getElementById('analyst-bars');
-        const badge = document.getElementById('analyst-consensus-badge');
-        document.getElementById('analyst-subtitle').textContent = `อิงตามนักวิเคราะห์ ${total || '--'} คน`;
-
-        if (total === 0) {
-            badge.textContent = "N/A";
-            container.innerHTML = `<p class="text-slate-500 text-xs">ไม่มีข้อมูลนักวิเคราะห์</p>`;
-            return;
-        }
-
-        const mapTH = { 'strongBuy': 'ซื้อทันที', 'buy': 'ซื้อ', 'hold': 'ถือ', 'sell': 'ต่ำกว่าค่าเฉลี่ย', 'strongSell': 'ขาย' };
-        const colors = { 'strongBuy': '#00c076', 'buy': '#22c55e', 'hold': '#eab308', 'sell': '#64748b', 'strongSell': '#ff4d4d' };
-        
-        let consensusText = "N/A";
-        if (rec.consensus === 'strong_buy') consensusText = "ซื้อทันที";
-        else if (rec.consensus === 'buy') consensusText = "ซื้อ";
-        else if (rec.consensus === 'hold') consensusText = "ถือ";
-        else if (rec.consensus === 'underperform') consensusText = "ต่ำกว่าค่าเฉลี่ย";
-        else if (rec.consensus === 'sell') consensusText = "ขาย";
-
-        badge.textContent = consensusText;
-
-        const rows = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell'].map(key => {
-            const pct = Math.round((rec[key] / total) * 100);
-            return `
-            <div class="flex items-center gap-3">
-                <span class="text-slate-300 text-xs w-20 text-right">${mapTH[key]}</span>
-                <div class="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
-                    <div class="h-full rounded-full" style="width: ${pct}%; background-color: ${colors[key]}"></div>
-                </div>
-                <span class="text-slate-400 text-xs w-8 text-right">${pct}%</span>
-            </div>`;
-        });
-        
-        container.innerHTML = rows.join('');
-    };
-
-    const renderTargetPrice = async (targets) => {
-        const fmt = (num) => num ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
-        const cur = targets.current;
-        const high = targets.high;
-        const low = targets.low;
-        const mean = targets.mean;
-
-        if (!cur || !high || !low || !mean) {
-            document.getElementById('target-subtitle').textContent = "ไม่มีข้อมูลราคาเป้าหมาย";
-            return;
-        }
-
-        const highPct = ((high - cur) / cur) * 100;
-        const meanPct = ((mean - cur) / cur) * 100;
-        const lowPct = ((low - cur) / cur) * 100;
-
-        document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
-
-        // ดึงกราฟราคาย้อนหลัง 1 ปี 
-        const hist = await fetchCandleData('1Y');
-        let chartPoints = [];
-        if (hist && hist.closes && hist.closes.length > 0) {
-            chartPoints = hist.closes.filter(c => c !== null);
-        } else {
-            // ถ้าเน็ตพัง ให้สร้างกราฟเฉียงขึ้นเนียนๆ
-            chartPoints = [cur*0.8, cur*0.85, cur*0.9, cur*0.95, cur]; 
-        }
-
-        const ctx = document.getElementById('target-line-chart');
-        if (window.targetLineChartInstance) window.targetLineChartInstance.destroy();
-        
-        const yMin = Math.min(...chartPoints, low) * 0.95;
-        const yMax = Math.max(...chartPoints, high) * 1.05;
-
-        // วาดแค่กราฟประวัติสีฟ้าอย่างเดียว
-        window.targetLineChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: { 
-                labels: new Array(chartPoints.length).fill(''), 
-                datasets: [
-                    { data: chartPoints, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 }
-                ] 
-            },
-            options: { 
-                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, 
-                scales: { x: { display: false }, y: { display: false, min: yMin, max: yMax } },
-                // เว้นที่ว่างด้านขวาให้กล่อง Label 120px
-                layout: { padding: { top: 15, bottom: 15, right: 120 } },
-                animation: { duration: 0 } 
-            }
-        });
-
-        // 🚀 แปะ Badge ตัวเลขลงไปด้านขวา และลากเส้นประจากเส้นกราฟหลักให้เนียนๆ เหมือน Webull
-        const badgesContainer = document.getElementById('target-badges-container');
-        const yRange = yMax - yMin;
-        const getTopPct = (val) => Math.max(5, Math.min(95, 100 - ((val - yMin) / yRange) * 100));
-
-        badgesContainer.innerHTML = `
-            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(high)}%; width: 100%;">
-                <div class="flex-1 border-t border-dashed border-[#00c076] opacity-50"></div>
-                <div class="bg-[#00c076] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%</div>
-            </div>
-            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(mean)}%; width: 100%;">
-                <div class="flex-1 border-t border-dashed border-[#26a69a] opacity-50"></div>
-                <div class="bg-[#26a69a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%</div>
-            </div>
-            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(cur)}%; width: 100%;">
-                <div class="flex-1 border-t border-dashed border-primary opacity-50"></div>
-                <div class="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">${fmt(cur)}</div>
-            </div>
-            <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(low)}%; width: 100%;">
-                <div class="flex-1 border-t border-dashed border-[#ff4d4d] opacity-50"></div>
-                <div class="bg-[#ff4d4d] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%</div>
-            </div>
-        `;
-    };
-
-    let currentTAMode = 'short'; 
-    let currentTATF = 'daily'; 
-    
-    // 🚀 กราฟวิเคราะห์ทางเทคนิค
-    const renderTAChart = async () => {
-        const container = document.getElementById('ta-chart-container');
-        container.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
-        
-        try {
-            await loadLightweightCharts();
-            
-            let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
-            const candleResult = await fetchCandleData(rangeToFetch);
-            
-            if (!candleResult) { 
-                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p></div>`;
-                return;
-            }
-
-            const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
-            
-            let chartData = timestamps.map((t, i) => ({ 
-                time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), value: Number(volumes[i] || 0) 
-            })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
-
-            container.innerHTML = '';
-            if (taChartInstance) taChartInstance.remove();
-            
-            taChartInstance = window.LightweightCharts.createChart(container, {
-                width: container.clientWidth, height: 220,
-                layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#848e9c', fontSize: 10 },
-                grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(42, 46, 57, 0.4)' } },
-                rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0)' },
-                timeScale: { borderColor: 'rgba(42, 46, 57, 0)', timeVisible: false }
-            });
-            
-            taSeries = taChartInstance.addCandlestickSeries({ 
-                upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
-            });
-            taSeries.setData(chartData);
-
-            taVolumeSeries = taChartInstance.addHistogramSeries({
-                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 }
-            });
-            taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
-
-            let bullCount = 0, bearCount = 0;
-            const markers = [];
-            const sma20 = [];
-            
-            chartData.forEach((d, i) => {
-                if (i >= 20) {
-                    const slice = chartData.slice(i-20, i);
-                    const avg = slice.reduce((a,b)=>a+b.close,0)/20;
-                    sma20.push({time: d.time, value: avg});
-                    
-                    if (i > 25 && i % Math.max(5, Math.floor(chartData.length/40)) === 0) { 
-                        if (d.close > avg) { 
-                            markers.push({ time: d.time, position: 'belowBar', color: '#00c076', shape: 'circle', text: 'B' });
-                            bullCount++;
-                        } else {
-                            markers.push({ time: d.time, position: 'aboveBar', color: '#ff4d4d', shape: 'circle', text: 'S' });
-                            bearCount++;
-                        }
-                    }
-                }
-            });
-
-            if (markers.length > 0) taSeries.setMarkers(markers);
-            
-            const titleEl = document.getElementById('ta-signal-title');
-            if (bullCount > bearCount + 2) {
-                titleEl.textContent = 'หลักฐานสัญญาณขาขึ้นที่แข็งแกร่งมาก';
-                titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
-            } else if (bullCount > bearCount) {
-                titleEl.textContent = 'หลักฐานสัญญาณขาขึ้น';
-                titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
-            } else if (bearCount > bullCount) {
-                titleEl.textContent = 'หลักฐานสัญญาณขาลง';
-                titleEl.className = 'text-[#ff4d4d] text-base font-bold mb-1';
-            } else {
-                titleEl.textContent = 'สัญญาณผสม (ไม่มีเทรนด์ชัดเจน)';
-                titleEl.className = 'text-yellow-500 text-base font-bold mb-1';
-            }
-
-            document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
-            document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
-
-            if (currentTAMode === 'short') {
-                const lookback = currentTATF === 'daily' ? 60 : 12; 
-                const from = chartData[Math.max(0, chartData.length - lookback)].time;
-                taChartInstance.timeScale().setVisibleRange({ from: from, to: chartData[chartData.length-1].time });
-            } else if (currentTAMode === 'medium') {
-                const lookback = currentTATF === 'daily' ? 120 : 24; 
-                const from = chartData[Math.max(0, chartData.length - lookback)].time;
-                taChartInstance.timeScale().setVisibleRange({ from: from, to: chartData[chartData.length-1].time });
-            } else {
-                taChartInstance.timeScale().fitContent();
+            if (data.success) {
+                localStorage.setItem(cacheKey, JSON.stringify(data));
+                renderCompanySummary(data);
             }
         } catch (e) {
-            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p>`;
+            console.error(e);
         }
-    };
+    }
 
-    const fetchAnalysisData = async () => {
+    function renderCompanySummary(data) {
+        if (data && data.html) {
+            document.getElementById('ai-company-content').innerHTML = data.html;
+            const dateEl = document.getElementById('ai-summary-date');
+            if(dateEl) dateEl.textContent = `Last updated: ${new Date().toLocaleDateString('th-TH')}`;
+        }
+    }
+
+    // ==========================================
+    // 📌 9. Analysis (Analyst, Target, TA)
+    // ==========================================
+    async function fetchAnalysisData() {
+        const cacheKey = `koda_analysis_${symbol}`;
+        const cached = localStorage.getItem(cacheKey);
+        const now = Date.now();
+        
         document.getElementById('analysis-loading').classList.remove('hidden');
         document.getElementById('analysis-content').classList.add('hidden');
-        
-        const cacheKey = `koda_analysis_v4_${symbol}`;
-        const cached = JSON.parse(localStorage.getItem(cacheKey));
-        const now = Date.now();
 
-        if (cached && (now - cached.timestamp < 15 * 24 * 60 * 60 * 1000)) {
-            renderAnalystRatings(cached.data.recommendation);
-            await renderTargetPrice(cached.data.targets);
-            
-            document.querySelectorAll('.ta-mode-btn').forEach(btn => {
-                btn.onclick = (e) => {
-                    document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
-                    e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
-                    currentTAMode = e.currentTarget.dataset.mode;
-                    renderTAChart();
-                };
-            });
-            document.querySelectorAll('.ta-tf-btn').forEach(btn => {
-                btn.onclick = (e) => {
-                    document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
-                    e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
-                    currentTATF = e.currentTarget.dataset.tf;
-                    renderTAChart();
-                };
-            });
-
-            await renderTAChart();
-            document.getElementById('analysis-loading').classList.add('hidden');
-            document.getElementById('analysis-content').classList.remove('hidden');
-            return;
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (now - parsed.timestamp < 3600000) {
+                renderAnalysis(parsed.data);
+                return;
+            }
         }
 
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
             const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=analysis`);
             const data = await res.json();
-
+            
             if (data.success) {
                 localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: data }));
-                renderAnalystRatings(data.recommendation);
-                await renderTargetPrice(data.targets);
-                
-                document.querySelectorAll('.ta-mode-btn').forEach(btn => {
-                    btn.onclick = (e) => {
-                        document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
-                        e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
-                        currentTAMode = e.currentTarget.dataset.mode;
-                        renderTAChart();
-                    };
-                });
-
-                document.querySelectorAll('.ta-tf-btn').forEach(btn => {
-                    btn.onclick = (e) => {
-                        document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
-                        e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
-                        currentTATF = e.currentTarget.dataset.tf;
-                        renderTAChart();
-                    };
-                });
-
-                await renderTAChart();
-
-                document.getElementById('analysis-loading').classList.add('hidden');
-                document.getElementById('analysis-content').classList.remove('hidden');
+                renderAnalysis(data);
             } else {
                 throw new Error();
             }
@@ -904,13 +516,205 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('analysis-loading').classList.add('text-danger');
             document.getElementById('analysis-loading').classList.remove('animate-pulse');
         }
-    };
+    }
 
+    async function renderAnalysis(data) {
+        // --- 1. Analyst Ratings ---
+        const rec = data.recommendation;
+        const total = rec ? (rec.strongBuy + rec.buy + rec.hold + rec.sell + rec.strongSell) : 0;
+        const container = document.getElementById('analyst-bars');
+        const badge = document.getElementById('analyst-consensus-badge');
+        document.getElementById('analyst-subtitle').textContent = `อิงตามนักวิเคราะห์ ${total || '--'} คน`;
+
+        if (total === 0) {
+            badge.textContent = "N/A";
+            container.innerHTML = `<p class="text-slate-500 text-xs">ไม่มีข้อมูลนักวิเคราะห์</p>`;
+        } else {
+            const mapTH = { 'strongBuy': 'ซื้อทันที', 'buy': 'ซื้อ', 'hold': 'ถือ', 'sell': 'ต่ำกว่าค่าเฉลี่ย', 'strongSell': 'ขาย' };
+            const colors = { 'strongBuy': '#00c076', 'buy': '#22c55e', 'hold': '#eab308', 'sell': '#64748b', 'strongSell': '#ff4d4d' };
+            
+            let consensusText = "N/A";
+            if (rec.consensus === 'strong_buy') consensusText = "ซื้อทันที";
+            else if (rec.consensus === 'buy') consensusText = "ซื้อ";
+            else if (rec.consensus === 'hold') consensusText = "ถือ";
+            else if (rec.consensus === 'underperform') consensusText = "ต่ำกว่าค่าเฉลี่ย";
+            else if (rec.consensus === 'sell') consensusText = "ขาย";
+
+            badge.textContent = consensusText;
+
+            container.innerHTML = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell'].map(key => {
+                const pct = Math.round((rec[key] / total) * 100);
+                return `
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-300 text-xs w-20 text-right">${mapTH[key]}</span>
+                    <div class="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div class="h-full rounded-full" style="width: ${pct}%; background-color: ${colors[key]}"></div>
+                    </div>
+                    <span class="text-slate-400 text-xs w-8 text-right">${pct}%</span>
+                </div>`;
+            }).join('');
+        }
+
+        // --- 2. Target Price Chart ---
+        const targets = data.targets;
+        const fmt = (num) => num ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
+        const cur = targets.current; const high = targets.high; const low = targets.low; const mean = targets.mean;
+
+        if (cur && high && low && mean) {
+            const highPct = ((high - cur) / cur) * 100;
+            const meanPct = ((mean - cur) / cur) * 100;
+            const lowPct = ((low - cur) / cur) * 100;
+
+            document.getElementById('target-subtitle').textContent = `สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ ${fmt(mean)} โดยมีค่าสูงสุดที่ ${fmt(high)} และค่าต่ำสุดที่ ${fmt(low)}`;
+
+            const hist = await fetchCandleData('1Y');
+            let chartPoints = hist && hist.closes && hist.closes.length > 0 ? hist.closes.filter(c => c !== null) : [cur*0.8, cur*0.9, cur]; 
+            const paddingLen = Math.floor(chartPoints.length * 0.25); 
+            const labels = new Array(chartPoints.length + paddingLen).fill('');
+            
+            const histData = [...chartPoints, ...new Array(paddingLen).fill(null)];
+            const highLine = new Array(chartPoints.length + paddingLen).fill(null);
+            const meanLine = new Array(chartPoints.length + paddingLen).fill(null);
+            const lowLine = new Array(chartPoints.length + paddingLen).fill(null);
+            const curLine = new Array(chartPoints.length + paddingLen).fill(null);
+            
+            for(let i = chartPoints.length - 1; i < labels.length; i++) {
+                highLine[i] = high; meanLine[i] = mean; lowLine[i] = low; curLine[i] = cur;
+            }
+
+            const ctx = document.getElementById('target-line-chart');
+            if (window.targetLineChartInstance) window.targetLineChartInstance.destroy();
+            
+            const yMin = Math.min(...chartPoints, low) * 0.95;
+            const yMax = Math.max(...chartPoints, high) * 1.05;
+
+            window.targetLineChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { 
+                    labels: labels, 
+                    datasets: [
+                        { data: histData, borderColor: '#34a8eb', borderWidth: 2, tension: 0.1, pointRadius: 0 },
+                        { data: highLine, borderColor: '#00c076', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                        { data: meanLine, borderColor: '#26a69a', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                        { data: lowLine, borderColor: '#ff4d4d', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                        { data: curLine, borderColor: '#34a8eb', borderWidth: 1, borderDash: [2, 4], pointRadius: 0 }
+                    ] 
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, 
+                    scales: { x: { display: false }, y: { display: false, min: yMin, max: yMax } },
+                    layout: { padding: { top: 15, bottom: 15, right: 120 } }, animation: { duration: 0 } 
+                }
+            });
+
+            const badgesContainer = document.getElementById('target-badges-container');
+            const yRange = yMax - yMin;
+            const getTopPct = (val) => Math.max(5, Math.min(95, 100 - ((val - yMin) / yRange) * 100));
+
+            badgesContainer.innerHTML = `
+                <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(high)}%; width: 100%;">
+                    <div class="flex-1 border-t border-dashed border-[#00c076] opacity-50"></div>
+                    <div class="bg-[#00c076] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">สูงสุด ${fmt(high)} ${highPct>0?'+':''}${highPct.toFixed(2)}%</div>
+                </div>
+                <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(mean)}%; width: 100%;">
+                    <div class="flex-1 border-t border-dashed border-[#26a69a] opacity-50"></div>
+                    <div class="bg-[#26a69a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">เฉลี่ย ${fmt(mean)} ${meanPct>0?'+':''}${meanPct.toFixed(2)}%</div>
+                </div>
+                <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(cur)}%; width: 100%;">
+                    <div class="flex-1 border-t border-dashed border-primary opacity-50"></div>
+                    <div class="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">${fmt(cur)}</div>
+                </div>
+                <div class="absolute right-0 flex items-center gap-2 -translate-y-1/2" style="top: ${getTopPct(low)}%; width: 100%;">
+                    <div class="flex-1 border-t border-dashed border-[#ff4d4d] opacity-50"></div>
+                    <div class="bg-[#ff4d4d] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md whitespace-nowrap">ต่ำสุด ${fmt(low)} ${lowPct>0?'+':''}${lowPct.toFixed(2)}%</div>
+                </div>
+            `;
+        }
+
+        // --- 3. TA Chart Binding ---
+        document.querySelectorAll('.ta-mode-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
+                e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
+                currentTAMode = e.currentTarget.dataset.mode;
+                renderTAChart();
+            };
+        });
+
+        document.querySelectorAll('.ta-tf-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
+                e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
+                currentTATF = e.currentTarget.dataset.tf;
+                renderTAChart();
+            };
+        });
+
+        await renderTAChart();
+
+        document.getElementById('analysis-loading').classList.add('hidden');
+        document.getElementById('analysis-content').classList.remove('hidden');
+    }
+
+    async function renderTAChart() {
+        const container = document.getElementById('ta-chart-container');
+        container.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
+        try {
+            await loadLightweightCharts();
+            let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
+            const candleResult = await fetchCandleData(rangeToFetch);
+            if (!candleResult) throw new Error("No data");
+
+            const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
+            let chartData = timestamps.map((t, i) => ({ time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), value: Number(volumes[i] || 0) })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
+
+            container.innerHTML = '';
+            if (taChartInstance) taChartInstance.remove();
+            
+            taChartInstance = window.LightweightCharts.createChart(container, {
+                width: container.clientWidth, height: 220,
+                layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#848e9c', fontSize: 10 },
+                grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(42, 46, 57, 0.4)' } },
+                rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0)' }, timeScale: { borderColor: 'rgba(42, 46, 57, 0)', timeVisible: false }
+            });
+            
+            taSeries = taChartInstance.addCandlestickSeries({ upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d' });
+            taSeries.setData(chartData);
+
+            taVolumeSeries = taChartInstance.addHistogramSeries({ color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 } });
+            taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
+
+            let bullCount = 0, bearCount = 0; const markers = []; const sma20 = [];
+            chartData.forEach((d, i) => {
+                if (i >= 20) {
+                    const slice = chartData.slice(i-20, i); const avg = slice.reduce((a,b)=>a+b.close,0)/20; sma20.push({time: d.time, value: avg});
+                    if (i > 25 && i % Math.max(5, Math.floor(chartData.length/40)) === 0) { 
+                        if (d.close > avg) { markers.push({ time: d.time, position: 'belowBar', color: '#00c076', shape: 'circle', text: 'B' }); bullCount++; } 
+                        else { markers.push({ time: d.time, position: 'aboveBar', color: '#ff4d4d', shape: 'circle', text: 'S' }); bearCount++; }
+                    }
+                }
+            });
+            if (markers.length > 0) taSeries.setMarkers(markers);
+            
+            const titleEl = document.getElementById('ta-signal-title');
+            if (bullCount > bearCount + 2) { titleEl.textContent = 'หลักฐานสัญญาณขาขึ้นที่แข็งแกร่งมาก'; titleEl.className = 'text-[#00c076] text-base font-bold mb-1'; } 
+            else if (bullCount > bearCount) { titleEl.textContent = 'หลักฐานสัญญาณขาขึ้น'; titleEl.className = 'text-[#00c076] text-base font-bold mb-1'; } 
+            else if (bearCount > bullCount) { titleEl.textContent = 'หลักฐานสัญญาณขาลง'; titleEl.className = 'text-[#ff4d4d] text-base font-bold mb-1'; } 
+            else { titleEl.textContent = 'สัญญาณผสม (ไม่มีเทรนด์ชัดเจน)'; titleEl.className = 'text-yellow-500 text-base font-bold mb-1'; }
+
+            document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
+            document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
+
+            if (currentTAMode === 'short') { const lookback = currentTATF === 'daily' ? 60 : 12; const from = chartData[Math.max(0, chartData.length - lookback)].time; taChartInstance.timeScale().setVisibleRange({ from: from, to: chartData[chartData.length-1].time }); } 
+            else if (currentTAMode === 'medium') { const lookback = currentTATF === 'daily' ? 120 : 24; const from = chartData[Math.max(0, chartData.length - lookback)].time; taChartInstance.timeScale().setVisibleRange({ from: from, to: chartData[chartData.length-1].time }); } 
+            else { taChartInstance.timeScale().fitContent(); }
+        } catch (e) { container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p>`; }
+    }
 
     // ==========================================
-    // 📌 TAB 3: สรุปไตรมาส (ระบบ 3 ก๊อก ป้องกันจอแดง 100%)
+    // 📌 10. สรุปไตรมาส (Quarterly - 3 Fallbacks)
     // ==========================================
-    const fetchQuarterlyEarnings = async () => {
+    async function fetchQuarterlyEarnings() {
         const container = document.getElementById('quarterly-list');
         const nextDateEl = document.getElementById('quarterly-next-date');
         
@@ -932,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let earningsData = [];
             let nextDateText = null;
 
-            // 🚀 ก๊อกที่ 1: Python Backend (Yahoo Finance)
+            // ก๊อกที่ 1: Python Backend (Yahoo)
             try {
                 const res = await fetch(`/api/price?symbol=${encodeURIComponent(cleanSym)}&mode=financials`);
                 const data = await res.json();
@@ -944,7 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch(e) {}
 
-            // 🚀 ก๊อกที่ 2: AlphaVantage
+            // ก๊อกที่ 2: AlphaVantage
             if (earningsData.length === 0 && AV_API_KEY) {
                 try {
                     const avRes = await fetch(`https://www.alphavantage.co/query?function=EARNINGS&symbol=${cleanSym}&apikey=${AV_API_KEY}`);
@@ -964,7 +768,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch(e) {}
             }
 
-            // 🚀 ก๊อกที่ 3: Finnhub 
+            // ก๊อกที่ 3: Finnhub 
             if (earningsData.length === 0) {
                 try {
                     const fhRes = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${cleanSym}&token=${getFHKey()}`);
@@ -992,16 +796,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const actColor = (q.actual !== null && q.estimate !== null && q.actual >= q.estimate) ? 'text-success' : 'text-danger';
                 return `
                 <div class="grid grid-cols-12 p-3 items-center text-xs hover:bg-slate-800 transition-colors">
-                    <div class="col-span-3">
-                        <p class="text-white font-bold">${q.quarter}</p>
-                    </div>
+                    <div class="col-span-3"><p class="text-white font-bold">${q.quarter}</p></div>
                     <div class="col-span-3 text-right text-slate-400 font-medium">${q.estimate !== null && q.estimate !== undefined ? q.estimate.toFixed(2) : '-'}</div>
                     <div class="col-span-3 text-right ${actColor} font-bold">${q.actual !== null && q.actual !== undefined ? q.actual.toFixed(2) : '-'}</div>
-                    <div class="col-span-3 text-right">
-                        <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${isSurprise ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}">
-                            ${isSurprise ? '+' : ''}${q.surprise !== null && q.surprise !== undefined ? q.surprise.toFixed(2) : '0.00'}%
-                        </span>
-                    </div>
+                    <div class="col-span-3 text-right"><span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${isSurprise ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}">${isSurprise ? '+' : ''}${q.surprise !== null && q.surprise !== undefined ? q.surprise.toFixed(2) : '0.00'}%</span></div>
                 </div>`;
             }).join('');
 
@@ -1011,19 +809,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {
             container.innerHTML = `<p class="text-center text-danger text-xs py-8">ไม่มีประวัติผลประกอบการ หรือ API ขัดข้อง</p>`;
         }
-    };
+    }
 
     // ==========================================
-    // 📌 TAB 4: ข้อมูลการเงิน
+    // 📌 11. ข้อมูลการเงิน (Financials)
     // ==========================================
     let finDataCache = [];
     let currentFinMetric = 'totalRevenue';
     let finChartInstance = null;
+    const metricColors = { totalRevenue: '#34a8eb', grossProfit: '#a855f7', operatingIncome: '#eab308', netIncome: '#00c076' };
 
-    const metricColors = {
-        totalRevenue: '#34a8eb', grossProfit: '#a855f7', operatingIncome: '#eab308', netIncome: '#00c076'
-    };
-
+    // Event listener ต้องครอบอยู่เพื่อรอคลิก
     document.querySelectorAll('.fin-metric-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.fin-metric-btn').forEach(b => {
@@ -1032,13 +828,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             btn.classList.add('active', 'bg-slate-700', 'text-white', 'shadow-md');
             btn.classList.remove('bg-transparent', 'text-slate-400', 'hover:text-slate-200');
-            
             currentFinMetric = btn.getAttribute('data-metric');
-            renderFinChartAndLegend();
+            if(finDataCache.length > 0) renderFinChartAndLegend();
         });
     });
 
-    const fetchFinancialData = async () => {
+    async function fetchFinancialData() {
         const errorEl = document.getElementById('fin-error-msg');
         const cacheKey = `koda_fin_master_yf_${symbol}`; 
         const cached = JSON.parse(localStorage.getItem(cacheKey));
@@ -1073,9 +868,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('financials-legend').innerHTML = '';
             if (finChartInstance) finChartInstance.destroy();
         }
-    };
+    }
 
-    const renderFinChartAndLegend = () => {
+    function renderFinChartAndLegend() {
         const ctx = document.getElementById('financials-chart');
         const legendContainer = document.getElementById('financials-legend');
         if (!ctx || finDataCache.length === 0) return;
@@ -1095,11 +890,8 @@ document.addEventListener('DOMContentLoaded', () => {
         chartData.forEach((q, idx) => {
             const currentVal = q[currentFinMetric];
             const prevVal = finDataCache[startIndex + idx - 1]?.[currentFinMetric];
-            if (prevVal && prevVal !== 0) {
-                pctChanges.push(((currentVal - prevVal) / Math.abs(prevVal)) * 100);
-            } else {
-                pctChanges.push(0);
-            }
+            if (prevVal && prevVal !== 0) pctChanges.push(((currentVal - prevVal) / Math.abs(prevVal)) * 100);
+            else pctChanges.push(0);
         });
 
         if (finChartInstance) finChartInstance.destroy();
@@ -1123,14 +915,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        let legendHtml = `<div class="flex flex-col gap-1.5 justify-end items-end pr-2 border-r border-border-dark py-1">
-            <span class="size-2 rounded-full" style="background-color: ${metricColors[currentFinMetric]}"></span>
-            <span class="size-2 rounded-full bg-fuchsia-500"></span>
-        </div>`;
+        let legendHtml = `<div class="flex flex-col gap-1.5 justify-end items-end pr-2 border-r border-border-dark py-1"><span class="size-2 rounded-full" style="background-color: ${metricColors[currentFinMetric]}"></span><span class="size-2 rounded-full bg-fuchsia-500"></span></div>`;
 
         chartData.forEach((q, idx) => {
-            const pct = pctChanges[idx];
-            const pctColor = pct >= 0 ? 'text-success' : 'text-danger';
+            const pct = pctChanges[idx]; const pctColor = pct >= 0 ? 'text-success' : 'text-danger';
             legendHtml += `
             <div class="flex flex-col gap-1 items-center justify-end py-1">
                 <span class="text-[9px] text-slate-400 font-bold">${q.quarter}</span>
@@ -1139,13 +927,12 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         });
         legendContainer.innerHTML = legendHtml;
-    };
-
+    }
 
     // ==========================================
-    // 📌 TAB 5: ข่าวล่าสุด
+    // 📌 12. ข่าวล่าสุด (News & AI Summarizer)
     // ==========================================
-    const fetchLatestNews = async () => {
+    async function fetchLatestNews() {
         const container = document.getElementById('stock-news-container');
         try {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
@@ -1181,7 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {
             container.innerHTML = `<p class="text-danger text-sm text-center py-8">ไม่สามารถดึงข้อมูลข่าวได้</p>`;
         }
-    };
+    }
 
     window.openNewsModal = async (encHeadline, encSummary, url, source, dateStr, imgUrl) => {
         const headline = decodeURIComponent(encHeadline);
@@ -1242,4 +1029,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ==========================================
+    // 📌 Initialize
+    // ==========================================
+    initKodaChart();           
+    fetchWithSWR(`/api/price?symbol=${symbol}`, `koda_price_${symbol}`, renderPriceUI);
+
+    window.addEventListener('beforeunload', () => {
+        if (chartWebSocket) chartWebSocket.close();
+    });
+
+    console.log('%c✅ KODA stock-detail.js loaded with FastAPI + Realtime WebSocket', 'color:#34a8eb; font-weight:bold');
 });
