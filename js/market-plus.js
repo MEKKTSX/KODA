@@ -1,288 +1,209 @@
-// 🚀 KODA Market Plus Module (Phase 1 - Stability & Anti-Spam Upgrade)
-// แยกไฟล์อิสระ ป้องกันการกระทบโค้ดเดิม 100%
-
+// 🚀 KODA Market Plus Module (Phase 1.1 - Ultimate Stability & Speed)
 window.KodaMarketPlus = {
-    RATE_KEY: 'koda_usd_thb_rate',
-    TIME_KEY: 'koda_usd_thb_time',
-    MODE_KEY: 'koda_currency_mode',
+    // 📌 ตั้งค่าดัชนีที่ต้องการโชว์ (ใช้ ETF เพื่อให้เห็น Pre/Post Market)
+    INDICES_CONFIG: [
+        { name: 'S&P 500', symbol: 'SPY', icon: 'show_chart' },
+        { name: 'NASDAQ', symbol: 'QQQ', icon: 'rocket_launch' },
+        { name: 'DOW JONES', symbol: 'DIA', icon: 'account_balance' },
+        { name: 'RUSSELL 2000', symbol: 'IWM', icon: 'analytics' }
+    ],
 
-    getExchangeRate: async () => {
-        const cachedRate = localStorage.getItem(window.KodaMarketPlus.RATE_KEY);
-        const cachedTime = localStorage.getItem(window.KodaMarketPlus.TIME_KEY);
-        const now = Date.now();
-
-        if (cachedRate && cachedTime && (now - parseInt(cachedTime) < 3600000)) {
-            return parseFloat(cachedRate);
-        }
-
+    fetchPriceData: async (sym) => {
         try {
-            const res = await fetch('https://open.er-api.com/v6/latest/USD');
-            const data = await res.json();
-            if (data && data.rates && data.rates.THB) {
-                localStorage.setItem(window.KodaMarketPlus.RATE_KEY, data.rates.THB);
-                localStorage.setItem(window.KodaMarketPlus.TIME_KEY, now.toString());
-                return data.rates.THB;
-            }
-        } catch(e) {}
-        return 35.0; 
-    },
-
-    // 📌 ปรับสูตร RSI ให้คำนวณแม่นยำตามมาตรฐาน
-    calcRSI: (closes) => {
-        if (!closes || closes.length < 15) return 50;
-        let gains = 0, losses = 0;
-        
-        // คำนวณ 14 วันแรก
-        for (let i = 1; i <= 14; i++) {
-            const diff = closes[i] - closes[i - 1];
-            if (diff > 0) gains += diff;
-            else if (diff < 0) losses -= diff;
-        }
-        let avgGain = gains / 14;
-        let avgLoss = losses / 14;
-        
-        // คำนวณแบบ Smoothed Moving Average สำหรับวันที่เหลือ
-        for (let i = 15; i < closes.length; i++) {
-            const diff = closes[i] - closes[i - 1];
-            const gain = diff > 0 ? diff : 0;
-            const loss = diff < 0 ? -diff : 0;
-            avgGain = (avgGain * 13 + gain) / 14;
-            avgLoss = (avgLoss * 13 + loss) / 14;
-        }
-        
-        if (avgLoss === 0) return 100;
-        return 100 - (100 / (1 + (avgGain / avgLoss)));
-    },
-
-    // 📌 ดึงข้อมูลจาก Yahoo Finance แบบทะลวง Cache ป้องกันการโดนบล็อก
-    getYahooHistory: async (sym, range) => {
-        let yfSym = sym;
-        if (sym === 'XAUUSD') yfSym = 'GC=F';
-        else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
-        else if (sym.includes('OANDA:')) yfSym = sym.split(':')[1].replace('_', '') + '=X';
-        else if (sym.includes('BINANCE:')) yfSym = sym.split(':')[1].replace('USDT', '-USD').replace('USD', '-USD');
-
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${range}&interval=1d&_=${Date.now()}`;
-        
-        // ท่อที่ 1: Codetabs (มีความเสถียรสูงสำหรับ Yahoo)
-        try {
-            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
-            const res = await fetch(proxyUrl);
-            const data = await res.json();
-            if (data.chart && data.chart.result && data.chart.result[0]) {
-                const closes = data.chart.result[0].indicators.quote[0].close;
-                return closes.filter(c => c !== null); 
-            }
-        } catch(e) {}
-
-        // ท่อที่ 2: AllOrigins (สำรอง)
-        try {
-            const proxyUrl2 = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-            const res2 = await fetch(proxyUrl2);
-            const data2 = await res2.json();
-            if (data2 && data2.contents) {
-                const yfData = JSON.parse(data2.contents);
-                if (yfData.chart && yfData.chart.result && yfData.chart.result[0]) {
-                    const closes = yfData.chart.result[0].indicators.quote[0].close;
-                    return closes.filter(c => c !== null); 
+            const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}&_=${Date.now()}`, { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    const state = data.marketState;
+                    let activePrice = data.regularMarketPrice || data.regularMarketPreviousClose;
+                    let extPrice = null, extPercent = null;
+                    
+                    if (state === 'PRE' && data.preMarketPrice) {
+                        activePrice = data.preMarketPrice;
+                        extPrice = data.preMarketPrice;
+                        extPercent = data.preMarketChangePercent || 0;
+                    } else if ((state === 'POST' || state === 'CLOSED') && data.postMarketPrice) {
+                        activePrice = data.postMarketPrice;
+                        extPrice = data.postMarketPrice;
+                        extPercent = data.postMarketChangePercent || 0;
+                    }
+                    return { 
+                        price: activePrice, 
+                        change: data.regularMarketChangePercent || 0,
+                        extPrice, extPercent, state
+                    };
                 }
             }
-        } catch(e) {}
-
-        return null;
+        } catch(e) { return null; }
     },
 
-    // --- ระบบจัดคิวโหลด RSI ป้องกันการโดนแบน IP (เรียงคิวโหลด) ---
     loadRSI: async (forceRefresh = false) => {
         const rsiContainer = document.getElementById('rsi-heatmap-container');
         if (!rsiContainer) return;
 
-        const cacheKey = 'koda_rsi_heatmap_cache';
-        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        const cacheKey = 'koda_rsi_heatmap_cache_v3';
         const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         const wl = savedData.watchlist || [];
-        
-        // 📌 กรองชื่อหุ้นซ้ำ (Deduplicate) เผื่อในพอร์ตแอดหุ้นตัวเดียวกันไว้ 2 ไม้
         const uniqueSymbols = [...new Set(wl.map(s => s.symbol))];
-        const wlSymbolsStr = JSON.stringify(uniqueSymbols); 
 
-        const btnIcon = document.getElementById('btn-refresh-rsi');
-
-        if (!forceRefresh && cached && cached.symbols === wlSymbolsStr && cached.html) {
-            rsiContainer.innerHTML = cached.html;
-            return;
-        }
-
-        if (uniqueSymbols.length === 0) {
-            rsiContainer.innerHTML = `<p class="text-slate-500 text-[10px] text-center py-4">Add assets to see RSI</p>`;
-            return;
-        }
-
-        if (btnIcon) btnIcon.classList.add('animate-spin', 'text-primary');
-        
-        if (forceRefresh || !cached) {
-            rsiContainer.innerHTML = `<div class="flex justify-center py-8"><div class="size-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
-        }
-
-        const results = [];
-        
-        // 📌 เปลี่ยนมาใช้ for...of ต่อคิวโหลดทีละตัว + หน่วงเวลา 200ms ป้องกัน Proxy แบนเราจากการยิงรัวๆ
-        for (const sym of uniqueSymbols) {
-            const closes = await window.KodaMarketPlus.getYahooHistory(sym, '3mo');
-            if (closes && closes.length > 15) {
-                results.push({ symbol: sym, rsi: window.KodaMarketPlus.calcRSI(closes) });
+        if (!forceRefresh) {
+            const cached = JSON.parse(localStorage.getItem(cacheKey));
+            if (cached && cached.symbols === JSON.stringify(uniqueSymbols)) {
+                rsiContainer.innerHTML = cached.html;
+                return;
             }
-            await new Promise(resolve => setTimeout(resolve, 200)); // หน่วงเวลาเล็กน้อย
-        }
-        
-        if (btnIcon) btnIcon.classList.remove('animate-spin', 'text-primary');
-
-        if (results.length === 0) {
-            rsiContainer.innerHTML = `<p class="text-slate-500 text-[10px] text-center py-4 border border-dashed border-border-dark rounded-xl">Data unavailable. Try syncing again.</p>`;
-        } else {
-            results.sort((a,b) => b.rsi - a.rsi); 
-            
-            const html = `<div class="bg-surface-dark border border-border-dark rounded-xl overflow-y-auto no-scrollbar shadow-sm max-h-[220px]">` + 
-                results.map(r => {
-                    let color = 'bg-slate-700', text = 'NEUTRAL';
-                    if (r.rsi >= 70) { color = 'bg-danger'; text = 'OVERBOUGHT'; }
-                    else if (r.rsi >= 60) { color = 'bg-orange-500'; text = 'WARM'; }
-                    else if (r.rsi <= 30) { color = 'bg-success'; text = 'OVERSOLD'; }
-                    else if (r.rsi <= 40) { color = 'bg-primary'; text = 'COOL'; }
-                    return `<div class="flex items-center justify-between p-3 border-b border-border-dark/50 last:border-0">
-                        <span class="text-white font-bold text-xs">${r.symbol}</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider">${text}</span>
-                            <div class="w-8 text-center rounded text-[10px] font-bold py-0.5 text-white ${color}">${r.rsi.toFixed(0)}</div>
-                        </div>
-                    </div>`;
-                }).join('') + `</div>`;
-            
-            rsiContainer.innerHTML = html;
-            localStorage.setItem(cacheKey, JSON.stringify({ symbols: wlSymbolsStr, html: html }));
-        }
-    },
-
-    // --- ระบบจัดคิวโหลด Sector Rotation ---
-    loadSector: async (forceRefresh = false) => {
-        const sectorContainer = document.getElementById('sector-rotation-container');
-        if (!sectorContainer) return;
-
-        const cacheKey = 'koda_sector_rotation_cache';
-        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-        const btnIcon = document.getElementById('btn-refresh-sector');
-
-        if (!forceRefresh && cached && cached.html) {
-            sectorContainer.innerHTML = cached.html;
-            return;
         }
 
-        if (btnIcon) btnIcon.classList.add('animate-spin', 'text-primary');
+        rsiContainer.innerHTML = `<div class="flex justify-center py-8"><div class="size-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
 
-        if (forceRefresh || !cached) {
-            sectorContainer.innerHTML = `<div class="flex justify-center py-8"><div class="size-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
-        }
-        
-        const SECTORS = [
-            { name: 'Technology', symbol: 'XLK' },
-            { name: 'Financials', symbol: 'XLF' },
-            { name: 'Healthcare', symbol: 'XLV' },
-            { name: 'Energy', symbol: 'XLE' },
-            { name: 'Cons Discr', symbol: 'XLY' },
-            { name: 'Industrials', symbol: 'XLI' },
-            { name: 'Comm Svcs', symbol: 'XLC' },
-            { name: 'Materials', symbol: 'XLB' },
-            { name: 'Real Estate', symbol: 'XLRE' },
-            { name: 'Utilities', symbol: 'XLU' },
-            { name: 'Cons Staples', symbol: 'XLP' }
-        ];
-        
         const results = [];
-
-        // 📌 ต่อคิวโหลด Sector ทีละตัว ลดภาระ Proxy ป้องกัน Data Unavailable
-        for (const sec of SECTORS) {
-            const closes = await window.KodaMarketPlus.getYahooHistory(sec.symbol, '1mo');
-            if (closes && closes.length > 5) {
-                const cur = closes[closes.length - 1];
-                const past = closes[closes.length - 6]; 
-                if (cur && past) {
-                    results.push({ ...sec, change: ((cur - past) / past) * 100 });
+        
+        // 📌 แก้บัคระบบค้าง: ยิง API แบ่งเป็นกลุ่มละ 3 ตัว ป้องกันการโดน Proxy แบน IP
+        for (let i = 0; i < uniqueSymbols.length; i += 3) {
+            const chunk = uniqueSymbols.slice(i, i + 3);
+            const chunkPromises = chunk.map(async (sym) => {
+                const closes = await window.KodaMarketPlus.getYahooHistory(sym, '1mo');
+                if (closes && closes.length > 14) {
+                    return { symbol: sym, rsi: window.KodaMarketPlus.calcRSI(closes) };
                 }
-            }
-            await new Promise(resolve => setTimeout(resolve, 200)); // หน่วงเวลาเล็กน้อย
+                return null;
+            });
+            const chunkResults = await Promise.all(chunkPromises);
+            results.push(...chunkResults.filter(r => r !== null));
         }
 
-        if (btnIcon) btnIcon.classList.remove('animate-spin', 'text-primary');
+        results.sort((a, b) => b.rsi - a.rsi);
 
-        if (results.length === 0) {
-            sectorContainer.innerHTML = `<p class="text-slate-500 text-[10px] text-center py-4 border border-dashed border-border-dark rounded-xl">Data unavailable. Try syncing again.</p>`;
-        } else {
-            results.sort((a,b) => b.change - a.change); 
-            const maxC = Math.max(...results.map(r => Math.abs(r.change)));
-            
-            const html = `<div class="bg-surface-dark border border-border-dark rounded-xl p-3 space-y-4 shadow-sm overflow-y-auto no-scrollbar max-h-[220px]">` + 
-                results.map(r => {
-                    const isUp = r.change >= 0;
-                    const w = Math.max(5, (Math.abs(r.change) / maxC) * 100);
-                    const cCls = isUp ? 'bg-success' : 'bg-danger';
-                    const tCls = isUp ? 'text-success' : 'text-danger';
-                    return `<div>
-                        <div class="flex justify-between text-[11px] font-bold mb-1.5">
-                            <span class="text-slate-300">${r.name}</span>
-                            <span class="${tCls}">${isUp ? '+' : ''}${r.change.toFixed(2)}%</span>
-                        </div>
-                        <div class="w-full bg-background-dark rounded-full h-1.5 overflow-hidden">
-                            <div class="${cCls} h-full rounded-full" style="width: ${w}%"></div>
-                        </div>
-                    </div>`;
-                }).join('') + `</div>`;
-            
-            sectorContainer.innerHTML = html;
-            localStorage.setItem(cacheKey, JSON.stringify({ html: html }));
-        }
+        const html = `<div class="bg-surface-dark border border-border-dark rounded-xl overflow-y-auto no-scrollbar shadow-sm max-h-[260px]">` + 
+            results.map(r => {
+                let color = 'bg-slate-700', text = 'NEUTRAL';
+                if (r.rsi >= 70) { color = 'bg-danger'; text = 'OVERBOUGHT'; }
+                else if (r.rsi <= 30) { color = 'bg-success'; text = 'OVERSOLD'; }
+                return `<div class="flex items-center justify-between p-3 border-b border-border-dark/50 last:border-0">
+                    <span class="text-white font-bold text-[10px]">${r.symbol}</span>
+                    <div class="w-8 text-center rounded text-[10px] font-bold py-0.5 text-white ${color}">${r.rsi.toFixed(0)}</div>
+                </div>`;
+            }).join('') + `</div>`;
+
+        rsiContainer.innerHTML = html;
+        localStorage.setItem(cacheKey, JSON.stringify({ symbols: JSON.stringify(uniqueSymbols), html }));
     },
 
-    // 6. แทรกปุ่ม Refresh และเริ่มต้นระบบ
-    initDynamics: () => {
-        const rsiContainer = document.getElementById('rsi-heatmap-container');
-        if (rsiContainer) {
-            const rsiHeader = rsiContainer.previousElementSibling;
-            if (rsiHeader && !document.getElementById('btn-refresh-rsi')) {
-                rsiHeader.classList.remove('gap-1.5');
-                rsiHeader.classList.add('justify-between');
-                rsiHeader.innerHTML = `
-                    <div class="flex items-center gap-1.5">
-                        <span class="material-symbols-outlined text-primary text-[16px]">thermostat</span> RSI Heatmap
-                    </div>
-                    <span id="btn-refresh-rsi" class="material-symbols-outlined text-slate-400 hover:text-primary cursor-pointer text-[16px] transition-colors" title="Sync Data">sync</span>
-                `;
-                document.getElementById('btn-refresh-rsi').addEventListener('click', () => window.KodaMarketPlus.loadRSI(true));
-            }
-            window.KodaMarketPlus.loadRSI(false);
-        }
+    loadIndices: async () => {
+        const container = document.getElementById('indices-container');
+        if (!container) return;
 
-        const sectorContainer = document.getElementById('sector-rotation-container');
-        if (sectorContainer) {
-            const sectorHeader = sectorContainer.previousElementSibling;
-            if (sectorHeader && !document.getElementById('btn-refresh-sector')) {
-                sectorHeader.classList.remove('gap-1.5');
-                sectorHeader.classList.add('justify-between');
-                sectorHeader.innerHTML = `
-                    <div class="flex items-center gap-1.5">
-                        <span class="material-symbols-outlined text-primary text-[16px]">donut_large</span> Sector Flow
+        container.innerHTML = `<div class="flex justify-center py-8"><div class="size-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
+
+        const indexPromises = window.KodaMarketPlus.INDICES_CONFIG.map(async (idx) => {
+            const data = await window.KodaMarketPlus.fetchPriceData(idx.symbol);
+            return { ...idx, data };
+        });
+
+        const results = await Promise.all(indexPromises);
+
+        const html = `<div class="bg-surface-dark border border-border-dark rounded-xl overflow-y-auto no-scrollbar shadow-sm max-h-[260px]">` + 
+            results.map(res => {
+                const d = res.data;
+                if (!d) return '';
+                const isUp = d.change >= 0;
+                const colorCls = isUp ? 'text-success' : 'text-danger';
+                
+                let extHtml = '';
+                if (d.extPrice) {
+                    const extColor = d.extPercent >= 0 ? 'text-success' : 'text-danger';
+                    extHtml = `<p class="text-[9px] font-bold ${extColor}">${d.extPercent >= 0 ? '+' : ''}${d.extPercent.toFixed(2)}%</p>`;
+                }
+
+                return `<div class="flex items-center justify-between p-3 border-b border-border-dark/50 last:border-0">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-slate-500 text-sm">${res.icon}</span>
+                        <span class="text-white font-bold text-[10px]">${res.name}</span>
                     </div>
-                    <span id="btn-refresh-sector" class="material-symbols-outlined text-slate-400 hover:text-primary cursor-pointer text-[16px] transition-colors" title="Sync Data">sync</span>
-                `;
-                document.getElementById('btn-refresh-sector').addEventListener('click', () => window.KodaMarketPlus.loadSector(true));
-            }
-            window.KodaMarketPlus.loadSector(false);
+                    <div class="text-right">
+                        <div class="flex items-center gap-1.5 justify-end">
+                            <span class="text-white font-bold text-[10px]">$${d.price.toFixed(2)}</span>
+                            <span class="${colorCls} text-[9px] font-bold">${isUp ? '+' : ''}${d.change.toFixed(2)}%</span>
+                        </div>
+                        ${extHtml}
+                    </div>
+                </div>`;
+            }).join('') + `</div>`;
+
+        container.innerHTML = html;
+    },
+
+    calcRSI: (closes) => {
+        if (!closes || closes.length < 15) return 50;
+        let gains = 0, losses = 0;
+        for (let i = 1; i <= 14; i++) {
+            const diff = closes[i] - closes[i - 1];
+            if (diff > 0) gains += diff; else if (diff < 0) losses -= diff;
         }
+        let avgGain = gains / 14, avgLoss = losses / 14;
+        for (let i = 15; i < closes.length; i++) {
+            const diff = closes[i] - closes[i - 1];
+            avgGain = (avgGain * 13 + (diff > 0 ? diff : 0)) / 14;
+            avgLoss = (avgLoss * 13 + (diff < 0 ? -diff : 0)) / 14;
+        }
+        return avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss)));
+    },
+
+    getYahooHistory: async (sym, range) => {
+        let yfSym = sym;
+        if (sym === 'XAUUSD') yfSym = 'GC=F';
+        else if (sym.includes('BINANCE:')) yfSym = sym.split(':')[1].replace('USDT', '-USD');
+        
+        const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${range}&interval=1d&_=${Date.now()}`;
+        
+        // 📌 เพิ่ม Proxy สำรอง กรณี Allorigins ล่มหรือจำกัดความเร็ว
+        const proxies = [
+            `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+            `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`
+        ];
+
+        for (let proxyUrl of proxies) {
+            try {
+                // 📌 เพิ่มระบบตัดจบ (Timeout) ถ้าโหลดเกิน 5 วินาที ให้หยุดทันทีระบบจะได้ไม่ค้าง
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const res = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    let yfData = data.contents ? JSON.parse(data.contents) : data;
+                    if (yfData && yfData.chart && yfData.chart.result) {
+                        const closes = yfData.chart.result[0].indicators.quote[0].close;
+                        return closes.filter(c => c !== null);
+                    }
+                }
+            } catch(e) {
+                continue; // ถ้า Proxy ตัวแรกโหลดไม่ขึ้น/พัง ให้วนไปลอง Proxy ตัวสำรอง
+            }
+        }
+        return null;
+    },
+
+    initDynamics: () => {
+        window.KodaMarketPlus.loadRSI(false);
+        window.KodaMarketPlus.loadIndices();
+        
+        document.getElementById('btn-refresh-rsi')?.addEventListener('click', () => window.KodaMarketPlus.loadRSI(true));
+        document.getElementById('btn-refresh-indices')?.addEventListener('click', () => window.KodaMarketPlus.loadIndices());
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    window.KodaMarketPlus.getExchangeRate(); 
+// 📌 แก้บัคโหลดไม่ขึ้น (ตรวจสอบว่าโหลด DOM เสร็จหรือยังก่อนเรียกใช้)
+const initMarketPlusApp = () => {
     if (document.getElementById('rsi-heatmap-container')) {
         window.KodaMarketPlus.initDynamics();
     }
-});
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMarketPlusApp);
+} else {
+    initMarketPlusApp(); // สั่งรันทันทีถ้าหน้าเว็บโหลดเสร็จไปแล้ว
+}
