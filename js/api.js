@@ -309,6 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let isEditMode = false;
     let symbolToDelete = null;
+    let watchlistSortMode = 0; // 0 = Default, 1 = Positive, 2 = Negative
 
     const renderWatchlist = () => {
         const container = document.getElementById('watchlist-container');
@@ -317,8 +318,27 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = `<p class="py-10 text-center text-slate-500">No items in Watchlist.</p>`; 
             return; 
         }
+
+        // 📌 1. โคลนข้อมูลเพื่อนำมาจัดเรียง (เพื่อไม่ให้กระทบ Default Order ของจริงในเครื่อง)
+        let displayList = [...window.kodaApiData.watchlist];
         
-        container.innerHTML = window.kodaApiData.watchlist.map(s => {
+        // 📌 2. ฟังก์ชันช่วยหา % ปัจจุบัน (ดึง Pre/Post market มาใช้ถ้าตลาดปิด)
+        const getActivePct = (s) => {
+            const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPercent !== null && s.extPercent !== undefined) {
+                return s.extPercent;
+            }
+            return pct;
+        };
+
+        // 📌 3. จัดเรียงตามโหมด
+        if (watchlistSortMode === 1) {
+            displayList.sort((a, b) => getActivePct(b) - getActivePct(a)); // + มากสุดไปน้อยสุด
+        } else if (watchlistSortMode === 2) {
+            displayList.sort((a, b) => getActivePct(a) - getActivePct(b)); // - มากสุดไปบวก
+        }
+        
+        container.innerHTML = displayList.map(s => {
             const mainPrice = s.regularPrice || s.currentPrice || 0;
             const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
             const c = formatPercent(pct);
@@ -403,6 +423,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const btnEditWatchlist = document.getElementById('btn-edit-watchlist');
+    const btnSortWatchlist = document.getElementById('btn-sort-watchlist');
+    const iconSortWatchlist = document.getElementById('icon-sort-watchlist');
+
     if (btnEditWatchlist) {
         btnEditWatchlist.addEventListener('click', () => {
             isEditMode = !isEditMode;
@@ -410,7 +433,45 @@ document.addEventListener('DOMContentLoaded', () => {
             btnEditWatchlist.className = isEditMode 
                 ? "text-xs font-bold text-white bg-primary uppercase tracking-wider px-3 py-1 rounded transition-colors" 
                 : "text-xs font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors";
+            
+            // 📌 ซ่อนปุ่ม Sort และบังคับให้ลำดับกลับมาเป็น Default เพื่อความปลอดภัยตอนลากย้าย
+            if (isEditMode) {
+                watchlistSortMode = 0;
+                if (iconSortWatchlist) {
+                    iconSortWatchlist.textContent = 'sort';
+                    iconSortWatchlist.className = 'material-symbols-outlined text-[20px] text-slate-500';
+                }
+                if (btnSortWatchlist) btnSortWatchlist.style.display = 'none';
+            } else {
+                if (btnSortWatchlist) btnSortWatchlist.style.display = 'flex';
+            }
+
             renderWatchlist();
+        });
+    }
+
+    // 📌 ระบบกดสลับการคัดกรอง (Sort Modes)
+    if (btnSortWatchlist) {
+        btnSortWatchlist.addEventListener('click', () => {
+            if (isEditMode) return; 
+
+            watchlistSortMode = (watchlistSortMode + 1) % 3;
+            
+            if (watchlistSortMode === 0) {
+                // โหมด Default (สัญลักษณ์จัดเรียงธรรมดา สีเทา)
+                iconSortWatchlist.textContent = 'sort';
+                iconSortWatchlist.className = 'material-symbols-outlined text-[20px] text-slate-500';
+            } else if (watchlistSortMode === 1) {
+                // โหมด Positive (สามเหลี่ยมชี้ลง สีเขียว) -> % บวกเยอะสุดอยู่บน
+                iconSortWatchlist.textContent = 'arrow_drop_down';
+                iconSortWatchlist.className = 'material-symbols-outlined text-[24px] text-success';
+            } else if (watchlistSortMode === 2) {
+                // โหมด Negative (สามเหลี่ยมชี้ขึ้น สีแดง) -> % ลบเยอะสุดอยู่บน
+                iconSortWatchlist.textContent = 'arrow_drop_up';
+                iconSortWatchlist.className = 'material-symbols-outlined text-[24px] text-danger';
+            }
+            
+            renderWatchlist(); // ทำงานทันทีแบบ No Animation 
         });
     }
 
@@ -446,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeDeleteModal();
         });
     }
+           
 
     const mSectors = document.getElementById('modal-sectors');
     const mContent = document.getElementById('modal-sectors-content');
