@@ -276,8 +276,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('stat-ps').textContent = fmt(m.psTTM);
                     document.getElementById('stat-eps').textContent = fmt(m.epsTTM);
                     document.getElementById('stat-div').textContent = fmt(m.dividendYieldIndicatedAnnual, '%');
-                    // 🚀 4 ค่าการเงินใหม่
-                    document.getElementById('stat-fcf').textContent = fmt(m.freeCashFlowPerShareTTM || m.freeCashFlowTTM);
+                    // 🚀 4 ค่าการเงินใหม่ (อัปเดตให้ FCF ดึงข้อมูลได้ครอบคลุมขึ้น)
+                    const fcfValue = m.freeCashFlowPerShareTTM || m.cashFlowPerShareTTM || m.freeCashFlowAnnual || m.cashFlowPerShareAnnual;
+                    
+                    document.getElementById('stat-fcf').textContent = fmt(fcfValue);
                     document.getElementById('stat-roe').textContent = fmt(m.roeTTM, '%');
                     document.getElementById('stat-cr').textContent = fmt(m.currentRatioQuarterly || m.currentRatioAnnual);
                     document.getElementById('stat-de').textContent = fmt(m['totalDebt/totalEquityQuarterly'] || m['totalDebt/totalEquityAnnual']);
