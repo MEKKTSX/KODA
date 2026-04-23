@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         script.onload = resolve; document.head.appendChild(script);
     });
 
-    const fetchCandleData = async (tfRange) => {
+        const fetchCandleData = async (tfRange) => {
         const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
         const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
         const daysMap = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '5Y': 1825 };
@@ -334,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
         }
 
-        // 2. หุ้นทั่วไป (พึ่ง Finnhub ก่อน ยิงตรงๆ เร็วๆ ไม่มี CORS)
+        // 2. หุ้นทั่วไป (พึ่ง Finnhub ก่อน)
         if (!isThaiStock && !isCrypto) {
             try {
                 const to = Math.floor(Date.now() / 1000);
@@ -349,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
         }
 
-        // 3. Fallback (Yahoo Finance ผ่าน Proxy เผื่ออันข้างบนล่ม)
+        // 🚀 3. Fallback (Yahoo Finance ผ่าน Proxy เกรดพรีเมียมที่ผ่านการบล็อกได้)
         const yfRange = rangeMap[tfRange] || '1y';
         const yfInterval = intervalMap[tfRange] || '1d';
         let yfSym = symbol;
@@ -357,32 +357,52 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
 
         const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
+        
+        // ใช้ Proxy 3 ตัวที่เสถียรที่สุดในตอนนี้ สลับกันไปเผื่อตัวใดตัวหนึ่งล่ม
         const proxies = [
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+            `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+            `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
             `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
         ];
 
         for (let proxy of proxies) {
             try {
-                const res = await fetch(proxy);
+                // 📌 ถ้าเกิน 6 วินาทีแล้วไม่ตอบ ให้ตัดทิ้งไปหาตัวอื่นทันที
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 6000); 
+                const res = await fetch(proxy, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (!res.ok) continue;
                 const raw = await res.json();
                 
                 let yfData = raw;
-                if (raw.contents) { yfData = JSON.parse(raw.contents); }
+                if (raw.contents) { 
+                    try { yfData = JSON.parse(raw.contents); } catch(e) {} 
+                }
                 
                 if (yfData?.chart?.result?.[0]) {
                     const q = yfData.chart.result[0].indicators.quote[0];
-                    return { 
-                        timestamps: yfData.chart.result[0].timestamp, 
-                        opens: q.open, highs: q.high, lows: q.low, closes: q.close, volumes: q.volume 
-                    };
+                    const tRaw = yfData.chart.result[0].timestamp;
+                    
+                    const timestamps = [], opens = [], highs = [], lows = [], closes = [], volumes = [];
+                    // 📌 กรองค่า null ทิ้งทั้งหมด เพื่อป้องกันกราฟ Lightweight แตกหรือจอขาว
+                    for(let i=0; i<tRaw.length; i++) {
+                        if(q.close[i] !== null && q.open[i] !== null && q.high[i] !== null && q.low[i] !== null) {
+                            timestamps.push(tRaw[i]);
+                            opens.push(q.open[i]);
+                            highs.push(q.high[i]);
+                            lows.push(q.low[i]);
+                            closes.push(q.close[i]);
+                            volumes.push(q.volume[i] || 0);
+                        }
+                    }
+                    if (closes.length > 0) return { timestamps, opens, highs, lows, closes, volumes };
                 }
             } catch (err) {}
         }
         return null;
     };
-
 
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R
