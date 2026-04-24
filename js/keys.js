@@ -21,7 +21,7 @@ window.loadKodaConfig = async () => {
 
     try {
         // 🚨 2. ใส่ ?_=[เวลาปัจจุบัน] ต่อท้าย URL เพื่อหลอกให้เบราว์เซอร์คิดว่าเป็นไฟล์ใหม่เสมอ (ทะลุ Service Worker)
-        const response = await fetch('/api/keys?_=' + Date.now());
+        const response = await fetch('/api/get_keys?_=' + Date.now());
         if (!response.ok) throw new Error('Network response was not ok');
         
         const data = await response.json();
