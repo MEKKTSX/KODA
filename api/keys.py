@@ -21,4 +21,3 @@ class handler(BaseHTTPRequestHandler):
         
         # ส่งข้อมูลกลับไปเป็น JSON ให้ js/keys.js ของคุณ
         self.wfile.write(json.dumps(data).encode('utf-8'))
-
