@@ -12,15 +12,16 @@ document.addEventListener = function(type, listener, options) {
 
 // 📌 2. KODA Config Loader
 window.loadKodaConfig = async () => {
-    // 🚨 เปลี่ยนชื่อ Cache เป็น v4 เพื่อบังคับล้างค่าเก่าที่พังอยู่ทิ้ง!
-    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v4');
+    // 🚨 1. เปลี่ยนชื่อเป็น v5 เพื่อบังคับเบราว์เซอร์ทิ้งคีย์เน่าๆ ของเก่า
+    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v5');
     if (cachedKeys) {
         window.ENV_KEYS = JSON.parse(cachedKeys);
         return true;
     }
 
     try {
-        const response = await fetch('/api/keys');
+        // 🚨 2. ใส่ ?_=[เวลาปัจจุบัน] ต่อท้าย URL เพื่อหลอกให้เบราว์เซอร์คิดว่าเป็นไฟล์ใหม่เสมอ (ทะลุ Service Worker)
+        const response = await fetch('/api/keys?_=' + Date.now());
         if (!response.ok) throw new Error('Network response was not ok');
         
         const data = await response.json();
@@ -28,19 +29,18 @@ window.loadKodaConfig = async () => {
         if (typeof data.GEMINI === 'string' && data.GEMINI.trim() !== '') data.GEMINI = data.GEMINI.split(',').map(k => k.trim()); else data.GEMINI = [];
         if (typeof data.SERPER === 'string' && data.SERPER.trim() !== '') data.SERPER = data.SERPER.split(',').map(k => k.trim()); else data.SERPER = [];
         
-        // 📌 จัดการคีย์ Finnhub อย่างฉลาด ให้หน้าเก่าและหน้าใหม่ใช้ร่วมกันได้
         if (typeof data.FINNHUB === 'string' && data.FINNHUB.trim() !== '') {
             const allKeys = data.FINNHUB.split(',').map(k => k.trim());
-            data.FINNHUB_ARRAY = allKeys; // ส่ง Array ให้ระบบใหม่ (kodalab1.js) ใช้สลับ 3 คีย์
-            data.FINNHUB = allKeys[0];    // ส่ง String คีย์แรก ให้ระบบเก่า (api.js, markets.js) ใช้ตามปกติ
+            data.FINNHUB_ARRAY = allKeys; 
+            data.FINNHUB = allKeys[0];    
         } else {
             data.FINNHUB_ARRAY = [];
             data.FINNHUB = '';
         }
         
         window.ENV_KEYS = data;
-        // 🚨 เซฟลงชื่อใหม่ v4
-        sessionStorage.setItem('koda_secure_keys_v4', JSON.stringify(data));
+        // 🚨 3. เซฟลงชื่อใหม่ v5
+        sessionStorage.setItem('koda_secure_keys_v5', JSON.stringify(data));
         return true;
 
     } catch (error) {
