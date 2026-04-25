@@ -21,10 +21,13 @@ window.loadKodaConfig = async () => {
         
         const rawData = await response.json();
         
-        // แยกคีย์ด้วย comma อย่างเดียวเท่านั้น (ไม่หั่นความยาวอัตโนมัติ)
+        // รองรับคีย์หลายแบบคั่น: comma / newline / semicolon
         const smartSplit = (str) => {
             if (!str) return [];
-            return str.split(',').map(k => k.trim()).filter(Boolean);
+            return String(str)
+                .split(/[\n,;]+/)
+                .map(k => k.trim())
+                .filter(Boolean);
         };
 
         const data = {
