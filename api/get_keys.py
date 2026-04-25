@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # 📌 ดึงตามชื่อที่คุณตั้งไว้ใน Vercel เป๊ะๆ
         data = {
             "ALPHAVANTAGE": os.environ.get('ALPHAVANTAGE_KEY', ''),
             "SERPER": os.environ.get('SERPER_API_KEYS', ''),
