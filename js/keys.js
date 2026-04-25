@@ -22,9 +22,17 @@ window.loadKodaConfig = async () => {
         const rawData = await response.json();
         
         // รองรับคีย์หลายแบบคั่น: comma / newline / semicolon
-        const smartSplit = (str) => {
+        // และรองรับกรณีคีย์ FINNHUB ถูกแปะติดกันยาว ๆ (ไม่มีตัวคั่น)
+        const smartSplit = (str, fixedLength = 0) => {
             if (!str) return [];
-            return String(str)
+            const raw = String(str).trim();
+
+            if (fixedLength > 0 && !/[\n,;]/.test(raw) && raw.length >= fixedLength * 2 && raw.length % fixedLength === 0) {
+                const chunks = raw.match(new RegExp(`.{1,${fixedLength}}`, 'g')) || [];
+                return chunks.map(k => k.trim()).filter(Boolean);
+            }
+
+            return raw
                 .split(/[\n,;]+/)
                 .map(k => k.trim())
                 .filter(Boolean);
@@ -34,7 +42,7 @@ window.loadKodaConfig = async () => {
             GEMINI: smartSplit(rawData.GEMINI),
             SERPER: smartSplit(rawData.SERPER),
             ALPHAVANTAGE: rawData.ALPHAVANTAGE,
-            FINNHUB_ARRAY: smartSplit(rawData.FINNHUB)
+            FINNHUB_ARRAY: smartSplit(rawData.FINNHUB, 20)
         };
         data.FINNHUB = data.FINNHUB_ARRAY[0] || '';
 
