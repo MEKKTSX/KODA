@@ -1,5 +1,6 @@
-// ไฟล์: js/keys.js (สำหรับ GITHUB & VERCEL - ปลอดภัย 100% ไม่มีคีย์หลุด)
+// ไฟล์: js/keys.js
 
+// 📌 1. โค้ดตัวแก้บัค (Hack) ช่วยให้สคริปต์ที่โหลดช้าทำงานได้ปกติ
 const originalAddEventListener = document.addEventListener;
 document.addEventListener = function(type, listener, options) {
     if (type === 'DOMContentLoaded' && (document.readyState === 'interactive' || document.readyState === 'complete')) {
@@ -9,49 +10,41 @@ document.addEventListener = function(type, listener, options) {
     originalAddEventListener.call(this, type, listener, options);
 };
 
+// 📌 2. KODA Config Loader
 window.loadKodaConfig = async () => {
-    // 🚨 ลบ cache เก่าทั้งหมดทิ้ง (v4-v7) เพื่อกันคีย์ค้างจากรอบก่อน
-    ['koda_secure_keys_v4', 'koda_secure_keys_v5', 'koda_secure_keys_v6', 'koda_secure_keys_v7']
-        .forEach((k) => sessionStorage.removeItem(k));
+    // 🚨 เปลี่ยนชื่อ Cache เป็น v4 เพื่อบังคับล้างค่าเก่าที่พังอยู่ทิ้ง!
+    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v4');
+    if (cachedKeys) {
+        window.ENV_KEYS = JSON.parse(cachedKeys);
+        return true;
+    }
 
     try {
-        // 🌐 ดึงจาก Vercel Backend เท่านั้น (ทุกครั้ง)
-        const response = await fetch('/api/get_keys?_=' + Date.now());
-        if (!response.ok) throw new Error('Vercel API fetch failed');
+        const response = await fetch('/api/keys');
+        if (!response.ok) throw new Error('Network response was not ok');
         
-        const rawData = await response.json();
+        const data = await response.json();
         
-        // รองรับคีย์หลายแบบคั่น: comma / newline / semicolon
-        // และรองรับกรณีคีย์ FINNHUB ถูกแปะติดกันยาว ๆ (ไม่มีตัวคั่น)
-        const smartSplit = (str, fixedLength = 0) => {
-            if (!str) return [];
-            const raw = String(str).trim();
-
-            if (fixedLength > 0 && !/[\n,;]/.test(raw) && raw.length >= fixedLength * 2 && raw.length % fixedLength === 0) {
-                const chunks = raw.match(new RegExp(`.{1,${fixedLength}}`, 'g')) || [];
-                return chunks.map(k => k.trim()).filter(Boolean);
-            }
-
-            return raw
-                .split(/[\n,;]+/)
-                .map(k => k.trim())
-                .filter(Boolean);
-        };
-
-        const data = {
-            GEMINI: smartSplit(rawData.GEMINI),
-            SERPER: smartSplit(rawData.SERPER),
-            ALPHAVANTAGE: rawData.ALPHAVANTAGE,
-            FINNHUB_ARRAY: smartSplit(rawData.FINNHUB, 20)
-        };
-        data.FINNHUB = data.FINNHUB_ARRAY[0] || '';
-
+        if (typeof data.GEMINI === 'string' && data.GEMINI.trim() !== '') data.GEMINI = data.GEMINI.split(',').map(k => k.trim()); else data.GEMINI = [];
+        if (typeof data.SERPER === 'string' && data.SERPER.trim() !== '') data.SERPER = data.SERPER.split(',').map(k => k.trim()); else data.SERPER = [];
+        
+        // 📌 จัดการคีย์ Finnhub อย่างฉลาด ให้หน้าเก่าและหน้าใหม่ใช้ร่วมกันได้
+        if (typeof data.FINNHUB === 'string' && data.FINNHUB.trim() !== '') {
+            const allKeys = data.FINNHUB.split(',').map(k => k.trim());
+            data.FINNHUB_ARRAY = allKeys; // ส่ง Array ให้ระบบใหม่ (kodalab1.js) ใช้สลับ 3 คีย์
+            data.FINNHUB = allKeys[0];    // ส่ง String คีย์แรก ให้ระบบเก่า (api.js, markets.js) ใช้ตามปกติ
+        } else {
+            data.FINNHUB_ARRAY = [];
+            data.FINNHUB = '';
+        }
+        
         window.ENV_KEYS = data;
+        // 🚨 เซฟลงชื่อใหม่ v4
+        sessionStorage.setItem('koda_secure_keys_v4', JSON.stringify(data));
         return true;
 
     } catch (error) {
-        // ถ้า API ใช้ไม่ได้ ให้เป็นค่าว่างทันที (ไม่ใช้ cache เก่า)
-        console.error("🔥 Fatal Error: ไม่สามารถดึงคีย์จาก Vercel ได้", error);
+        console.error("KODA API Keys fetch error:", error);
         window.ENV_KEYS = { GEMINI: [], SERPER: [], FINNHUB: '', FINNHUB_ARRAY: [], ALPHAVANTAGE: '' };
         return false;
     }
