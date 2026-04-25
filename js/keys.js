@@ -10,26 +10,20 @@ document.addEventListener = function(type, listener, options) {
 };
 
 window.loadKodaConfig = async () => {
-    // 🚨 ล้างแคชเก่าทิ้ง ใช้ v6
-    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v6');
-    if (cachedKeys) {
-        window.ENV_KEYS = JSON.parse(cachedKeys);
-        return true;
-    }
+    // 🚨 ลบ cache เก่าทั้งหมดทิ้ง (v4-v7) เพื่อกันคีย์ค้างจากรอบก่อน
+    ['koda_secure_keys_v4', 'koda_secure_keys_v5', 'koda_secure_keys_v6', 'koda_secure_keys_v7']
+        .forEach((k) => sessionStorage.removeItem(k));
 
     try {
-        // 🌐 ดึงจาก Vercel Backend เท่านั้น!
+        // 🌐 ดึงจาก Vercel Backend เท่านั้น (ทุกครั้ง)
         const response = await fetch('/api/get_keys?_=' + Date.now());
         if (!response.ok) throw new Error('Vercel API fetch failed');
         
-        let rawData = await response.json();
+        const rawData = await response.json();
         
-        // 🛠️ ฟังก์ชันหั่นคีย์ที่แปะติดกัน (ช่วยแก้บัคคีย์ยาว 40 ตัวใน Vercel)
+        // แยกคีย์ด้วย comma อย่างเดียวเท่านั้น (ไม่หั่นความยาวอัตโนมัติ)
         const smartSplit = (str) => {
             if (!str) return [];
-            if (str.length > 25 && !str.includes(',')) {
-                return str.match(/.{1,20}/g).map(s => s.trim());
-            }
             return str.split(',').map(k => k.trim()).filter(Boolean);
         };
 
@@ -42,10 +36,10 @@ window.loadKodaConfig = async () => {
         data.FINNHUB = data.FINNHUB_ARRAY[0] || '';
 
         window.ENV_KEYS = data;
-        sessionStorage.setItem('koda_secure_keys_v6', JSON.stringify(data));
         return true;
 
     } catch (error) {
+        // ถ้า API ใช้ไม่ได้ ให้เป็นค่าว่างทันที (ไม่ใช้ cache เก่า)
         console.error("🔥 Fatal Error: ไม่สามารถดึงคีย์จาก Vercel ได้", error);
         window.ENV_KEYS = { GEMINI: [], SERPER: [], FINNHUB: '', FINNHUB_ARRAY: [], ALPHAVANTAGE: '' };
         return false;
