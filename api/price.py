@@ -49,8 +49,6 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        # 🚀 บังคับห้าม Cache เด็ดขาด! (แก้ปัญหาราคาค้าง)
-        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.end_headers()
         self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
 
@@ -157,16 +155,24 @@ class handler(BaseHTTPRequestHandler):
         except Exception: pass
             
         try:
+            # 🚀 บังคับขุดประวัติ 40 แถว + แก้บัค Timezone ที่ทำให้ yfinance ดรอปข้อมูล
             earn = ticker.get_earnings_dates(limit=40)
             if earn is not None and not earn.empty:
                 now = pd.Timestamp.utcnow()
-                if earn.index.tz is None: earn.index = earn.index.tz_localize('UTC')
-                else: earn.index = earn.index.tz_convert('UTC')
+                
+                # แปลง timezone ให้ตรงกัน เพื่อกันบัคเปรียบเทียบค่า
+                if earn.index.tz is None:
+                    earn.index = earn.index.tz_localize('UTC')
+                else:
+                    earn.index = earn.index.tz_convert('UTC')
                     
                 future = earn[earn.index >= now].sort_index()
-                if not future.empty: next_earnings = future.index[0].strftime('%Y-%m-%d')
+                if not future.empty: 
+                    next_earnings = future.index[0].strftime('%Y-%m-%d')
                 
+                # ดึง 10 ไตรมาส และกรองแถวที่ข้อมูลว่างเปล่าออก
                 past = earn[earn.index < now].sort_index(ascending=False).dropna(subset=['Reported EPS', 'EPS Estimate'], how='all').head(10)
+                
                 for date_idx, row in past.iterrows():
                     try:
                         q_num = (date_idx.month - 1) // 3 + 1
@@ -175,8 +181,11 @@ class handler(BaseHTTPRequestHandler):
                         surp = clean_val(row.get("Surprise(%)"))
                         
                         earnings_data.append({
-                            "quarter": f"{q_num}Q{date_idx.year}", "year": date_idx.year,
-                            "estimate": est, "actual": act, "surprise": (surp * 100) if surp is not None else 0 
+                            "quarter": f"{q_num}Q{date_idx.year}", 
+                            "year": date_idx.year,
+                            "estimate": est, 
+                            "actual": act, 
+                            "surprise": (surp * 100) if surp is not None else 0 
                         })
                     except: pass
         except Exception: pass
