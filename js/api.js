@@ -50,22 +50,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const cachedFx = JSON.parse(localStorage.getItem('koda_thb_rate_data_v3'));
     window.kodaTHBRate = (cachedFx && cachedFx.rate) ? cachedFx.rate : 34.50;
 
+    // ในไฟล์ js/api.js
     const fetchGlobalTHBRate = async () => {
         try {
-            const res = await fetch(`/api/price?mode=fx&base=USD&target=THB&_=${Date.now()}`, { cache: 'no-store' });
+            // เรียกใช้ api/price.py ของคุณเอง
+            const res = await fetch('/api/price?mode=fx&base=USD&target=THB');
             const data = await res.json();
-            
-            if (data && data.success && data.rate) {
+            if (data.success && data.rate) {
                 window.kodaTHBRate = data.rate;
-                // 💾 บันทึกค่าลงเครื่อง เพื่อให้การเปิดเว็บครั้งหน้าไม่ต้องรอ และเลขไม่โดด
-                localStorage.setItem('koda_thb_rate_data_v3', JSON.stringify({ 
-                    rate: data.rate, 
-                    timestamp: Date.now() 
-                }));
-                renderHome(); // อัปเดตตัวเลขบนหน้าจอทันทีที่เรทจริงมาถึง
             }
         } catch (e) {
-            console.error("FX Update Error:", e);
+            window.kodaTHBRate = 34.50; 
         }
     };
     fetchGlobalTHBRate();
