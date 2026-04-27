@@ -1,6 +1,5 @@
-// ไฟล์: js/keys.js
+// ไฟล์: js/keys.js (สำหรับ GitHub)
 
-// 📌 1. โค้ดตัวแก้บัค (Hack) ช่วยให้สคริปต์ที่โหลดช้าทำงานได้ปกติ
 const originalAddEventListener = document.addEventListener;
 document.addEventListener = function(type, listener, options) {
     if (type === 'DOMContentLoaded' && (document.readyState === 'interactive' || document.readyState === 'complete')) {
@@ -10,18 +9,17 @@ document.addEventListener = function(type, listener, options) {
     originalAddEventListener.call(this, type, listener, options);
 };
 
-// 📌 2. KODA Config Loader
 window.loadKodaConfig = async () => {
-    // 🚨 1. เปลี่ยนชื่อเป็น v5 เพื่อบังคับเบราว์เซอร์ทิ้งคีย์เน่าๆ ของเก่า
-    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v5');
+    // ใช้ v4 ตามเดิมที่คุณคุ้นเคย
+    const cachedKeys = sessionStorage.getItem('koda_secure_keys_v4');
     if (cachedKeys) {
         window.ENV_KEYS = JSON.parse(cachedKeys);
         return true;
     }
 
     try {
-        // 🚨 2. ใส่ ?_=[เวลาปัจจุบัน] ต่อท้าย URL เพื่อหลอกให้เบราว์เซอร์คิดว่าเป็นไฟล์ใหม่เสมอ (ทะลุ Service Worker)
-        const response = await fetch('/api/get_keys?_=' + Date.now());
+        // วิ่งไปดึงจาก Vercel (api/keys.py)
+        const response = await fetch('/api/keys');
         if (!response.ok) throw new Error('Network response was not ok');
         
         const data = await response.json();
@@ -39,8 +37,7 @@ window.loadKodaConfig = async () => {
         }
         
         window.ENV_KEYS = data;
-        // 🚨 3. เซฟลงชื่อใหม่ v5
-        sessionStorage.setItem('koda_secure_keys_v5', JSON.stringify(data));
+        sessionStorage.setItem('koda_secure_keys_v4', JSON.stringify(data));
         return true;
 
     } catch (error) {
