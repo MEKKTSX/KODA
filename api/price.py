@@ -19,38 +19,59 @@ def clean_val(v):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         query = parse_qs(urlparse(self.path).query)
-        symbol = query.get('symbol', ['TSLA'])[0].strip().upper()
         mode = query.get('mode', ['price'])[0].strip().lower()
 
         try:
-            yf_sym = symbol
-            if symbol == 'XAUUSD': yf_sym = 'GC=F'
-            elif '.HK' in symbol: yf_sym = symbol.split('.')[0].zfill(4) + '.HK'
-            elif 'OANDA:' in symbol: yf_sym = symbol.split(':')[1].replace('_', '') + '=X'
-            elif 'BINANCE:' in symbol: yf_sym = symbol.split(':')[1].replace('USDT', '-USD')
-            elif ':' in symbol: yf_sym = symbol.split(':')[1]
-
-            ticker = yf.Ticker(yf_sym)
-
-            if mode == 'financials':
-                response = self.get_financials(ticker, symbol)
-            elif mode == 'analysis':
-                response = self.get_analysis(ticker, symbol)
+            # 📌 ส่วนที่เพิ่มเข้ามา: จัดการดึงเรทเงินบาท (FX)
+            if mode == 'fx':
+                base = query.get('base', ['USD'])[0].strip().upper()
+                target = query.get('target', ['THB'])[0].strip().upper()
+                response = self.get_exchange_rate(base, target)
+            
+            # 📌 ส่วนจัดการหุ้นปกติ
             else:
-                response = self.get_price(ticker, symbol)
+                symbol = query.get('symbol', ['TSLA'])[0].strip().upper()
+                yf_sym = symbol
+                if symbol == 'XAUUSD': yf_sym = 'GC=F'
+                elif '.HK' in symbol: yf_sym = symbol.split('.')[0].zfill(4) + '.HK'
+                elif 'OANDA:' in symbol: yf_sym = symbol.split(':')[1].replace('_', '') + '=X'
+                elif 'BINANCE:' in symbol: yf_sym = symbol.split(':')[1].replace('USDT', '-USD')
+                elif ':' in symbol: yf_sym = symbol.split(':')[1]
+
+                ticker = yf.Ticker(yf_sym)
+
+                if mode == 'financials':
+                    response = self.get_financials(ticker, symbol)
+                elif mode == 'analysis':
+                    response = self.get_analysis(ticker, symbol)
+                else:
+                    response = self.get_price(ticker, symbol)
 
         except Exception as e:
             response = {
                 "success": False,
-                "error": str(e),
-                "symbol": symbol
+                "error": str(e)
             }
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        # 🚀 บังคับห้าม Cache เด็ดขาด! (แก้ปัญหาราคาค้าง)
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.end_headers()
         self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
+
+    # 📌 ฟังก์ชันใหม่: ดึงเรทเงินจาก Yahoo Finance
+    def get_exchange_rate(self, base, target):
+        try:
+            ticker = yf.Ticker(f"{base}{target}=X")
+            info = ticker.info
+            rate = clean_val(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose'))
+            if rate:
+                return {"success": True, "base": base, "target": target, "rate": rate}
+        except Exception:
+            pass
+        return {"success": False, "base": base, "target": target, "rate": 34.50}
 
     def get_price(self, ticker, symbol):
         info = ticker.info
@@ -155,24 +176,16 @@ class handler(BaseHTTPRequestHandler):
         except Exception: pass
             
         try:
-            # 🚀 บังคับขุดประวัติ 40 แถว + แก้บัค Timezone ที่ทำให้ yfinance ดรอปข้อมูล
             earn = ticker.get_earnings_dates(limit=40)
             if earn is not None and not earn.empty:
                 now = pd.Timestamp.utcnow()
-                
-                # แปลง timezone ให้ตรงกัน เพื่อกันบัคเปรียบเทียบค่า
-                if earn.index.tz is None:
-                    earn.index = earn.index.tz_localize('UTC')
-                else:
-                    earn.index = earn.index.tz_convert('UTC')
+                if earn.index.tz is None: earn.index = earn.index.tz_localize('UTC')
+                else: earn.index = earn.index.tz_convert('UTC')
                     
                 future = earn[earn.index >= now].sort_index()
-                if not future.empty: 
-                    next_earnings = future.index[0].strftime('%Y-%m-%d')
+                if not future.empty: next_earnings = future.index[0].strftime('%Y-%m-%d')
                 
-                # ดึง 10 ไตรมาส และกรองแถวที่ข้อมูลว่างเปล่าออก
                 past = earn[earn.index < now].sort_index(ascending=False).dropna(subset=['Reported EPS', 'EPS Estimate'], how='all').head(10)
-                
                 for date_idx, row in past.iterrows():
                     try:
                         q_num = (date_idx.month - 1) // 3 + 1
@@ -181,11 +194,8 @@ class handler(BaseHTTPRequestHandler):
                         surp = clean_val(row.get("Surprise(%)"))
                         
                         earnings_data.append({
-                            "quarter": f"{q_num}Q{date_idx.year}", 
-                            "year": date_idx.year,
-                            "estimate": est, 
-                            "actual": act, 
-                            "surprise": (surp * 100) if surp is not None else 0 
+                            "quarter": f"{q_num}Q{date_idx.year}", "year": date_idx.year,
+                            "estimate": est, "actual": act, "surprise": (surp * 100) if surp is not None else 0 
                         })
                     except: pass
         except Exception: pass
