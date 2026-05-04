@@ -39,12 +39,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const targetId = tab.getAttribute('data-target');
             contents.forEach(c => {
-                if (c.id === targetId) { c.classList.remove('hidden'); c.classList.add('block'); } 
-                else { c.classList.remove('block'); c.classList.add('hidden'); }
+                if (c.id === targetId) { 
+                    c.classList.remove('hidden'); 
+                    c.classList.add('block'); 
+                } 
+                else { 
+                    c.classList.remove('block'); 
+                    c.classList.add('hidden'); 
+                }
             });
 
             if (targetId === 'tab-company' && !loadedTabs.company) { fetchCompanySummary(); loadedTabs.company = true; }
-            if (targetId === 'tab-analysis' && !loadedTabs.analysis) { fetchAnalysisData(); loadedTabs.analysis = true; }
+            
+            // 📌 จุดแก้บัค: เมื่อกดแท็บ "บทวิเคราะห์"
+            if (targetId === 'tab-analysis') {
+                if (!loadedTabs.analysis) {
+                    fetchAnalysisData(); 
+                    loadedTabs.analysis = true; 
+                } else if (taChartInstance) {
+                    // ถ้าโหลดไว้แล้ว ให้บังคับ Resize กราฟใหม่ เพื่อแก้บัคกราฟแอบซ่อน
+                    setTimeout(() => {
+                        const container = document.getElementById('ta-chart-container');
+                        if (container && container.clientWidth > 0) {
+                            taChartInstance.resize(container.clientWidth, 220);
+                            taChartInstance.timeScale().fitContent(); // ขยับสเกลให้พอดีจอ
+                        }
+                    }, 50); // ดีเลย์นิดนึงให้กล่องโชว์ออกมาก่อน
+                }
+            }
+            
             if (targetId === 'tab-quarterly' && !loadedTabs.quarterly) { fetchQuarterlyEarnings(); loadedTabs.quarterly = true; }
             if (targetId === 'tab-financials' && !loadedTabs.financials) { fetchFinancialData(); loadedTabs.financials = true; }
             if (targetId === 'tab-news' && !loadedTabs.news) { fetchLatestNews(); loadedTabs.news = true; }
