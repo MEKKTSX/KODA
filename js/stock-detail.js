@@ -302,107 +302,104 @@ document.addEventListener('DOMContentLoaded', () => {
         script.src = 'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
         script.onload = resolve; document.head.appendChild(script);
     });
+    
+    // นำไปวางทับฟังก์ชัน fetchCandleData เดิมใน js/stock-detail.js 
 
-        const fetchCandleData = async (tfRange) => {
-        const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
-        const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
-        const daysMap = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '5Y': 1825 };
-        const fhResMap = { '1M': 'D', '3M': 'D', '6M': 'D', '1Y': 'D', '2Y': 'D', '5Y': 'W' };
+    const fetchCandleData = async (tfRange) => {
+    const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
+    const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
+    const daysMap = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '5Y': 1825 };
+    const fhResMap = { '1M': 'D', '3M': 'D', '6M': 'D', '1Y': 'D', '2Y': 'D', '5Y': 'W' };
 
-        let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-        
-        // 1. คริปโต (รันลื่นผ่าน Binance)
-        if (isCrypto) {
-            try {
-                let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
-                let limit = daysMap[tfRange] || 365;
-                let interval = tfRange === '5Y' ? '1w' : '1d';
-                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=${limit}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.length > 0) {
-                        return {
-                            timestamps: data.map(k => k[0] / 1000),
-                            opens: data.map(k => parseFloat(k[1])),
-                            highs: data.map(k => parseFloat(k[2])),
-                            lows: data.map(k => parseFloat(k[3])),
-                            closes: data.map(k => parseFloat(k[4])),
-                            volumes: data.map(k => parseFloat(k[5]))
-                        };
-                    }
+    let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+    
+    // 🚀 ก๊อกที่ 1: คริปโต (Binance) - อันนี้ฟรีและดีที่สุดสำหรับคริปโต ให้อยู่บนสุดเหมือนเดิม
+    if (isCrypto) {
+        try {
+            let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
+            let limit = daysMap[tfRange] || 365;
+            let interval = tfRange === '5Y' ? '1w' : '1d';
+            const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=${limit}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    return {
+                        timestamps: data.map(k => k[0] / 1000),
+                        opens: data.map(k => parseFloat(k[1])),
+                        highs: data.map(k => parseFloat(k[2])),
+                        lows: data.map(k => parseFloat(k[3])),
+                        closes: data.map(k => parseFloat(k[4])),
+                        volumes: data.map(k => parseFloat(k[5]))
+                    };
                 }
-            } catch(e) {}
-        }
+            }
+        } catch(e) {}
+    }
 
-        // 2. หุ้นทั่วไป (พึ่ง Finnhub ก่อน)
-        if (!isThaiStock && !isCrypto) {
-            try {
-                const to = Math.floor(Date.now() / 1000);
-                const from = to - (daysMap[tfRange] * 24 * 60 * 60);
-                const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=${fhResMap[tfRange]}&from=${from}&to=${to}&token=${getFHKey()}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.s === 'ok' && data.c && data.c.length > 0) {
-                        return { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
-                    }
-                }
-            } catch(e) {}
-        }
+    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป ดึงจาก Yahoo Finance ก่อนเลยเป็นอันดับแรก (ผ่านท่อ Proxy)
+    const yfRange = rangeMap[tfRange] || '1y';
+    const yfInterval = intervalMap[tfRange] || '1d';
+    let yfSym = symbol;
+    if (symbol === 'XAUUSD') yfSym = 'GC=F';
+    else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
 
-        // 🚀 3. Fallback (Yahoo Finance ผ่าน Proxy เกรดพรีเมียมที่ผ่านการบล็อกได้)
-        const yfRange = rangeMap[tfRange] || '1y';
-        const yfInterval = intervalMap[tfRange] || '1d';
-        let yfSym = symbol;
-        if (symbol === 'XAUUSD') yfSym = 'GC=F';
-        else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
+    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
+    const proxies = [
+        `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
+    ];
 
-        const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
-        
-        // ใช้ Proxy 3 ตัวที่เสถียรที่สุดในตอนนี้ สลับกันไปเผื่อตัวใดตัวหนึ่งล่ม
-        const proxies = [
-            `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
-            `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
-        ];
+    const fetchWithTimeout = (url, ms = 3000) => {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
+    };
 
-        for (let proxy of proxies) {
-            try {
-                // 📌 ถ้าเกิน 6 วินาทีแล้วไม่ตอบ ให้ตัดทิ้งไปหาตัวอื่นทันที
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 6000); 
-                const res = await fetch(proxy, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                if (!res.ok) continue;
+    if (!isThaiStock && !isCrypto) {
+        try {
+            // แข่งกันโหลดจาก 3 ท่อ Proxy ตัวไหนเสร็จก่อนเอาตัวนั้น (ลดอาการค้าง)
+            const res = await Promise.any(proxies.map(url => fetchWithTimeout(url, 3000)));
+            if (res.ok) {
                 const raw = await res.json();
-                
                 let yfData = raw;
-                if (raw.contents) { 
-                    try { yfData = JSON.parse(raw.contents); } catch(e) {} 
-                }
+                if (raw.contents) { try { yfData = JSON.parse(raw.contents); } catch(e) {} }
                 
                 if (yfData?.chart?.result?.[0]) {
                     const q = yfData.chart.result[0].indicators.quote[0];
                     const tRaw = yfData.chart.result[0].timestamp;
-                    
                     const timestamps = [], opens = [], highs = [], lows = [], closes = [], volumes = [];
-                    // 📌 กรองค่า null ทิ้งทั้งหมด เพื่อป้องกันกราฟ Lightweight แตกหรือจอขาว
                     for(let i=0; i<tRaw.length; i++) {
                         if(q.close[i] !== null && q.open[i] !== null && q.high[i] !== null && q.low[i] !== null) {
-                            timestamps.push(tRaw[i]);
-                            opens.push(q.open[i]);
-                            highs.push(q.high[i]);
-                            lows.push(q.low[i]);
-                            closes.push(q.close[i]);
-                            volumes.push(q.volume[i] || 0);
+                            timestamps.push(tRaw[i]); opens.push(q.open[i]); highs.push(q.high[i]);
+                            lows.push(q.low[i]); closes.push(q.close[i]); volumes.push(q.volume[i] || 0);
                         }
                     }
                     if (closes.length > 0) return { timestamps, opens, highs, lows, closes, volumes };
                 }
-            } catch (err) {}
+            }
+        } catch(err) { 
+            console.warn('Yahoo Finance Proxy failed, falling back to Finnhub:', err); 
         }
-        return null;
-    };
+    }
+
+    // 🚀 ก๊อกที่ 3: Fallback ถ้า Yahoo Finance พัง ค่อยให้ Finnhub ออกโรงกู้สถานการณ์
+    if (!isThaiStock && !isCrypto) {
+        try {
+            const to = Math.floor(Date.now() / 1000);
+            const from = to - (daysMap[tfRange] * 24 * 60 * 60);
+            const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=${fhResMap[tfRange]}&from=${from}&to=${to}&token=${getFHKey()}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.s === 'ok' && data.c && data.c.length > 0) {
+                    return { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
+                }
+            }
+        } catch(e) {}
+    }
+
+    return null;
+};
 
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R
