@@ -303,8 +303,6 @@ document.addEventListener('DOMContentLoaded', () => {
         script.onload = resolve; document.head.appendChild(script);
     });
     
-    // นำไปวางทับฟังก์ชัน fetchCandleData เดิมใน js/stock-detail.js 
-
     const fetchCandleData = async (tfRange) => {
     const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
     const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
@@ -313,7 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
     
-    // 🚀 ก๊อกที่ 1: คริปโต (Binance) - อันนี้ฟรีและดีที่สุดสำหรับคริปโต ให้อยู่บนสุดเหมือนเดิม
+    // 🚀 ก๊อกที่ 1: คริปโต (Binance) - ฟรีและดีที่สุด
     if (isCrypto) {
         try {
             let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
@@ -336,34 +334,25 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {}
     }
 
-    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป ดึงจาก Yahoo Finance ก่อนเลยเป็นอันดับแรก (ผ่านท่อ Proxy)
+    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป (ยิง Yahoo Finance ผ่านท่อ Vercel Proxy ของเราเอง)
     const yfRange = rangeMap[tfRange] || '1y';
     const yfInterval = intervalMap[tfRange] || '1d';
     let yfSym = symbol;
     if (symbol === 'XAUUSD') yfSym = 'GC=F';
     else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
 
-    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
-    const proxies = [
-        `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
-    ];
-
-    const fetchWithTimeout = (url, ms = 3000) => {
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), ms);
-        return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
-    };
-
     if (!isThaiStock && !isCrypto) {
         try {
-            // แข่งกันโหลดจาก 3 ท่อ Proxy ตัวไหนเสร็จก่อนเอาตัวนั้น (ลดอาการค้าง)
-            const res = await Promise.any(proxies.map(url => fetchWithTimeout(url, 3000)));
+            // ยิงเข้าหา Vercel Backend ตัวเอง (ไม่ต้องพึ่งเว็บ Proxy นอกแล้ว)
+            const proxyUrl = `/api/yf-chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // รอสูงสุด 5 วิ
+            const res = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
             if (res.ok) {
-                const raw = await res.json();
-                let yfData = raw;
-                if (raw.contents) { try { yfData = JSON.parse(raw.contents); } catch(e) {} }
+                const yfData = await res.json();
                 
                 if (yfData?.chart?.result?.[0]) {
                     const q = yfData.chart.result[0].indicators.quote[0];
@@ -379,11 +368,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } catch(err) { 
-            console.warn('Yahoo Finance Proxy failed, falling back to Finnhub:', err); 
+            console.warn('Vercel Yahoo Proxy failed:', err); 
         }
     }
 
-    // 🚀 ก๊อกที่ 3: Fallback ถ้า Yahoo Finance พัง ค่อยให้ Finnhub ออกโรงกู้สถานการณ์
+    // 🚀 ก๊อกที่ 3: Fallback Finnhub (กันเหนียวสุดๆ)
     if (!isThaiStock && !isCrypto) {
         try {
             const to = Math.floor(Date.now() / 1000);
@@ -400,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     return null;
 };
-
+    
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R
     // ==========================================
