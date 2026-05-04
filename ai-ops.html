@@ -101,20 +101,42 @@
     </main>
 
     <div class="fixed bottom-[68px] left-1/2 -translate-x-1/2 w-full max-w-md bg-background-dark/95 backdrop-blur-lg border-t border-border-dark z-20 px-4 py-3">
+        
+        <!-- 📌 [เพิ่มใหม่] คอนเทนเนอร์แสดงรูปที่แนบก่อนกดส่ง -->
+        <div id="image-preview-container" class="hidden pb-2 w-full pl-2">
+            <div class="relative inline-block">
+                <img id="image-preview-img" src="" class="h-16 w-auto rounded-xl border border-border-dark object-cover shadow-md opacity-90">
+                <button id="btn-remove-image" class="absolute -top-2 -right-2 bg-danger text-white rounded-full size-5 flex items-center justify-center shadow-[0_0_10px_rgba(0,0,0,0.5)] hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined text-[12px]">close</span>
+                </button>
+            </div>
+        </div>
+
         <div class="relative flex items-end bg-surface-dark border border-border-dark rounded-2xl focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all p-2 gap-2 shadow-inner">
             
+            <!-- 📌 [เพิ่มใหม่] ไอคอนแนบรูปภาพ -->
+            <label for="ai-image-upload" class="cursor-pointer text-slate-400 hover:text-primary transition-colors p-2 rounded-xl hover:bg-slate-800 flex items-center justify-center shrink-0 mb-0.5 outline-none">
+                <span class="material-symbols-outlined text-[20px]">add_photo_alternate</span>
+                <input type="file" id="ai-image-upload" accept="image/png, image/jpeg, image/webp" class="hidden">
+            </label>
+
+            <!-- ปุ่มเลือก Model (ของเดิม) -->
             <button type="button" id="btn-model-picker" class="flex items-center gap-1 px-3 py-2 rounded-xl bg-background-dark border border-border-dark text-slate-300 hover:text-white transition-colors text-xs font-bold shrink-0 mb-0.5 outline-none">
                 <span id="active-model-icon" class="material-symbols-outlined text-[16px] text-slate-500">expand_less</span>
                 <span id="active-model-label">Pro</span>
             </button>
 
-            <textarea id="chat-input" rows="1" class="flex-1 min-w-0 bg-transparent border-none text-sm text-slate-100 placeholder:text-slate-500 focus:ring-0 p-0 py-2 outline-none resize-none max-h-32 overflow-y-auto no-scrollbar" placeholder="Ask KODA about markets..."></textarea>
+            <!-- กล่องพิมพ์ (ของเดิม) -->
+            <textarea id="chat-input" rows="1" class="flex-1 min-w-0 bg-transparent border-none text-sm text-slate-100 placeholder:text-slate-500 focus:ring-0 p-0 py-2 outline-none resize-none max-h-32 overflow-y-auto no-scrollbar" placeholder="Ask KODA or attach chart..."></textarea>
             
+            <!-- ปุ่มส่ง (ของเดิม) -->
             <button type="button" id="send-btn" class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-0.5 outline-none" disabled>
                 <span class="material-symbols-outlined text-lg ml-0.5">send</span>
             </button>
             
+            <!-- Popup Model (ของเดิม) -->
             <div id="model-popup" class="absolute bottom-full left-0 mb-2 w-[300px] bg-surface-dark border border-border-dark rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 p-2 hidden transition-all opacity-0 scale-95 origin-bottom-left">
+                <!-- เนื้อหา Model ตัวเลือกของเดิมของคุณ ... -->
                 <h4 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest px-3 pt-2 pb-2">Select Model & Usage</h4>
                 
                 <button type="button" class="model-opt flex w-full items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors text-left relative group" data-model="flash">
@@ -202,6 +224,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     let kodaSessions = JSON.parse(localStorage.getItem('koda_chat_sessions') || '{}');
     let currentSessionId = null;
     let currentHistory = []; 
+    
+    let attachedImageBase64 = null;
+    let attachedImageMimeType = null;
+    let attachedImageThumbUrl = null;
+
+    const imgInput = document.getElementById('ai-image-upload');
+    const previewContainer = document.getElementById('image-preview-container');
+    const previewImg = document.getElementById('image-preview-img');
+    const btnRemoveImg = document.getElementById('btn-remove-image');
 
     // ระบบติดตามโควต้า
     const getUsage = () => {
@@ -360,11 +391,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatInput.addEventListener('focus', () => setTimeout(scrollToBottom, 300));
     window.addEventListener('resize', scrollToBottom);
 
-    const appendUserMessage = (text) => {
+    const appendUserMessage = (text, imgDataUrl = null) => {
+        let imgHtml = '';
+        if (imgDataUrl) {
+            imgHtml = `<img src="${imgDataUrl}" class="max-w-full rounded-xl mb-2 border border-white/10 opacity-90">`;
+        }
+        
         const html = `
-            <div class="flex justify-end w-full">
+            <div class="flex justify-end w-full mb-4">
                 <div class="bg-primary text-white rounded-2xl rounded-br-sm p-3 shadow-sm max-w-[85%]">
-                    <p class="text-sm leading-relaxed whitespace-pre-wrap">${text}</p>
+                    ${imgHtml}
+                    ${text ? `<p class="text-sm leading-relaxed whitespace-pre-wrap">${text}</p>` : ''}
                 </div>
             </div>`;
         chatMessages.insertAdjacentHTML('beforeend', html);
@@ -486,22 +523,98 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         createNewSession();
     }
+    
+    // 📌 ระบบจัดการการแนบรูปภาพ
+    if (imgInput) {
+        imgInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-    // 📌 [NEW LOGIC] ส่งแชทด้วยการกดปุ่ม Send เท่านั้น
+            attachedImageMimeType = file.type;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const base64String = event.target.result;
+                previewImg.src = base64String;
+                attachedImageThumbUrl = base64String; // เก็บไว้โชว์ในแชท
+                previewContainer.classList.remove('hidden');
+                attachedImageBase64 = base64String.split(',')[1];
+                
+                // ปลดล็อกปุ่มส่งเผื่อส่งแค่รูปไม่มีข้อความ
+                sendBtn.disabled = false; 
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    if (btnRemoveImg) {
+        btnRemoveImg.addEventListener('click', () => {
+            attachedImageBase64 = null;
+            attachedImageMimeType = null;
+            attachedImageThumbUrl = null;
+            imgInput.value = ''; 
+            previewContainer.classList.add('hidden');
+            previewImg.src = '';
+            
+            // ล็อกปุ่มส่งกลับถ้าช่องแชทว่างเปล่า
+            if (chatInput.value.trim() === '') {
+                sendBtn.disabled = true;
+            }
+        });
+    }
+
+    // 📌 แก้ไข Textarea Auto-expand ให้ปลดปุ่ม Send ถ้ารูปถูกแนบอยู่
+    chatInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        if(this.value.trim() === '') this.style.height = 'auto';
+        // ปลดล็อกปุ่มถ้ามีข้อความ "หรือ" มีการแนบรูป
+        sendBtn.disabled = (this.value.trim() === '' && !attachedImageBase64);
+    });
+
+    // 📌 [อัปเดตใหม่] ส่งข้อความ + รูปภาพ
     const processMessage = async () => {
-        const text = chatInput.value.trim();
-        if (!text) return;
-
-        appendUserMessage(text);
+        let text = chatInput.value.trim();
+        const hasImage = !!attachedImageBase64;
         
-        // Reset Textarea กลับเป็นขนาดเดิมหลังส่ง
+        if (!text && !hasImage) return;
+
+        // ถ้าส่งมาแค่รูป ไม่มีข้อความ ให้สั่ง AI วิเคราะห์รูป
+        if (!text && hasImage) {
+            text = "โปรดวิเคราะห์รูปภาพนี้อย่างละเอียด";
+        }
+
+        // แสดงผลขึ้นจอแชท
+        appendUserMessage(text, attachedImageThumbUrl);
+        
+        // Backup ค่ารูปภาพชั่วคราว
+        const tmpBase64 = attachedImageBase64;
+        const tmpMime = attachedImageMimeType;
+
+        // เคลียร์ UI
         chatInput.value = '';
         chatInput.style.height = 'auto';
         sendBtn.disabled = true;
+        attachedImageBase64 = null;
+        attachedImageMimeType = null;
+        attachedImageThumbUrl = null;
+        imgInput.value = '';
+        previewContainer.classList.add('hidden');
+        previewImg.src = '';
 
         if (currentHistory.length > 0 && currentHistory[currentHistory.length - 1].role === 'user') { currentHistory.pop(); }
 
-        currentHistory.push({ role: "user", parts: [{ text: text }] });
+        // ประกอบร่าง Part ส่งไป AI
+        let currentParts = [{ text: text }];
+        if (hasImage) {
+            currentParts.unshift({
+                inlineData: {
+                    mimeType: tmpMime,
+                    data: tmpBase64
+                }
+            });
+        }
+
+        currentHistory.push({ role: "user", parts: currentParts });
         saveSession();
 
         const typingId = appendTypingIndicator();
@@ -524,12 +637,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let payload = {
                 contents: modifiedHistory,
-                systemInstruction: { parts: [{ text: `You are KODA, a professional AI financial assistant. Provide concise analysis. Context: Watchlist: [${wl || 'None'}], Portfolio: [${port || 'Empty'}]. ${isTranslateOn ? "Reply entirely in Thai, keeping stock tickers in English." : "Reply in English."}` }] },
+                systemInstruction: { parts: [{ text: `You are KODA, a professional AI financial assistant. Analyze charts or images if provided. Context: Watchlist: [${wl || 'None'}], Portfolio: [${port || 'Empty'}]. ${isTranslateOn ? "Reply entirely in Thai, keeping stock tickers in English." : "Reply in English."}` }] },
                 generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
             };
 
             let targetModelUrl = '';
             
+            // 🚨 Gemini ทุกตัวตอนนี้รองรับรูปภาพแล้ว (Flash & Flash Lite)
             if (activeModel === 'flash') {
                 payload.tools = [{ googleSearch: {} }];
                 targetModelUrl = 'gemini-2.5-flash';
@@ -564,6 +678,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (aiResponseText) {
                 appendAIMessage(aiResponseText);
+                
+                // ไม่เก็บข้อมูลรูปภาพลงใน LocalStorage History (เพื่อประหยัดพื้นที่แรมเครื่อง)
+                // แทนที่ part ล่าสุดด้วยข้อความล้วนๆ
+                currentHistory[currentHistory.length - 1] = { role: "user", parts: [{ text: text }] };
+                
                 currentHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
                 saveSession();
             } else {
@@ -593,3 +712,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
+
