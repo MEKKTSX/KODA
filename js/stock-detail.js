@@ -303,6 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
         script.onload = resolve; document.head.appendChild(script);
     });
     
+    // นำไปวางทับฟังก์ชัน fetchCandleData เดิมใน js/stock-detail.js 
+
     const fetchCandleData = async (tfRange) => {
     const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
     const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
@@ -311,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
     
-    // 🚀 ก๊อกที่ 1: คริปโต (Binance) - ฟรีและดีที่สุด
+    // 🚀 ก๊อกที่ 1: คริปโต (Binance) - อันนี้ฟรีและดีที่สุดสำหรับคริปโต ให้อยู่บนสุดเหมือนเดิม
     if (isCrypto) {
         try {
             let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
@@ -334,25 +336,34 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {}
     }
 
-    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป (ยิง Yahoo Finance ผ่านท่อ Vercel Proxy ของเราเอง)
+    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป ดึงจาก Yahoo Finance ก่อนเลยเป็นอันดับแรก (ผ่านท่อ Proxy)
     const yfRange = rangeMap[tfRange] || '1y';
     const yfInterval = intervalMap[tfRange] || '1d';
     let yfSym = symbol;
     if (symbol === 'XAUUSD') yfSym = 'GC=F';
     else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
 
+    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
+    const proxies = [
+        `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
+    ];
+
+    const fetchWithTimeout = (url, ms = 3000) => {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
+    };
+
     if (!isThaiStock && !isCrypto) {
         try {
-            // ยิงเข้าหา Vercel Backend ตัวเอง (ไม่ต้องพึ่งเว็บ Proxy นอกแล้ว)
-            const proxyUrl = `/api/yf-chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // รอสูงสุด 5 วิ
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
+            // แข่งกันโหลดจาก 3 ท่อ Proxy ตัวไหนเสร็จก่อนเอาตัวนั้น (ลดอาการค้าง)
+            const res = await Promise.any(proxies.map(url => fetchWithTimeout(url, 3000)));
             if (res.ok) {
-                const yfData = await res.json();
+                const raw = await res.json();
+                let yfData = raw;
+                if (raw.contents) { try { yfData = JSON.parse(raw.contents); } catch(e) {} }
                 
                 if (yfData?.chart?.result?.[0]) {
                     const q = yfData.chart.result[0].indicators.quote[0];
@@ -368,11 +379,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } catch(err) { 
-            console.warn('Vercel Yahoo Proxy failed:', err); 
+            console.warn('Yahoo Finance Proxy failed, falling back to Finnhub:', err); 
         }
     }
 
-    // 🚀 ก๊อกที่ 3: Fallback Finnhub (กันเหนียวสุดๆ)
+    // 🚀 ก๊อกที่ 3: Fallback ถ้า Yahoo Finance พัง ค่อยให้ Finnhub ออกโรงกู้สถานการณ์
     if (!isThaiStock && !isCrypto) {
         try {
             const to = Math.floor(Date.now() / 1000);
@@ -389,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     return null;
 };
-    
+
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R
     // ==========================================
@@ -641,6 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (total === 0) {
             badge.textContent = "N/A";
+            badge.style.backgroundColor = "#64748b"; // สีเทา
             container.innerHTML = `<p class="text-slate-500 text-xs">ไม่มีข้อมูลนักวิเคราะห์</p>`;
             return;
         }
@@ -649,13 +661,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const colors = { 'strongBuy': '#00c076', 'buy': '#22c55e', 'hold': '#eab308', 'sell': '#64748b', 'strongSell': '#ff4d4d' };
         
         let consensusText = "N/A";
-        if (rec.consensus === 'strong_buy') consensusText = "ซื้อทันที";
-        else if (rec.consensus === 'buy') consensusText = "ซื้อ";
-        else if (rec.consensus === 'hold') consensusText = "ถือ";
-        else if (rec.consensus === 'underperform') consensusText = "ต่ำกว่าค่าเฉลี่ย";
-        else if (rec.consensus === 'sell') consensusText = "ขาย";
+        let badgeColor = "#64748b";
+
+        if (rec.consensus === 'strong_buy') { consensusText = "ซื้อทันที"; badgeColor = colors.strongBuy; }
+        else if (rec.consensus === 'buy') { consensusText = "ซื้อ"; badgeColor = colors.buy; }
+        else if (rec.consensus === 'hold') { consensusText = "ถือ"; badgeColor = colors.hold; }
+        else if (rec.consensus === 'underperform') { consensusText = "ต่ำกว่าค่าเฉลี่ย"; badgeColor = colors.sell; }
+        else if (rec.consensus === 'sell') { consensusText = "ขาย"; badgeColor = colors.strongSell; }
 
         badge.textContent = consensusText;
+        // 📌 สั่งเปลี่ยนสีวงกลมตาม Rating
+        badge.style.backgroundColor = badgeColor;
+        badge.style.color = "#ffffff";
 
         const rows = ['strongBuy', 'buy', 'hold', 'sell', 'strongSell'].map(key => {
             const pct = Math.round((rec[key] / total) * 100);
@@ -764,7 +781,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const candleResult = await fetchCandleData(rangeToFetch);
             
             if (!candleResult) { 
-                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p></div>`;
+                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้</p></div>`;
                 return;
             }
 
@@ -790,8 +807,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             taSeries.setData(chartData);
 
+            // 📌 ลดขนาด Volume ลงให้เหลือแค่ส่วนล่างสุด (จาก 0.8 เป็น 0.88)
             taVolumeSeries = taChartInstance.addHistogramSeries({
-                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 }
+                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.88, bottom: 0 }
             });
             taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
 
@@ -820,13 +838,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (markers.length > 0) taSeries.setMarkers(markers);
             
             const titleEl = document.getElementById('ta-signal-title');
+            const isBull = bullCount > bearCount;
+            const isBear = bearCount > bullCount;
+
             if (bullCount > bearCount + 2) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาขึ้นที่แข็งแกร่งมาก';
                 titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
-            } else if (bullCount > bearCount) {
+            } else if (isBull) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาขึ้น';
                 titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
-            } else if (bearCount > bullCount) {
+            } else if (isBear) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาลง';
                 titleEl.className = 'text-[#ff4d4d] text-base font-bold mb-1';
             } else {
@@ -836,6 +857,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
             document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
+
+            // 📌 เปลี่ยนสีปุ่มและลูกศรให้ตรงกับเทรนด์ (เขียวขึ้น / แดงลง)
+            let activeColor = '#eab308'; 
+            let arrowIcon = 'trending_flat';
+            if (isBull) { activeColor = '#00c076'; arrowIcon = 'north_east'; }
+            if (isBear) { activeColor = '#ff4d4d'; arrowIcon = 'south_east'; }
+
+            document.querySelectorAll('.ta-mode-btn').forEach(btn => {
+                let modeText = btn.dataset.mode === 'short' ? 'ระยะสั้น' : (btn.dataset.mode === 'medium' ? 'ระยะกลาง' : 'ระยะยาว');
+                if (btn.dataset.mode === currentTAMode) {
+                    btn.className = `ta-mode-btn flex-1 text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all`;
+                    btn.style.backgroundColor = activeColor;
+                    btn.innerHTML = `${modeText} <span class="material-symbols-outlined text-[14px]">${arrowIcon}</span>`;
+                } else {
+                    btn.className = `ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all bg-surface-dark border border-border-dark`;
+                    btn.style.backgroundColor = 'transparent';
+                    btn.innerHTML = `${modeText} <span class="material-symbols-outlined text-[14px] ${isBear ? 'text-danger/50' : (isBull ? 'text-success/50' : 'text-yellow-500/50')}">${arrowIcon}</span>`;
+                }
+            });
 
             if (currentTAMode === 'short') {
                 const lookback = currentTATF === 'daily' ? 60 : 12; 
@@ -849,7 +889,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 taChartInstance.timeScale().fitContent();
             }
         } catch (e) {
-            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p>`;
+            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้</p>`;
         }
     };
 
@@ -865,10 +905,12 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAnalystRatings(cached.data.recommendation);
             await renderTargetPrice(cached.data.targets);
             
+            // 📌 แก้บัค: เปิดกล่องให้โชว์ก่อนวาดกราฟ
+            document.getElementById('analysis-loading').classList.add('hidden');
+            document.getElementById('analysis-content').classList.remove('hidden');
+
             document.querySelectorAll('.ta-mode-btn').forEach(btn => {
                 btn.onclick = (e) => {
-                    document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
-                    e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
                     currentTAMode = e.currentTarget.dataset.mode;
                     renderTAChart();
                 };
@@ -882,9 +924,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
 
+            // 📌 วาดกราฟทีหลัง
             await renderTAChart();
-            document.getElementById('analysis-loading').classList.add('hidden');
-            document.getElementById('analysis-content').classList.remove('hidden');
             return;
         }
 
@@ -898,10 +939,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderAnalystRatings(data.recommendation);
                 await renderTargetPrice(data.targets);
                 
+                // 📌 แก้บัค: เปิดกล่องให้โชว์ก่อนวาดกราฟ
+                document.getElementById('analysis-loading').classList.add('hidden');
+                document.getElementById('analysis-content').classList.remove('hidden');
+
                 document.querySelectorAll('.ta-mode-btn').forEach(btn => {
                     btn.onclick = (e) => {
-                        document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
-                        e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
                         currentTAMode = e.currentTarget.dataset.mode;
                         renderTAChart();
                     };
@@ -916,10 +959,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                 });
 
+                // 📌 วาดกราฟทีหลัง
                 await renderTAChart();
-
-                document.getElementById('analysis-loading').classList.add('hidden');
-                document.getElementById('analysis-content').classList.remove('hidden');
             } else {
                 throw new Error();
             }
@@ -929,7 +970,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('analysis-loading').classList.remove('animate-pulse');
         }
     };
-
 
     // ==========================================
     // 📌 TAB 3: สรุปไตรมาส (ระบบ 3 ก๊อก ป้องกันจอแดง 100%)
