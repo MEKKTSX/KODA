@@ -787,7 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const candleResult = await fetchCandleData(rangeToFetch);
             
             if (!candleResult) { 
-                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p></div>`;
+                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้</p></div>`;
                 return;
             }
 
@@ -799,22 +799,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
             container.innerHTML = '';
             if (taChartInstance) taChartInstance.remove();
+
+            // 📌 ป้องกันบัคความกว้าง 0px
+            const chartWidth = container.clientWidth > 0 ? container.clientWidth : (container.parentElement.clientWidth || 300);
             
             taChartInstance = window.LightweightCharts.createChart(container, {
-                width: container.clientWidth, height: 220,
+                width: chartWidth, height: 220,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#848e9c', fontSize: 10 },
                 grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(42, 46, 57, 0.4)' } },
                 rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0)' },
                 timeScale: { borderColor: 'rgba(42, 46, 57, 0)', timeVisible: false }
             });
+
+            // 📌 ทำให้กราฟอัปเดตขนาดอัตโนมัติตอนเปลี่ยนแท็บ
+            new ResizeObserver(entries => {
+                if (entries.length === 0 || entries[0].target !== container) return;
+                const newRect = entries[0].contentRect;
+                if (newRect.width > 0 && newRect.height > 0) {
+                    taChartInstance.applyOptions({ width: newRect.width, height: newRect.height });
+                }
+            }).observe(container);
             
             taSeries = taChartInstance.addCandlestickSeries({ 
                 upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
             });
             taSeries.setData(chartData);
 
+            // 📌 ลดขนาด Volume ไม่ให้เกะกะสายตา (ดันลงไปด้านล่างสุด)
             taVolumeSeries = taChartInstance.addHistogramSeries({
-                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 }
+                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.85, bottom: 0 }
             });
             taVolumeSeries.setData(chartData.map(d => ({ time: d.time, value: d.value, color: d.close >= d.open ? 'rgba(0, 192, 118, 0.5)' : 'rgba(255, 77, 77, 0.5)' })));
 
@@ -843,13 +856,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (markers.length > 0) taSeries.setMarkers(markers);
             
             const titleEl = document.getElementById('ta-signal-title');
+            const isBull = bullCount > bearCount;
+            const isBear = bearCount > bullCount;
+
             if (bullCount > bearCount + 2) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาขึ้นที่แข็งแกร่งมาก';
                 titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
-            } else if (bullCount > bearCount) {
+            } else if (isBull) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาขึ้น';
                 titleEl.className = 'text-[#00c076] text-base font-bold mb-1';
-            } else if (bearCount > bullCount) {
+            } else if (isBear) {
                 titleEl.textContent = 'หลักฐานสัญญาณขาลง';
                 titleEl.className = 'text-[#ff4d4d] text-base font-bold mb-1';
             } else {
@@ -859,6 +875,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('ta-bull-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_made</span> ${bullCount} ขาขึ้น`;
             document.getElementById('ta-bear-badge').innerHTML = `<span class="material-symbols-outlined text-[12px]">call_received</span> ${bearCount} ขาลง`;
+
+            // 📌 เปลี่ยนสีปุ่มและลูกศรให้ตรงกับเทรนด์ (เขียวขึ้น / แดงลง)
+            let activeColor = '#eab308'; 
+            let arrowIcon = 'trending_flat';
+            if (isBull) { activeColor = '#00c076'; arrowIcon = 'north_east'; }
+            if (isBear) { activeColor = '#ff4d4d'; arrowIcon = 'south_east'; }
+
+            document.querySelectorAll('.ta-mode-btn').forEach(btn => {
+                let modeText = btn.dataset.mode === 'short' ? 'ระยะสั้น' : (btn.dataset.mode === 'medium' ? 'ระยะกลาง' : 'ระยะยาว');
+                if (btn.dataset.mode === currentTAMode) {
+                    btn.className = `ta-mode-btn flex-1 text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all`;
+                    btn.style.backgroundColor = activeColor;
+                    btn.innerHTML = `${modeText} <span class="material-symbols-outlined text-[14px]">${arrowIcon}</span>`;
+                } else {
+                    btn.className = `ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all bg-surface-dark border border-border-dark`;
+                    btn.style.backgroundColor = 'transparent';
+                    btn.innerHTML = `${modeText} <span class="material-symbols-outlined text-[14px] ${isBear ? 'text-danger/50' : (isBull ? 'text-success/50' : 'text-yellow-500/50')}">${arrowIcon}</span>`;
+                }
+            });
 
             if (currentTAMode === 'short') {
                 const lookback = currentTATF === 'daily' ? 60 : 12; 
@@ -872,26 +907,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 taChartInstance.timeScale().fitContent();
             }
         } catch (e) {
-            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้ (เซิร์ฟเวอร์ปฏิเสธ)</p>`;
+            container.innerHTML = `<p class="text-danger text-xs text-center mt-10">ไม่สามารถโหลดข้อมูลเทคนิคได้</p>`;
         }
     };
 
     const fetchAnalysisData = async () => {
-        document.getElementById('analysis-loading').classList.remove('hidden');
-        document.getElementById('analysis-content').classList.add('hidden');
+        const loadingEl = document.getElementById('analysis-loading');
+        const contentEl = document.getElementById('analysis-content');
+        
+        loadingEl.classList.remove('hidden');
+        contentEl.classList.add('hidden');
         
         const cacheKey = `koda_analysis_v4_${symbol}`;
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
-        if (cached && (now - cached.timestamp < 15 * 24 * 60 * 60 * 1000)) {
-            renderAnalystRatings(cached.data.recommendation);
-            await renderTargetPrice(cached.data.targets);
+        // 📌 ฟังก์ชันจัดการ UI ช่วยแก้บัคการแสดงผล
+        const setupUI = async (data) => {
+            renderAnalystRatings(data.recommendation);
+            await renderTargetPrice(data.targets);
             
+            // 🚨 แก้บัค: เปิดกล่องให้แสดงผล "ก่อน" ที่จะวาดกราฟ กราฟจะได้รู้ขนาดตัวเอง
+            loadingEl.classList.add('hidden');
+            contentEl.classList.remove('hidden');
+
             document.querySelectorAll('.ta-mode-btn').forEach(btn => {
                 btn.onclick = (e) => {
-                    document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
-                    e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
                     currentTAMode = e.currentTarget.dataset.mode;
                     renderTAChart();
                 };
@@ -905,9 +946,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
 
-            await renderTAChart();
-            document.getElementById('analysis-loading').classList.add('hidden');
-            document.getElementById('analysis-content').classList.remove('hidden');
+            // หน่วงเวลา 50ms ให้เบราว์เซอร์เตรียมกล่องเสร็จ แล้ววาดกราฟทันที (ไม่ต้องกดย้ำ)
+            setTimeout(() => {
+                renderTAChart();
+            }, 50);
+        };
+
+        if (cached && (now - cached.timestamp < 15 * 24 * 60 * 60 * 1000)) {
+            await setupUI(cached.data);
             return;
         }
 
@@ -918,38 +964,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.success) {
                 localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: data }));
-                renderAnalystRatings(data.recommendation);
-                await renderTargetPrice(data.targets);
-                
-                document.querySelectorAll('.ta-mode-btn').forEach(btn => {
-                    btn.onclick = (e) => {
-                        document.querySelectorAll('.ta-mode-btn').forEach(b => { b.className = 'ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all'; });
-                        e.currentTarget.className = 'ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all';
-                        currentTAMode = e.currentTarget.dataset.mode;
-                        renderTAChart();
-                    };
-                });
-
-                document.querySelectorAll('.ta-tf-btn').forEach(btn => {
-                    btn.onclick = (e) => {
-                        document.querySelectorAll('.ta-tf-btn').forEach(b => { b.className = 'ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors'; });
-                        e.currentTarget.className = 'ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors';
-                        currentTATF = e.currentTarget.dataset.tf;
-                        renderTAChart();
-                    };
-                });
-
-                await renderTAChart();
-
-                document.getElementById('analysis-loading').classList.add('hidden');
-                document.getElementById('analysis-content').classList.remove('hidden');
+                await setupUI(data);
             } else {
                 throw new Error();
             }
         } catch(e) {
-            document.getElementById('analysis-loading').textContent = 'ไม่พบข้อมูลบทวิเคราะห์ของหุ้นตัวนี้';
-            document.getElementById('analysis-loading').classList.add('text-danger');
-            document.getElementById('analysis-loading').classList.remove('animate-pulse');
+            loadingEl.textContent = 'ไม่พบข้อมูลบทวิเคราะห์ของหุ้นตัวนี้';
+            loadingEl.classList.add('text-danger');
+            loadingEl.classList.remove('animate-pulse');
         }
     };
 
