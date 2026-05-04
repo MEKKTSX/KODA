@@ -571,7 +571,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         sendBtn.disabled = (this.value.trim() === '' && !attachedImageBase64);
     });
 
-    // 📌 [อัปเดตใหม่] ส่งข้อความ + รูปภาพ
+    // 📌 [อัปเดตใหม่] ส่งข้อความ + รูปภาพ (แก้บัค LocalStorage เต็ม)
     const processMessage = async () => {
         let text = chatInput.value.trim();
         const hasImage = !!attachedImageBase64;
@@ -580,17 +580,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // ถ้าส่งมาแค่รูป ไม่มีข้อความ ให้สั่ง AI วิเคราะห์รูป
         if (!text && hasImage) {
-            text = "โปรดวิเคราะห์รูปภาพนี้อย่างละเอียด";
+            text = "โปรดวิเคราะห์รูปภาพนี้อย่างละเอียด คัดแยกข้อมูลสำคัญออกมาให้หน่อย";
         }
 
-        // แสดงผลขึ้นจอแชท
+        // 1. แสดงผลขึ้นจอแชท
         appendUserMessage(text, attachedImageThumbUrl);
         
-        // Backup ค่ารูปภาพชั่วคราว
+        // 2. Backup ค่ารูปภาพชั่วคราวเพื่อส่ง API
         const tmpBase64 = attachedImageBase64;
         const tmpMime = attachedImageMimeType;
 
-        // เคลียร์ UI
+        // 3. เคลียร์ UI ให้สะอาด
         chatInput.value = '';
         chatInput.style.height = 'auto';
         sendBtn.disabled = true;
@@ -601,21 +601,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         previewContainer.classList.add('hidden');
         previewImg.src = '';
 
-        if (currentHistory.length > 0 && currentHistory[currentHistory.length - 1].role === 'user') { currentHistory.pop(); }
-
-        // ประกอบร่าง Part ส่งไป AI
-        let currentParts = [{ text: text }];
-        if (hasImage) {
-            currentParts.unshift({
-                inlineData: {
-                    mimeType: tmpMime,
-                    data: tmpBase64
-                }
-            });
+        if (currentHistory.length > 0 && currentHistory[currentHistory.length - 1].role === 'user') { 
+            currentHistory.pop(); 
         }
 
-        currentHistory.push({ role: "user", parts: currentParts });
-        saveSession();
+        // 🚨 4. [จุดแก้บัค] เก็บเฉพาะ "ข้อความ" ลง LocalStorage เท่านั้น! (ป้องกันหน่วยความจำเบราว์เซอร์ระเบิด)
+        currentHistory.push({ role: "user", parts: [{ text: text }] });
+        saveSession(); 
 
         const typingId = appendTypingIndicator();
 
@@ -625,14 +617,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             const wl = (savedData.watchlist || []).map(w => w.symbol).join(', ');
             const port = (savedData.holdings || []).map(h => `${h.symbol} (${h.shares} sh)`).join(', ');
 
-            let modifiedHistory = [...currentHistory];
+            // 🚨 5. [จุดแก้บัค] โคลนประวัติแชทออกมา เพื่อเอามายัดรูปใส่เฉพาะตอนส่ง API
+            let modifiedHistory = JSON.parse(JSON.stringify(currentHistory));
+            
+            // ถ้ารูปถูกแนบมา ให้ยัดใส่ Payload ของข้อความล่าสุด
+            if (hasImage) {
+                modifiedHistory[modifiedHistory.length - 1].parts.unshift({
+                    inlineData: {
+                        mimeType: tmpMime,
+                        data: tmpBase64
+                    }
+                });
+            }
             
             if (activeModel === 'serper') {
                 const searchResults = await fetchSerperData(text);
-                modifiedHistory[modifiedHistory.length - 1] = {
-                    role: "user",
-                    parts: [{ text: text + `\n\n[Live Search Data:\n${searchResults}]` }]
-                };
+                modifiedHistory[modifiedHistory.length - 1].parts.push({ text: `\n\n[Live Search Data:\n${searchResults}]` });
             }
 
             let payload = {
@@ -643,7 +643,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let targetModelUrl = '';
             
-            // 🚨 Gemini ทุกตัวตอนนี้รองรับรูปภาพแล้ว (Flash & Flash Lite)
             if (activeModel === 'flash') {
                 payload.tools = [{ googleSearch: {} }];
                 targetModelUrl = 'gemini-2.5-flash';
@@ -661,7 +660,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
                     });
 
-                    if (response.status === 429) { currentKeyIdx = (currentKeyIdx + 1) % GEMINI_API_KEYS.length; retries--; await new Promise(r => setTimeout(r, 2000)); continue; }
+                    if (response.status === 429) { 
+                        currentKeyIdx = (currentKeyIdx + 1) % GEMINI_API_KEYS.length; 
+                        retries--; 
+                        await new Promise(r => setTimeout(r, 2000)); 
+                        continue; 
+                    }
 
                     const data = await response.json();
                     
@@ -669,8 +673,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         aiResponseText = data.candidates[0].content.parts[0].text;
                         incrementUsage(activeModel === 'serper' ? 'lite' : activeModel);
                         break;
-                    } else if (data.error) { throw new Error(data.error.message); } else { throw new Error("Invalid format"); }
-                } catch(err) { retries--; if(retries === 0) throw err; await new Promise(r => setTimeout(r, 1500)); }
+                    } else if (data.error) { 
+                        throw new Error(data.error.message); 
+                    } else { 
+                        throw new Error("Invalid format"); 
+                    }
+                } catch(err) { 
+                    retries--; 
+                    if(retries === 0) throw err; 
+                    await new Promise(r => setTimeout(r, 1500)); 
+                }
             }
 
             const typingElement = document.getElementById(typingId);
@@ -678,11 +690,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (aiResponseText) {
                 appendAIMessage(aiResponseText);
-                
-                // ไม่เก็บข้อมูลรูปภาพลงใน LocalStorage History (เพื่อประหยัดพื้นที่แรมเครื่อง)
-                // แทนที่ part ล่าสุดด้วยข้อความล้วนๆ
-                currentHistory[currentHistory.length - 1] = { role: "user", parts: [{ text: text }] };
-                
                 currentHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
                 saveSession();
             } else {
@@ -694,11 +701,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error("API Error:", error);
             const typingElement = document.getElementById(typingId);
             if (typingElement) typingElement.remove();
-            appendAIMessage("ขาดการเชื่อมต่อ กรุณาเช็คอินเทอร์เน็ตหรือโควต้า API ครับ");
+            appendAIMessage("ขาดการเชื่อมต่อ หรือรูปภาพมีขนาดใหญ่เกินไป กรุณาลองใหม่อีกครั้งครับ");
             currentHistory.pop(); saveSession();
         }
     };
-
     // ส่งข้อความเมื่อกดปุ่ม Send เท่านั้น
     sendBtn.addEventListener('click', processMessage);
 });
