@@ -510,7 +510,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 const candleSeries = kodaChartInstance.addCandlestickSeries({ 
-                    upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d'
+                    upColor: '#00c076', 
+                    downColor: '#ff4d4d', 
+                    borderUpColor: '#00c076', 
+                    borderDownColor: '#ff4d4d', 
+                    wickUpColor: '#00c076', 
+                    wickDownColor: '#ff4d4d',
+                    // 📌 ส่วนที่เพิ่มเข้ามา: ตั้งค่าเส้นราคาปัจจุบัน
+                    priceLineVisible: true,          // เปิดเส้นราคา
+                    priceLineColor: '#eab308',       // เปลี่ยนเส้น + ป้ายราคาด้านขวา เป็นสีเหลือง (รหัสสี yellow-500 ของ Tailwind)
+                    priceLineWidth: 2,               // ความหนาของเส้น (ปรับเลขได้)
+                    priceLineStyle: 2,               // 2 = เส้นประ (Dashed Line), ถ้าอยากได้เส้นทึบให้ใส่ 0
+                    lastValueVisible: true           // เปิดป้ายบอกราคาปัจจุบันแกนขวา
                 });
                 candleSeries.setData(candles);
 
