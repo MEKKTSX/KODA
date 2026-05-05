@@ -71,47 +71,56 @@ class handler(BaseHTTPRequestHandler):
         info = ticker.info
         market_state = self.get_market_state()
         
-        # ราคาหลัก
-        regular_price = clean_val(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose'))
-        prev_close = clean_val(info.get('previousClose') or info.get('regularMarketPreviousClose'))
-        
-        # ดึงราคาจาก Fast History ถ้า Info เอ๋อ
-        try:
-            if regular_price is None or prev_close is None:
-                hist = ticker.history(period="2d")
-                if not hist.empty:
-                    if regular_price is None: regular_price = clean_val(hist['Close'].iloc[-1])
-                    if len(hist) > 1 and prev_close is None: prev_close = clean_val(hist['Close'].iloc[-2])
-        except: pass
-
-        # 📌 แก้บัค Pre/Post Market: พยายามหาตัวแปรให้ครบ
+        # ดึงราคาจาก Info เบื้องต้น
+        regular_price = clean_val(info.get('regularMarketPrice') or info.get('previousClose') or info.get('currentPrice'))
+        prev_close = clean_val(info.get('regularMarketPreviousClose') or info.get('previousClose'))
         pre_price = clean_val(info.get('preMarketPrice'))
         post_price = clean_val(info.get('postMarketPrice'))
-        
-        # 📌 Fallback: ถ้าระบบบอกว่าเป็น PRE/POST แต่ไม่มีค่า ให้ดึง currentPrice (ซึ่งบางที Yahoo ยัดค่า Pre/Post มาไว้ใน currentPrice แทนตอนตลาดปิด)
-        if market_state == 'PRE' and pre_price is None and info.get('currentPrice') != info.get('regularMarketPrice'):
-            pre_price = clean_val(info.get('currentPrice'))
-        if (market_state == 'POST' or market_state == 'CLOSED') and post_price is None and info.get('currentPrice') != info.get('regularMarketPrice'):
-            post_price = clean_val(info.get('currentPrice'))
 
-        # คำนวณเปอร์เซ็นต์
+        # 🚨 แก้บัค Yahoo Finance ส่งค่า Pre/Post Market ค้าง (ชอบส่งค่า Previous Close มาซ้ำ)
+        # เราจะบังคับโหลดข้อมูลกราฟ 1 นาทีล่าสุด (รวมตลาดนอกเวลา) มาหาค่าล่าสุดของจริง!
+        try:
+            hist = ticker.history(period="1d", interval="1m", prepost=True)
+            if not hist.empty:
+                live_price = clean_val(hist['Close'].iloc[-1])
+                
+                if market_state == 'PRE':
+                    # ถ้าราคา Pre-market หายไป หรือมันค้างเท่ากับราคาปิดเมื่อวานเป๊ะ ให้ใช้ราคา Live แทน
+                    if pre_price is None or pre_price == prev_close:
+                        pre_price = live_price
+                elif market_state == 'POST' or market_state == 'CLOSED':
+                    # ถ้าราคา Post-market หายไป หรือค้างเท่ากับราคา Regular ให้ใช้ราคา Live แทน
+                    if post_price is None or post_price == regular_price:
+                        post_price = live_price
+                elif market_state == 'REGULAR':
+                    if regular_price is None or regular_price == prev_close:
+                        regular_price = live_price
+        except: pass
+
+        # 📌 คำนวณเปอร์เซ็นต์ใหม่ทั้งหมดด้วยราคา Live ที่ถูกต้อง
         regular_change = clean_val(info.get('regularMarketChange'))
-        if regular_change is None and regular_price and prev_close: regular_change = regular_price - prev_close
+        if regular_change is None or regular_price != clean_val(info.get('regularMarketPrice')):
+            if regular_price and prev_close: regular_change = regular_price - prev_close
             
         regular_percent = clean_val(info.get('regularMarketChangePercent'))
-        if regular_percent is None and regular_change and prev_close: regular_percent = (regular_change / prev_close) * 100
+        if regular_percent is None or regular_price != clean_val(info.get('regularMarketPrice')):
+            if regular_change and prev_close: regular_percent = (regular_change / prev_close) * 100
 
         pre_change = clean_val(info.get('preMarketChange'))
-        if pre_change is None and pre_price and prev_close: pre_change = pre_price - prev_close
+        if pre_change is None or pre_price != clean_val(info.get('preMarketPrice')):
+            if pre_price and prev_close: pre_change = pre_price - prev_close
             
         pre_percent = clean_val(info.get('preMarketChangePercent'))
-        if pre_percent is None and pre_change and prev_close: pre_percent = (pre_change / prev_close) * 100
+        if pre_percent is None or pre_price != clean_val(info.get('preMarketPrice')):
+            if pre_change and prev_close: pre_percent = (pre_change / prev_close) * 100
 
         post_change = clean_val(info.get('postMarketChange'))
-        if post_change is None and post_price and regular_price: post_change = post_price - regular_price
+        if post_change is None or post_price != clean_val(info.get('postMarketPrice')):
+            if post_price and regular_price: post_change = post_price - regular_price
             
         post_percent = clean_val(info.get('postMarketChangePercent'))
-        if post_percent is None and post_change and regular_price: post_percent = (post_change / regular_price) * 100
+        if post_percent is None or post_price != clean_val(info.get('postMarketPrice')):
+            if post_change and regular_price: post_percent = (post_change / regular_price) * 100
 
         return {
             "success": True,
