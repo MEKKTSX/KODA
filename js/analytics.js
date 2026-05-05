@@ -166,70 +166,76 @@ window.KodaAnalytics = {
             let sym = symbol.toUpperCase().trim();
             let highs = [], lows = [], closes = [];
             let fetched = false;
-            
-            const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
+            // 🚀 ก๊อกที่ 1: Crypto ดึงจาก Binance
             if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';
             if (sym.includes('USDT') || sym.includes('BINANCE:')) {
                 const coin = sym.replace('BINANCE:', '');
-                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=180`);
-                const data = await res.json();
-                if (data && data.length > 0) {
-                    data.forEach(k => { highs.push(parseFloat(k[2])); lows.push(parseFloat(k[3])); closes.push(parseFloat(k[4])); });
-                    fetched = true;
-                }
-            } 
-            
-            if (!fetched && !sym.includes('.BK')) {
                 try {
-                    const to = Math.floor(Date.now() / 1000);
-                    const from = to - (180 * 24 * 60 * 60); 
-                    const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
-                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
-                    const fhData = await fhRes.json();
-                    if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
-                        highs = fhData.h; lows = fhData.l; closes = fhData.c;
-                        fetched = true;
+                    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=180`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.length > 0) {
+                            data.forEach(k => { highs.push(parseFloat(k[2])); lows.push(parseFloat(k[3])); closes.push(parseFloat(k[4])); });
+                            fetched = true;
+                        }
                     }
                 } catch(e) {}
-            }
-
+            } 
+            
+            // 🚀 ก๊อกที่ 2: หุ้นปกติ ยิงเข้า Vercel Yahoo Proxy เป็นหลัก! (ข้อมูลแม่นยำที่สุด)
             if (!fetched) {
                 let yfSym = sym;
                 if (sym === 'XAUUSD') yfSym = 'GC=F';
                 else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
                 else if (sym.includes('.BK')) yfSym = sym; 
 
-                const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`);
-                const proxyUrl = `https://api.allorigins.win/get?url=${targetUrl}`;
-
                 try {
+                    const proxyUrl = `/api/yf-chart/${yfSym}?range=6mo&interval=1d`;
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 8000); 
+                    const timeoutId = setTimeout(() => controller.abort(), 6000); 
                     const res = await fetch(proxyUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
                     
                     if (res.ok) {
-                        const rawData = await res.json();
-                        if (rawData.contents) {
-                            const data = JSON.parse(rawData.contents);
-                            if (data?.chart?.result?.[0]) {
-                                const quote = data.chart.result[0].indicators.quote[0];
-                                for (let i = 0; i < quote.close.length; i++) {
-                                    if (quote.close[i] !== null && quote.high[i] !== null && quote.low[i] !== null) {
-                                        highs.push(quote.high[i]); lows.push(quote.low[i]); closes.push(quote.close[i]);
-                                    }
+                        const yfData = await res.json();
+                        if (yfData?.chart?.result?.[0]) {
+                            const quote = yfData.chart.result[0].indicators.quote[0];
+                            for (let i = 0; i < quote.close.length; i++) {
+                                if (quote.close[i] !== null && quote.high[i] !== null && quote.low[i] !== null) {
+                                    highs.push(quote.high[i]); lows.push(quote.low[i]); closes.push(quote.close[i]);
                                 }
-                                if (closes.length > 10) fetched = true;
                             }
+                            if (closes.length > 10) fetched = true;
                         }
                     }
-                } catch(e) {}
+                } catch(e) { console.warn("Vercel Yahoo Proxy failed in Lab:", e); }
+            }
+
+            // 🚀 ก๊อกที่ 3: Finnhub (เผื่อฉุกเฉิน)
+            if (!fetched && !sym.includes('.BK')) {
+                const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+                if(FINNHUB_API_KEY) {
+                    try {
+                        const to = Math.floor(Date.now() / 1000);
+                        const from = to - (180 * 24 * 60 * 60); 
+                        const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
+                        const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                        if (fhRes.ok) {
+                            const fhData = await fhRes.json();
+                            if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
+                                highs = fhData.h; lows = fhData.l; closes = fhData.c;
+                                fetched = true;
+                            }
+                        }
+                    } catch(e) {}
+                }
             }
 
             if (!fetched || closes.length === 0) throw new Error("No Data Found");
             const lastClose = closes[closes.length - 1];
 
+            // --- อัลกอริทึมคำนวณ S/R ---
             let swingHighs = [];
             let swingLows = [];
             const lookback = 4; 
@@ -302,7 +308,7 @@ window.KodaAnalytics = {
             if (symInput) symInput.value = sym;
 
         } catch(e) {
-            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}"\nลองเลือกชื่อจาก Dropdown ตอนค้นหาดูครับ`);
+            alert(`ไม่พบข้อมูลกราฟของหุ้น "${symbol}"\nลองใช้ Ticker อื่น (เช่น NVDA, AAPL)`);
         } finally {
             if(loading) {
                 loading.classList.remove('flex');
@@ -529,59 +535,70 @@ window.KodaAnalytics = {
                 let sym = symbol.toUpperCase().trim();
                 let highs = [], lows = [], closes = [];
                 let fetched = false;
-                const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
+                // 🚀 ก๊อก 1: Crypto (Binance)
                 if (sym === 'BTC' || sym === 'ETH') sym += 'USDT';
                 if (sym.includes('USDT') || sym.includes('BINANCE:')) {
                     const coin = sym.replace('BINANCE:', '');
-                    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=180`);
-                    const data = await res.json();
-                    if (data && data.length > 0) {
-                        data.forEach(k => { highs.push(parseFloat(k[2])); lows.push(parseFloat(k[3])); closes.push(parseFloat(k[4])); });
-                        fetched = true;
-                    }
-                } 
-                if (!fetched && !sym.includes('.BK')) {
                     try {
-                        const to = Math.floor(Date.now() / 1000);
-                        const from = to - (180 * 24 * 60 * 60); 
-                        const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
-                        const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
-                        const fhData = await fhRes.json();
-                        if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
-                            highs = fhData.h; lows = fhData.l; closes = fhData.c;
-                            fetched = true;
+                        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=1d&limit=180`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && data.length > 0) {
+                                data.forEach(k => { highs.push(parseFloat(k[2])); lows.push(parseFloat(k[3])); closes.push(parseFloat(k[4])); });
+                                fetched = true;
+                            }
                         }
                     } catch(e) {}
-                }
+                } 
+                
+                // 🚀 ก๊อก 2: Yahoo Finance (Vercel Proxy)
                 if (!fetched) {
                     let yfSym = sym;
                     if (sym === 'XAUUSD') yfSym = 'GC=F';
                     else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
                     else if (sym.includes('.BK')) yfSym = sym; 
-                    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?range=6mo&interval=1d`);
-                    const proxyUrl = `https://api.allorigins.win/get?url=${targetUrl}`;
+                    
                     try {
+                        const proxyUrl = `/api/yf-chart/${yfSym}?range=6mo&interval=1d`;
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 5000); 
                         const res = await fetch(proxyUrl, { signal: controller.signal });
                         clearTimeout(timeoutId);
+                        
                         if (res.ok) {
-                            const rawData = await res.json();
-                            if (rawData.contents) {
-                                const data = JSON.parse(rawData.contents);
-                                if (data?.chart?.result?.[0]) {
-                                    const quote = data.chart.result[0].indicators.quote[0];
-                                    for (let i = 0; i < quote.close.length; i++) {
-                                        if (quote.close[i] !== null && quote.high[i] !== null && quote.low[i] !== null) {
-                                            highs.push(quote.high[i]); lows.push(quote.low[i]); closes.push(quote.close[i]);
-                                        }
+                            const yfData = await res.json();
+                            if (yfData?.chart?.result?.[0]) {
+                                const quote = yfData.chart.result[0].indicators.quote[0];
+                                for (let i = 0; i < quote.close.length; i++) {
+                                    if (quote.close[i] !== null && quote.high[i] !== null && quote.low[i] !== null) {
+                                        highs.push(quote.high[i]); lows.push(quote.low[i]); closes.push(quote.close[i]);
                                     }
-                                    if (closes.length > 10) fetched = true;
                                 }
+                                if (closes.length > 10) fetched = true;
                             }
                         }
                     } catch(e) {}
+                }
+
+                // 🚀 ก๊อก 3: Finnhub
+                if (!fetched && !sym.includes('.BK')) {
+                    const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+                    if (FINNHUB_API_KEY) {
+                        try {
+                            const to = Math.floor(Date.now() / 1000);
+                            const from = to - (180 * 24 * 60 * 60); 
+                            const fhSym = sym === 'XAUUSD' ? 'OANDA:XAU_USD' : sym;
+                            const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${fhSym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                            if (fhRes.ok) {
+                                const fhData = await fhRes.json();
+                                if (fhData && fhData.s === 'ok' && fhData.c.length > 0) {
+                                    highs = fhData.h; lows = fhData.l; closes = fhData.c;
+                                    fetched = true;
+                                }
+                            }
+                        } catch(e) {}
+                    }
                 }
 
                 if (!fetched || closes.length === 0) throw new Error("No Data");
@@ -635,7 +652,7 @@ window.KodaAnalytics = {
                 return [p*0.95, p*0.90, p*0.85, p*0.80, p*0.75].map(v => parseFloat(v.toFixed(decimals)));
             }
         };
-
+        
         const createRow = (idx, priceVal = '') => {
             const row = document.createElement('div');
             row.className = 'flex items-center gap-1.5 tranche-row mt-2';
