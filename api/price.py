@@ -71,25 +71,32 @@ class handler(BaseHTTPRequestHandler):
         info = ticker.info
         market_state = self.get_market_state()
         
-        # ดึงราคาจาก Info เบื้องต้น
-        regular_price = clean_val(info.get('regularMarketPrice') or info.get('previousClose') or info.get('currentPrice'))
+        # ราคาหลัก
+        regular_price = clean_val(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose'))
         prev_close = clean_val(info.get('regularMarketPreviousClose') or info.get('previousClose'))
+        
+        # ดึงราคาจาก Fast History ถ้า Info เอ๋อ
+        try:
+            if regular_price is None or prev_close is None:
+                hist = ticker.history(period="2d")
+                if not hist.empty:
+                    if regular_price is None: regular_price = clean_val(hist['Close'].iloc[-1])
+                    if len(hist) > 1 and prev_close is None: prev_close = clean_val(hist['Close'].iloc[-2])
+        except: pass
+
         pre_price = clean_val(info.get('preMarketPrice'))
         post_price = clean_val(info.get('postMarketPrice'))
-
-        # 🚨 แก้บัค Yahoo Finance ส่งค่า Pre/Post Market ค้าง (ชอบส่งค่า Previous Close มาซ้ำ)
-        # เราจะบังคับโหลดข้อมูลกราฟ 1 นาทีล่าสุด (รวมตลาดนอกเวลา) มาหาค่าล่าสุดของจริง!
+        
+        # 🚨 ดึงราคา Live 1 นาทีล่าสุด (แก้ปัญหา Yahoo แจ้งราคาค้าง)
         try:
             hist = ticker.history(period="1d", interval="1m", prepost=True)
             if not hist.empty:
                 live_price = clean_val(hist['Close'].iloc[-1])
                 
                 if market_state == 'PRE':
-                    # ถ้าราคา Pre-market หายไป หรือมันค้างเท่ากับราคาปิดเมื่อวานเป๊ะ ให้ใช้ราคา Live แทน
                     if pre_price is None or pre_price == prev_close:
                         pre_price = live_price
                 elif market_state == 'POST' or market_state == 'CLOSED':
-                    # ถ้าราคา Post-market หายไป หรือค้างเท่ากับราคา Regular ให้ใช้ราคา Live แทน
                     if post_price is None or post_price == regular_price:
                         post_price = live_price
                 elif market_state == 'REGULAR':
@@ -97,7 +104,8 @@ class handler(BaseHTTPRequestHandler):
                         regular_price = live_price
         except: pass
 
-        # 📌 คำนวณเปอร์เซ็นต์ใหม่ทั้งหมดด้วยราคา Live ที่ถูกต้อง
+        # 📌 แก้บัคฐานการคำนวณ (Base Price) สำหรับ % ให้ถูกต้อง
+        # 1. ตลาดปกติ: เทียบกับราคาปิดวันก่อนหน้า (prev_close)
         regular_change = clean_val(info.get('regularMarketChange'))
         if regular_change is None or regular_price != clean_val(info.get('regularMarketPrice')):
             if regular_price and prev_close: regular_change = regular_price - prev_close
@@ -106,14 +114,16 @@ class handler(BaseHTTPRequestHandler):
         if regular_percent is None or regular_price != clean_val(info.get('regularMarketPrice')):
             if regular_change and prev_close: regular_percent = (regular_change / prev_close) * 100
 
+        # 2. 🚨 แก้บัคที่นี่: ก่อนเปิดตลาด (Pre-market) ต้องเทียบกับราคาปิดเมื่อวาน (regular_price) ไม่ใช่ prev_close
         pre_change = clean_val(info.get('preMarketChange'))
         if pre_change is None or pre_price != clean_val(info.get('preMarketPrice')):
-            if pre_price and prev_close: pre_change = pre_price - prev_close
+            if pre_price and regular_price: pre_change = pre_price - regular_price
             
         pre_percent = clean_val(info.get('preMarketChangePercent'))
         if pre_percent is None or pre_price != clean_val(info.get('preMarketPrice')):
-            if pre_change and prev_close: pre_percent = (pre_change / prev_close) * 100
+            if pre_change and regular_price: pre_percent = (pre_change / regular_price) * 100
 
+        # 3. 🚨 แก้บัคที่นี่: หลังปิดตลาด (Post-market) ต้องเทียบกับราคาปิดวันนี้ (regular_price)
         post_change = clean_val(info.get('postMarketChange'))
         if post_change is None or post_price != clean_val(info.get('postMarketPrice')):
             if post_price and regular_price: post_change = post_price - regular_price
