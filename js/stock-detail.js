@@ -414,8 +414,47 @@ document.addEventListener('DOMContentLoaded', () => {
 };
     
     // ==========================================
-    // 📌 TAB 1: กราฟ KODA S/R
+    // 📌 TAB 1: กราฟ KODA S/R + Profit Matrix
     // ==========================================
+    window.KodaTradeMatrix = { capital: 200, supports: [], resistances: [] };
+
+    const renderTradeMatrix = () => {
+        const head = document.getElementById('detail-matrix-head');
+        const body = document.getElementById('detail-matrix-body');
+        if (!head || !body) return;
+
+        const { capital, supports, resistances } = window.KodaTradeMatrix;
+        if(supports.length === 0) return;
+
+        let headHTML = `<tr><th class="p-3 border-r border-border-dark bg-background-dark/80 w-24 sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.2)]"><span class="text-yellow-500 font-bold text-sm uppercase tracking-wider">ซื้อที่</span></th>`;
+        resistances.forEach((r, i) => {
+            headHTML += `<th class="p-3 border-r border-border-dark min-w-[95px] bg-background-dark/30"><div class="text-primary font-black text-sm mb-1">R${i+1}</div><div class="flex items-center justify-center text-slate-300 font-bold text-xs">$ <input type="number" value="${r}" data-idx="${i}" class="input-r w-16 bg-transparent text-center border-b border-transparent focus:border-primary outline-none transition-colors p-0 m-0"></div></th>`;
+        });
+        headHTML += `</tr>`;
+        head.innerHTML = headHTML;
+
+        let bodyHTML = '';
+        supports.forEach((s, sIdx) => {
+            bodyHTML += `<tr><td class="p-3 border-r border-t border-border-dark bg-surface-dark sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.2)]"><div class="text-yellow-500 font-black text-sm mb-1">S${sIdx+1}</div><div class="flex items-center justify-center text-slate-300 font-bold text-xs">$ <input type="number" value="${s}" data-idx="${sIdx}" class="input-s w-16 bg-transparent text-center border-b border-transparent focus:border-yellow-500 outline-none transition-colors p-0 m-0"></div></td>`;
+            resistances.forEach((r) => {
+                const pct = s > 0 ? ((r - s) / s) * 100 : 0;
+                const profit = (pct / 100) * capital;
+                const isPos = profit >= 0;
+                const colorCls = isPos ? 'text-success' : 'text-danger';
+                const sign = isPos ? '+' : '';
+                bodyHTML += `<td class="p-3 border-r border-t border-border-dark hover:bg-slate-800 transition-colors"><div class="${colorCls} font-black text-[15px] mb-0.5">${sign}$${Math.abs(profit).toFixed(2)}</div><div class="${colorCls} font-bold text-[10px]">(${sign}${pct.toFixed(2)}%)</div></td>`;
+            });
+            bodyHTML += `</tr>`;
+        });
+        body.innerHTML = bodyHTML;
+
+        document.querySelectorAll('.input-r').forEach(inp => inp.addEventListener('change', (e) => { window.KodaTradeMatrix.resistances[e.target.dataset.idx] = parseFloat(e.target.value) || 0; renderTradeMatrix(); }));
+        document.querySelectorAll('.input-s').forEach(inp => inp.addEventListener('change', (e) => { window.KodaTradeMatrix.supports[e.target.dataset.idx] = parseFloat(e.target.value) || 0; renderTradeMatrix(); }));
+    };
+
+    const capInput = document.getElementById('detail-capital-input');
+    if (capInput) capInput.addEventListener('input', (e) => { window.KodaTradeMatrix.capital = parseFloat(e.target.value) || 0; renderTradeMatrix(); });
+
     const renderChart = () => {
         const tvContainer = document.getElementById('tv-chart-container');
         const kodaContainer = document.getElementById('koda-chart-container');
@@ -423,7 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnKoda = document.getElementById('btn-chart-koda');
         const tfSelector = document.getElementById('tf-selector');
         
-        let currentChartMode = 'tv';
+        let currentChartMode = 'koda'; // 📌 ตั้ง KODA เป็น Default
         let currentTimeframe = '1Y';
         let kodaChartInstance = null;
 
@@ -432,97 +471,97 @@ document.addEventListener('DOMContentLoaded', () => {
             if (symbol === 'XAUUSD') tvSym = 'OANDA:XAUUSD';
             else if (symbol.includes(':')) tvSym = symbol;
             new TradingView.widget({
-                "autosize": true, "symbol": tvSym, "interval": "D",
-                "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
-                "enable_publishing": false, "backgroundColor": "#0a0e17",
-                "gridColor": "rgba(42, 46, 57, 0.5)", "hide_top_toolbar": false,
-                "hide_legend": false, "save_image": false, "container_id": "tv-chart-container",
-                "allow_symbol_change": false, "withdateranges": true,
+                "autosize": true, "symbol": tvSym, "interval": "D", "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
+                "enable_publishing": false, "backgroundColor": "#0a0e17", "gridColor": "rgba(42, 46, 57, 0.5)", "hide_top_toolbar": false,
+                "hide_legend": false, "save_image": false, "container_id": "tv-chart-container", "allow_symbol_change": false, "withdateranges": true,
                 "studies": ["Volume@tv-basicstudies"]
             });
         };
 
         if (window.TradingView) initTV();
-        else {
-            const script = document.createElement('script');
-            script.src = 'https://s3.tradingview.com/tv.js';
-            script.onload = initTV;
-            document.head.appendChild(script);
-        }
-
-        const calculateSupportResistance = (candles) => {
-            if (!candles || candles.length < 20) return [];
-            const currentPrice = candles[candles.length - 1].close, highs = candles.map(c => c.high), lows = candles.map(c => c.low), n = candles.length;
-            const lookback = Math.max(3, Math.floor(n / 25));
-            const swingHighs = [], swingLows = [];
-            for (let i = lookback; i < n - lookback; i++) {
-                let isHigh = true, isLow = true;
-                for (let j = 1; j <= lookback; j++) {
-                    if (highs[i] <= highs[i - j] || highs[i] <= highs[i + j]) isHigh = false;
-                    if (lows[i] >= lows[i - j] || lows[i] >= lows[i + j]) isLow = false;
-                }
-                if (isHigh) swingHighs.push({ price: highs[i], score: (i/n) });
-                if (isLow) swingLows.push({ price: lows[i], score: (i/n) });
-            }
-            const threshold = currentPrice * 0.015;
-            const pick = (items, filter) => {
-                const res = [];
-                items.sort((a,b)=>b.score - a.score);
-                for (let it of items) {
-                    if (filter(it.price) && !res.some(p => Math.abs(p.price - it.price) < threshold)) res.push(it);
-                    if (res.length >= 4) break;
-                }
-                return res;
-            };
-            const toLvl = (items, type) => items.map((it, idx) => ({ price: it.price, type, strength: idx === 0 ? 3 : 1 }));
-            return [...toLvl(pick(swingHighs, p => p > currentPrice), 'res'), ...toLvl(pick(swingLows, p => p < currentPrice), 'sup')];
-        };
+        else { const script = document.createElement('script'); script.src = 'https://s3.tradingview.com/tv.js'; script.onload = initTV; document.head.appendChild(script); }
 
         const renderAdvancedSR = async () => {
-            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs" id="koda-chart-status">กำลังโหลดกราฟ...</p></div>`;
+            kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-2"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div><p class="text-slate-500 text-xs" id="koda-chart-status">กำลังโหลดกราฟ S/R...</p></div>`;
             try {
                 await loadLightweightCharts();
                 
-                const srCacheKey = `koda_sr_levels_v4_${symbol}_${currentTimeframe}`;
-                const candleCacheKey = `koda_sr_candles_v4_${symbol}_${currentTimeframe}`;
-                
-                const cachedLevels = JSON.parse(localStorage.getItem(srCacheKey));
+                const candleCacheKey = `koda_sr_candles_v6_${symbol}_${currentTimeframe}`;
                 const cachedCandles = JSON.parse(localStorage.getItem(candleCacheKey));
-                
                 const now = Date.now();
-                const ONE_MONTH = 30 * 24 * 60 * 60 * 1000;
-                const ONE_DAY = 24 * 60 * 60 * 1000; 
-                
-                let candles, levels;
+                let candles;
 
-                if (cachedCandles && (now - cachedCandles.timestamp < ONE_DAY)) {
+                if (cachedCandles && (now - cachedCandles.timestamp < 24 * 60 * 60 * 1000)) {
                     candles = cachedCandles.data;
                 } else {
-                    // 🚀 โหลดรอบเดียว จบๆ ไม่ต้องรอให้หงุดหงิด
                     let candleResult = await fetchCandleData(currentTimeframe);
-                    
                     if (!candleResult) { 
-                        kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><span class="material-symbols-outlined text-danger text-4xl mb-2">wifi_off</span><p class="text-danger text-xs font-bold">ไม่สามารถดึงข้อมูลกราฟได้ในขณะนี้</p><button class="mt-4 px-3 py-1 bg-slate-800 text-white text-xs rounded" onclick="location.reload()">รีเฟรชหน้าเว็บ</button></div>`; 
+                        kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold">ไม่สามารถดึงข้อมูลกราฟได้ในขณะนี้</p></div>`; 
                         return; 
                     }
-
-                    const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
-                    candles = timestamps.map((t, i) => ({ time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), volume: Number(volumes[i] || 0) }))
-                        .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0))
-                        .sort((a, b) => a.time - b.time);
-                    
+                    candles = candleResult.timestamps.map((t, i) => ({ time: t, open: Number(candleResult.opens[i]), high: Number(candleResult.highs[i]), low: Number(candleResult.lows[i]), close: Number(candleResult.closes[i]), volume: Number(candleResult.volumes[i] || 0) }))
+                        .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0)).sort((a, b) => a.time - b.time);
                     localStorage.setItem(candleCacheKey, JSON.stringify({ timestamp: now, data: candles }));
                 }
 
-                if (cachedLevels && (now - cachedLevels.timestamp < ONE_MONTH)) {
-                    levels = cachedLevels.data;
-                } else {
-                    levels = calculateSupportResistance(candles);
-                    localStorage.setItem(srCacheKey, JSON.stringify({ timestamp: now, data: levels }));
+                // 📌 อัลกอริทึมหา S/R แบบเดียวกับใน KODA Lab (แม่นยำสูง)
+                const closes = candles.map(c => c.close);
+                const highs = candles.map(c => c.high);
+                const lows = candles.map(c => c.low);
+                const lastClose = closes[closes.length - 1];
+
+                let swingHighs = [], swingLows = [];
+                const lookback = 4; 
+                for (let i = lookback; i < closes.length - lookback; i++) {
+                    let isHigh = true, isLow = true;
+                    for (let j = 1; j <= lookback; j++) {
+                        if (highs[i] < highs[i-j] || highs[i] < highs[i+j]) isHigh = false;
+                        if (lows[i] > lows[i-j] || lows[i] > lows[i+j]) isLow = false;
+                    }
+                    if (isHigh) swingHighs.push(highs[i]);
+                    if (isLow) swingLows.push(lows[i]);
+                }
+                swingHighs.push(Math.max(...highs.slice(-60)));
+                swingLows.push(Math.min(...lows.slice(-60)));
+
+                const clusterLevels = (levels) => {
+                    let sorted = [...levels].sort((a, b) => a - b);
+                    let clustered = [], currentCluster = [];
+                    for (let i = 0; i < sorted.length; i++) {
+                        if (currentCluster.length === 0) currentCluster.push(sorted[i]);
+                        else {
+                            let avg = currentCluster.reduce((a,b)=>a+b)/currentCluster.length;
+                            if (Math.abs(sorted[i] - avg) / avg < 0.015) currentCluster.push(sorted[i]);
+                            else { clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length); currentCluster = [sorted[i]]; }
+                        }
+                    }
+                    if (currentCluster.length > 0) clustered.push(currentCluster.reduce((a,b)=>a+b)/currentCluster.length);
+                    return clustered;
+                };
+
+                let cleanResists = clusterLevels(swingHighs).filter(lvl => lvl > lastClose * 1.005).sort((a,b) => a - b);
+                let cleanSupports = clusterLevels(swingLows).filter(lvl => lvl < lastClose * 0.995).sort((a,b) => b - a);
+
+                let atrSum = 0;
+                for(let i = closes.length-14; i<closes.length; i++) { if(i>0) atrSum += Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])); }
+                let atr = (atrSum / 14) || (lastClose * 0.02);
+                atr = Math.max(lastClose * 0.015, Math.min(atr, lastClose * 0.04));
+
+                while(cleanResists.length < 4) cleanResists.push((cleanResists.length > 0 ? cleanResists[cleanResists.length-1] : lastClose) + atr);
+                while(cleanSupports.length < 5) {
+                    let nextS = (cleanSupports.length > 0 ? cleanSupports[cleanSupports.length-1] : lastClose) - atr;
+                    cleanSupports.push(nextS > 0 ? nextS : lastClose * 0.9);
                 }
 
+                const decimals = lastClose < 1 ? 4 : 2;
+                window.KodaTradeMatrix.resistances = cleanResists.slice(0, 4).map(v => parseFloat(v.toFixed(decimals)));
+                window.KodaTradeMatrix.supports = cleanSupports.slice(0, 5).map(v => parseFloat(v.toFixed(decimals)));
+                
+                renderTradeMatrix(); // วาดตารางด้านล่าง
+
+                // วาดกราฟ
                 kodaContainer.innerHTML = '';
-                if (kodaChartInstance) { kodaChartInstance.remove(); }
+                if (kodaChartInstance) kodaChartInstance.remove();
                 
                 kodaChartInstance = window.LightweightCharts.createChart(kodaContainer, {
                     width: kodaContainer.clientWidth, height: 380,
@@ -533,32 +572,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 const candleSeries = kodaChartInstance.addCandlestickSeries({ 
-                    upColor: '#00c076', 
-                    downColor: '#ff4d4d', 
-                    borderUpColor: '#00c076', 
-                    borderDownColor: '#ff4d4d', 
-                    wickUpColor: '#00c076', 
-                    wickDownColor: '#ff4d4d',
-                    // 📌 ส่วนที่เพิ่มเข้ามา: ตั้งค่าเส้นราคาปัจจุบัน
-                    priceLineVisible: true,          // เปิดเส้นราคา
-                    priceLineColor: '#eab308',       // เปลี่ยนเส้น + ป้ายราคาด้านขวา เป็นสีเหลือง (รหัสสี yellow-500 ของ Tailwind)
-                    priceLineWidth: 2,               // ความหนาของเส้น (ปรับเลขได้)
-                    priceLineStyle: 2,               // 2 = เส้นประ (Dashed Line), ถ้าอยากได้เส้นทึบให้ใส่ 0
-                    lastValueVisible: true           // เปิดป้ายบอกราคาปัจจุบันแกนขวา
+                    upColor: '#00c076', downColor: '#ff4d4d', borderUpColor: '#00c076', borderDownColor: '#ff4d4d', wickUpColor: '#00c076', wickDownColor: '#ff4d4d',
+                    priceLineVisible: true, priceLineColor: '#eab308', priceLineWidth: 2, priceLineStyle: 2, lastValueVisible: true
                 });
                 candleSeries.setData(candles);
 
-                levels.forEach(lvl => {
-                    candleSeries.createPriceLine({
-                        price: lvl.price,
-                        color: lvl.type === 'sup' ? 'rgba(0,192,118,0.85)' : 'rgba(255,77,77,0.85)',
-                        lineWidth: lvl.strength === 3 ? 2 : 1, 
-                        lineStyle: lvl.strength === 3 ? 0 : 2, 
-                        axisLabelVisible: true, title: '' 
-                    });
+                // 📌 วาดเส้นบนกราฟจาก Matrix เป๊ะๆ
+                window.KodaTradeMatrix.resistances.forEach((r, i) => {
+                    candleSeries.createPriceLine({ price: r, color: 'rgba(255,77,77,0.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `R${i+1}` });
                 });
+                window.KodaTradeMatrix.supports.forEach((s, i) => {
+                    candleSeries.createPriceLine({ price: s, color: 'rgba(0,192,118,0.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `S${i+1}` });
+                });
+                
                 kodaChartInstance.timeScale().fitContent();
-            } catch (e) { console.error('KODA Chart error:', e); kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">เกิดข้อผิดพลาดในการวาดกราฟ</p>`; }
+            } catch (e) { console.error(e); kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">เกิดข้อผิดพลาดในการวาดกราฟ</p>`; }
         };
 
         btnKoda.addEventListener('click', () => {
@@ -583,18 +611,17 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.tf-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 currentTimeframe = btn.dataset.tf;
-                document.querySelectorAll('.tf-btn').forEach(b => {
-                    b.classList.remove('text-primary', 'bg-primary/10');
-                    b.classList.add('text-slate-500');
-                });
-                btn.classList.add('text-primary', 'bg-primary/10');
-                btn.classList.remove('text-slate-500');
+                document.querySelectorAll('.tf-btn').forEach(b => { b.classList.remove('text-primary', 'bg-primary/10'); b.classList.add('text-slate-500'); });
+                btn.classList.add('text-primary', 'bg-primary/10'); btn.classList.remove('text-slate-500');
                 if (currentChartMode === 'koda') renderAdvancedSR();
             });
         });
+
+        // 📌 เปิดมาโหลด KODA S/R ทันที
+        renderAdvancedSR();
     };
     renderChart();
-
+    
     // ==========================================
     // 📌 TAB 2: สรุปบริษัท AI 
     // ==========================================
