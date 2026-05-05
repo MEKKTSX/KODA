@@ -567,7 +567,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     width: kodaContainer.clientWidth, height: 380,
                     layout: { background: { type: 'solid', color: '#0a0e17' }, textColor: '#848e9c', fontSize: 12 },
                     grid: { vertLines: { color: 'rgba(42, 46, 57, 0.2)' }, horzLines: { color: 'rgba(42, 46, 57, 0.2)' } },
-                    rightPriceScale: { borderColor: 'rgba(42, 46, 57, 0.8)', autoScale: true },
+                    rightPriceScale: { 
+                        borderColor: 'rgba(42, 46, 57, 0.8)', 
+                        autoScale: true,
+                        // 📌 บีบกราฟราคาหลักให้เหลือแค่ 75% ด้านบน เพื่อเว้นที่ให้ RSI
+                        scaleMargins: { top: 0.05, bottom: 0.25 } 
+                    },
                     timeScale: { borderColor: 'rgba(42, 46, 57, 0.8)', timeVisible: true }
                 });
                 
@@ -576,6 +581,57 @@ document.addEventListener('DOMContentLoaded', () => {
                     priceLineVisible: true, priceLineColor: '#eab308', priceLineWidth: 2, priceLineStyle: 2, lastValueVisible: true
                 });
                 candleSeries.setData(candles);
+
+                // ==========================================
+                // 📌 สูตรคำนวณค่า RSI (14 วัน)
+                // ==========================================
+                const rsiData = [];
+                let gains = [], losses = [];
+                for (let i = 1; i < closes.length; i++) {
+                    let diff = closes[i] - closes[i - 1];
+                    gains.push(Math.max(0, diff));
+                    losses.push(Math.max(0, -diff));
+                }
+                
+                if (closes.length > 14) {
+                    let sumGain = 0, sumLoss = 0;
+                    for(let i=0; i<14; i++) { sumGain += gains[i]; sumLoss += losses[i]; }
+                    let avgGain = sumGain / 14, avgLoss = sumLoss / 14;
+                    
+                    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                    rsiData.push({ time: candles[14].time, value: 100 - (100 / (1 + rs)) });
+                    
+                    for (let i = 15; i < closes.length; i++) {
+                        avgGain = ((avgGain * 13) + gains[i-1]) / 14;
+                        avgLoss = ((avgLoss * 13) + losses[i-1]) / 14;
+                        rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                        rsiData.push({ time: candles[i].time, value: 100 - (100 / (1 + rs)) });
+                    }
+                }
+
+                // ==========================================
+                // 📌 วาดเส้น RSI ไว้ด้านล่างสุดของหน้าจอ
+                // ==========================================
+                const rsiSeries = kodaChartInstance.addLineSeries({
+                    color: '#a855f7', // สีม่วง (Fuchsia) ให้อารมณ์เหมือน TradingView
+                    lineWidth: 1.5,
+                    priceScaleId: 'rsiScale',
+                    lastValueVisible: true,
+                    title: 'RSI(14)'
+                });
+
+                kodaChartInstance.priceScale('rsiScale').applyOptions({
+                    // 📌 ให้อยู่ 20% ล่างสุดของกราฟเท่านั้น ไม่ทับกราฟแท่งเทียน
+                    scaleMargins: { top: 0.8, bottom: 0 }, 
+                    borderColor: 'rgba(42, 46, 57, 0.8)',
+                });
+
+                rsiSeries.setData(rsiData);
+
+                // 📌 ขีดเส้น Overbought (70) และ Oversold (30) เป็นเส้นประบางๆ ไว้ดูง่ายๆ
+                rsiSeries.createPriceLine({ price: 70, color: 'rgba(255,77,77,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+                rsiSeries.createPriceLine({ price: 30, color: 'rgba(0,192,118,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+
 
                 // 📌 วาดเส้นบนกราฟจาก Matrix เป๊ะๆ
                 window.KodaTradeMatrix.resistances.forEach((r, i) => {
