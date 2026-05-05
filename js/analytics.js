@@ -810,20 +810,23 @@ window.KodaAnalytics = {
     },
 
     fetchIndexHistory: async (sym, range) => {
-        const cacheKey = `koda_idx_${sym}_${range}`;
+        const cacheKey = `koda_idx_v2_${sym}_${range}`;
         const cached = JSON.parse(localStorage.getItem(cacheKey));
         const now = Date.now();
 
+        // แคชไว้ 1 ชม. ลดการยิง API ถี่เกินไป
         if (cached && (now - cached.timestamp < 3600000) && cached.data && cached.data.length > 0) return cached.data;
 
-        const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
-
+        // 🚀 ก๊อก 1: ถ้าเป็น BTC ดึงตรงจาก Binance เร็วที่สุด
         if (sym === 'BTC-USD') {
             try {
                 let limit = 30; let interval = '1d';
                 if (range === '6mo') limit = 180;
                 else if (range === '1y') limit = 365;
-                else if (range === '5y') { limit = 260; interval = '1w'; }
+                else if (range === '5y') { limit = 1825; } // บังคับรายวัน
+                
+                // Binance รับได้สูงสุด 1000 แท่ง
+                if (limit > 1000) limit = 1000; 
                 
                 const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`);
                 const data = await res.json();
@@ -833,17 +836,52 @@ window.KodaAnalytics = {
                     return cleanData;
                 }
             } catch(e) {}
-        } else {
+        } 
+        // 🚀 ก๊อก 2: หุ้น/ดัชนี (SPY, QQQ) ดึงผ่าน Vercel Yahoo Proxy โดยตรง
+        else {
+            const yfRange = range === '6mo' ? '6mo' : (range === '1y' ? '1y' : (range === '5y' ? '5y' : '1mo'));
+            const yfInterval = '1d'; // บังคับรายวันเสมอ
+            const proxyUrl = `/api/yf-chart/${sym}?range=${yfRange}&interval=${yfInterval}`;
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 6000); 
+                const res = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const yfData = await res.json();
+
+                    if (yfData?.chart?.result?.[0]) {
+                        const result = yfData.chart.result[0];
+                        const closes = result.indicators.quote[0].close;
+                        const timestamps = result.timestamp;
+                        
+                        const cleanData = [];
+                        for(let i=0; i < closes.length; i++) {
+                            if(closes[i] !== null) cleanData.push({ t: timestamps[i] * 1000, c: closes[i] });
+                        }
+                        
+                        if (cleanData.length > 0) {
+                            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
+                            return cleanData;
+                        }
+                    }
+                }
+            } catch(e) { console.warn("Vercel Yahoo Proxy failed for Benchmark:", e); }
+
+            // 🚀 ก๊อก 3: Fallback Finnhub (กันเหนียว)
+            const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
             if (FINNHUB_API_KEY) {
                 try {
                     const to = Math.floor(Date.now() / 1000);
-                    let days = 30; let resType = 'D';
+                    let days = 30;
                     if (range === '6mo') days = 180;
                     else if (range === '1y') days = 365;
-                    else if (range === '5y') { days = 1825; resType = 'W'; }
+                    else if (range === '5y') days = 1825; 
                     const from = to - (days * 24 * 60 * 60);
 
-                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=${resType}&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
+                    const fhRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`);
                     if (fhRes.ok) {
                         const fhData = await fhRes.json();
                         if (fhData && fhData.s === 'ok' && fhData.c && fhData.c.length > 0) {
@@ -853,50 +891,6 @@ window.KodaAnalytics = {
                         }
                     }
                 } catch(e) {}
-            }
-
-            const yfRange = range === '6mo' ? '6mo' : (range === '1y' ? '1y' : (range === '5y' ? '5y' : '1mo'));
-            const yfInterval = range === '5y' ? '1wk' : '1d';
-            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=${yfRange}&interval=${yfInterval}`;
-            
-            const proxies = [
-                `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
-                `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`
-            ];
-            
-            for (let proxyUrl of proxies) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000); 
-                    const res = await fetch(proxyUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId);
-
-                    if (res.ok) {
-                        const rawData = await res.json();
-                        let yfData = rawData;
-                        
-                        if (rawData.contents) {
-                            try { yfData = JSON.parse(rawData.contents); } catch(e) {}
-                        }
-
-                        if (yfData?.chart?.result?.[0]) {
-                            const result = yfData.chart.result[0];
-                            const closes = result.indicators.quote[0].close;
-                            const timestamps = result.timestamp;
-                            
-                            const cleanData = [];
-                            for(let i=0; i < closes.length; i++) {
-                                if(closes[i] !== null) cleanData.push({ t: timestamps[i] * 1000, c: closes[i] });
-                            }
-                            
-                            if (cleanData.length > 0) {
-                                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: cleanData }));
-                                return cleanData;
-                            }
-                        }
-                    }
-                } catch(e) { }
             }
         }
         
