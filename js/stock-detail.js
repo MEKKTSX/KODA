@@ -621,23 +621,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 candleSeries.setData(candles);
 
-                // 📌 ประกาศตัวแปรให้ระบบ Real-time มองเห็น
+                                // 📌 ประกาศตัวแปรให้ระบบ Real-time มองเห็น
                 window.kodaCandleSeries = candleSeries;
                 window.kodaChartCandles = candles;
 
                 // ==========================================
                 // 📌 สูตรคำนวณค่า RSI (14 วัน)
                 // ==========================================
-                const rsiSeries = kodaChartInstance.addLineSeries({
-                    color: '#a855f7',
-                    lineWidth: 1.5,
-                    priceScaleId: 'rsiScale',
-                    lastValueVisible: true,
-                    title: 'RSI(14)'
-                });
+                const rsiData = [];
+                let gains = [], losses = [];
+                for (let i = 1; i < closes.length; i++) {
+                    let diff = closes[i] - closes[i - 1];
+                    gains.push(Math.max(0, diff));
+                    losses.push(Math.max(0, -diff));
+                }
                 
-                // 📌 ประกาศตัวแปร RSI ให้ระบบ Real-time มองเห็น
-                window.kodaRsiSeries = rsiSeries;
+                if (closes.length > 14) {
+                    let sumGain = 0, sumLoss = 0;
+                    for(let i=0; i<14; i++) { sumGain += gains[i]; sumLoss += losses[i]; }
+                    let avgGain = sumGain / 14, avgLoss = sumLoss / 14;
+                    
+                    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                    rsiData.push({ time: candles[14].time, value: 100 - (100 / (1 + rs)) });
+                    
+                    for (let i = 15; i < closes.length; i++) {
+                        avgGain = ((avgGain * 13) + gains[i-1]) / 14;
+                        avgLoss = ((avgLoss * 13) + losses[i-1]) / 14;
+                        rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                        rsiData.push({ time: candles[i].time, value: 100 - (100 / (1 + rs)) });
+                    }
+                }
 
                 // ==========================================
                 // 📌 วาดเส้น RSI ไว้ด้านล่างสุดของหน้าจอ
@@ -649,6 +662,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     lastValueVisible: true,
                     title: 'RSI(14)'
                 });
+
+                // 📌 ประกาศตัวแปร RSI ให้ระบบ Real-time มองเห็น
+                window.kodaRsiSeries = rsiSeries;
 
                 kodaChartInstance.priceScale('rsiScale').applyOptions({
                     // 📌 ให้อยู่ 20% ล่างสุดของกราฟเท่านั้น ไม่ทับกราฟแท่งเทียน
@@ -662,7 +678,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 rsiSeries.createPriceLine({ price: 70, color: 'rgba(255,77,77,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
                 rsiSeries.createPriceLine({ price: 30, color: 'rgba(0,192,118,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
 
-
                 // 📌 วาดเส้นบนกราฟจาก Matrix เป๊ะๆ
                 window.KodaTradeMatrix.resistances.forEach((r, i) => {
                     candleSeries.createPriceLine({ price: r, color: 'rgba(255,77,77,0.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `R${i+1}` });
@@ -672,6 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 kodaChartInstance.timeScale().fitContent();
+
             } catch (e) { console.error(e); kodaContainer.innerHTML = `<p class="text-danger text-xs text-center mt-10">เกิดข้อผิดพลาดในการวาดกราฟ</p>`; }
         };
 
