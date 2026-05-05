@@ -1,4 +1,3 @@
-# api/price.py
 from http.server import BaseHTTPRequestHandler
 import json
 import yfinance as yf
@@ -22,13 +21,10 @@ class handler(BaseHTTPRequestHandler):
         mode = query.get('mode', ['price'])[0].strip().lower()
 
         try:
-            # 📌 ส่วนที่เพิ่มเข้ามา: จัดการดึงเรทเงินบาท (FX)
             if mode == 'fx':
                 base = query.get('base', ['USD'])[0].strip().upper()
                 target = query.get('target', ['THB'])[0].strip().upper()
                 response = self.get_exchange_rate(base, target)
-            
-            # 📌 ส่วนจัดการหุ้นปกติ
             else:
                 symbol = query.get('symbol', ['TSLA'])[0].strip().upper()
                 yf_sym = symbol
@@ -56,12 +52,10 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        # 🚀 บังคับห้าม Cache เด็ดขาด! (แก้ปัญหาราคาค้าง)
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.end_headers()
         self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
 
-    # 📌 ฟังก์ชันใหม่: ดึงเรทเงินจาก Yahoo Finance
     def get_exchange_rate(self, base, target):
         try:
             ticker = yf.Ticker(f"{base}{target}=X")
@@ -75,11 +69,32 @@ class handler(BaseHTTPRequestHandler):
 
     def get_price(self, ticker, symbol):
         info = ticker.info
+        market_state = self.get_market_state()
+        
+        # ราคาหลัก
         regular_price = clean_val(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose'))
         prev_close = clean_val(info.get('previousClose') or info.get('regularMarketPreviousClose'))
+        
+        # ดึงราคาจาก Fast History ถ้า Info เอ๋อ
+        try:
+            if regular_price is None or prev_close is None:
+                hist = ticker.history(period="2d")
+                if not hist.empty:
+                    if regular_price is None: regular_price = clean_val(hist['Close'].iloc[-1])
+                    if len(hist) > 1 and prev_close is None: prev_close = clean_val(hist['Close'].iloc[-2])
+        except: pass
+
+        # 📌 แก้บัค Pre/Post Market: พยายามหาตัวแปรให้ครบ
         pre_price = clean_val(info.get('preMarketPrice'))
         post_price = clean_val(info.get('postMarketPrice'))
+        
+        # 📌 Fallback: ถ้าระบบบอกว่าเป็น PRE/POST แต่ไม่มีค่า ให้ดึง currentPrice (ซึ่งบางที Yahoo ยัดค่า Pre/Post มาไว้ใน currentPrice แทนตอนตลาดปิด)
+        if market_state == 'PRE' and pre_price is None and info.get('currentPrice') != info.get('regularMarketPrice'):
+            pre_price = clean_val(info.get('currentPrice'))
+        if (market_state == 'POST' or market_state == 'CLOSED') and post_price is None and info.get('currentPrice') != info.get('regularMarketPrice'):
+            post_price = clean_val(info.get('currentPrice'))
 
+        # คำนวณเปอร์เซ็นต์
         regular_change = clean_val(info.get('regularMarketChange'))
         if regular_change is None and regular_price and prev_close: regular_change = regular_price - prev_close
             
@@ -112,7 +127,7 @@ class handler(BaseHTTPRequestHandler):
             "postMarketChange": post_change,
             "postMarketChangePercent": post_percent,
             "currency": info.get('currency', 'USD'),
-            "marketState": self.get_market_state()
+            "marketState": market_state
         }
 
     def get_analysis(self, ticker, symbol):
