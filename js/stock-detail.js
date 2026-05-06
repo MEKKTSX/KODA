@@ -240,13 +240,23 @@ document.addEventListener('DOMContentLoaded', () => {
         // ==========================================
         // 📌 อัปเดตกราฟ KODA & RSI แบบ Real-time (ทุก 5 วิ)
         // ==========================================
+        // 🚨 เช็คก่อนว่าตลาดปิดไหม? ถ้าปิดให้ดึงราคา Pre/Post มาวาดกราฟแทน!
+        let liveChartPrice = currentPrice;
+        if (source === 'yf') {
+            if (data.marketState === 'PRE' && data.preMarketPrice) {
+                liveChartPrice = data.preMarketPrice;
+            } else if ((data.marketState === 'POST' || data.marketState === 'CLOSED') && data.postMarketPrice) {
+                liveChartPrice = data.postMarketPrice;
+            }
+        }
+
         if (window.kodaCandleSeries && window.kodaChartCandles && window.kodaChartCandles.length > 0) {
             let lastCandle = window.kodaChartCandles[window.kodaChartCandles.length - 1];
             
-            // 1. ดันราคาแท่งเทียนแท่งล่าสุดให้ขยับตาม Real-time
-            lastCandle.close = currentPrice;
-            if (currentPrice > lastCandle.high) lastCandle.high = currentPrice;
-            if (currentPrice < lastCandle.low) lastCandle.low = currentPrice;
+            // 1. ดันราคาแท่งเทียนแท่งล่าสุดให้ขยับตาม Real-time (ใช้ราคา Live ที่ผ่านการกรองแล้ว)
+            lastCandle.close = liveChartPrice;
+            if (liveChartPrice > lastCandle.high) lastCandle.high = liveChartPrice;
+            if (liveChartPrice < lastCandle.low) lastCandle.low = liveChartPrice;
             
             window.kodaCandleSeries.update(lastCandle);
 
@@ -678,12 +688,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 rsiSeries.createPriceLine({ price: 70, color: 'rgba(255,77,77,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
                 rsiSeries.createPriceLine({ price: 30, color: 'rgba(0,192,118,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
 
-                // 📌 วาดเส้นบนกราฟจาก Matrix เป๊ะๆ
+                // 📌 วาดเส้นบนกราฟจาก Matrix เป๊ะๆ (เน้นเส้น 2 ให้เป็นแนวแข็ง)
                 window.KodaTradeMatrix.resistances.forEach((r, i) => {
-                    candleSeries.createPriceLine({ price: r, color: 'rgba(255,77,77,0.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `R${i+1}` });
+                    const isStrong = i === 1; // ให้ R2 เป็นแนวต้านแข็ง
+                    candleSeries.createPriceLine({ 
+                        price: r, 
+                        color: 'rgba(255,77,77,0.85)', 
+                        lineWidth: isStrong ? 3 : 1, // เส้นหนา 3 ถ้าเป็นแนวแข็ง
+                        lineStyle: isStrong ? 0 : 2, // 0 = เส้นทึบ, 2 = เส้นประ
+                        axisLabelVisible: true, 
+                        title: `R${i+1}${isStrong ? ' (แข็ง)' : ''}` 
+                    });
                 });
                 window.KodaTradeMatrix.supports.forEach((s, i) => {
-                    candleSeries.createPriceLine({ price: s, color: 'rgba(0,192,118,0.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `S${i+1}` });
+                    const isStrong = i === 1; // ให้ S2 เป็นแนวรับแข็ง
+                    candleSeries.createPriceLine({ 
+                        price: s, 
+                        color: 'rgba(0,192,118,0.85)', 
+                        lineWidth: isStrong ? 3 : 1, // เส้นหนา 3 ถ้าเป็นแนวแข็ง
+                        lineStyle: isStrong ? 0 : 2, // 0 = เส้นทึบ, 2 = เส้นประ
+                        axisLabelVisible: true, 
+                        title: `S${i+1}${isStrong ? ' (แข็ง)' : ''}` 
+                    });
                 });
                 
                 kodaChartInstance.timeScale().fitContent();
