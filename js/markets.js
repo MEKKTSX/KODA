@@ -4,13 +4,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const earningsContainer = document.getElementById('earnings-container');
     const anomalyContainer = document.getElementById('anomaly-container');
 
-    const getWatchlistSymbols = () => {
+        const getWatchlistSymbols = () => {
         if (window.kodaApiData && window.kodaApiData.watchlist) {
             return window.kodaApiData.watchlist.map(s => s.symbol);
         }
         const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
-        const wl = savedData.watchlist || [];
-        return wl.map(s => s.symbol);
+        
+        // Data Migration: ถ้ายังเป็นระบบเก่า (Array แบนๆ)
+        if (savedData.watchlist && Array.isArray(savedData.watchlist)) {
+            return savedData.watchlist.map(s => s.symbol);
+        }
+
+        // ระบบใหม่แยกแฟ้ม: ดึงหุ้นจากทุกหมวดหมู่มารวมกันแล้วตัดตัวซ้ำทิ้ง
+        if (savedData.watchlists) {
+            const allSymbols = new Set();
+            Object.values(savedData.watchlists).forEach(list => {
+                list.forEach(s => allSymbols.add(s.symbol));
+            });
+            return Array.from(allSymbols);
+        }
+        return [];
     };
 
     const isUSMarketOpen = () => {
@@ -241,135 +254,146 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<div class="flex items-end gap-1.5 h-6 border-b border-border-dark/50 pb-0.5">${barsHTML}</div>`;
     };
 
-    // 📌 [SUPER FIX] ระบบ Upcoming Catalysts (Hybrid Fetch ประหยัด API ไม่ติด Limit แน่นอน)
-    const fetchEarningsData = async () => {
-        if (!earningsContainer) return;
-        const wlSymbols = getWatchlistSymbols();
-        if (wlSymbols.length === 0) {
-            earningsContainer.innerHTML = `<p class="text-slate-500 text-sm text-center py-10 border border-dashed border-border-dark rounded-xl">Add stocks to see catalysts.</p>`;
+        // ==========================================
+    // 📌 ระบบ Earnings Calendar แบบตาราง 5 วัน
+    // ==========================================
+    let currentCalWeekStart = new Date(); 
+    // ปรับค่าเริ่มต้นให้เป็นวันจันทร์ของสัปดาห์ปัจจุบัน
+    const dayOfWeek = currentCalWeekStart.getDay();
+    const diff = currentCalWeekStart.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    currentCalWeekStart.setDate(diff);
+
+    const renderEarningsCalendar = async () => {
+        const gridContainer = document.getElementById('earnings-calendar-grid');
+        const displayDate = document.getElementById('earnings-week-display');
+        if (!gridContainer || !displayDate) return;
+
+        // คำนวณหาวันจันทร์ และ วันศุกร์
+        const monday = new Date(currentCalWeekStart);
+        const friday = new Date(monday);
+        friday.setDate(monday.getDate() + 4);
+
+        const formatDateStr = (d) => d.toISOString().split('T')[0];
+        const fromStr = formatDateStr(monday);
+        const toStr = formatDateStr(friday);
+
+        // แสดงผลช่วงวันที่ด้านบนปฏิทิน
+        displayDate.textContent = `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${friday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+        // ระบบ Cache อัปเดตวันละ 1 ครั้ง (86400000 ms)
+        const cacheKey = `koda_earn_cal_v2_${fromStr}`;
+        const cached = JSON.parse(localStorage.getItem(cacheKey));
+        const now = Date.now();
+
+        if (cached && (now - cached.timestamp < 86400000)) {
+            drawCalendarGrid(cached.data);
             return;
         }
 
-        const todayStr = new Date().toDateString(); 
-        const wlSymbolsStr = JSON.stringify(wlSymbols); 
-        const cached = JSON.parse(localStorage.getItem('koda_catalysts_cache_v4') || 'null'); // เคลียร์ Cache Error อันเก่าทิ้ง
-
-        if (cached && cached.date === todayStr && cached.symbols === wlSymbolsStr) {
-            earningsContainer.innerHTML = cached.html;
-            return;
-        }
-
-        earningsContainer.innerHTML = `<div class="flex justify-center py-6"><div class="size-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
+        gridContainer.innerHTML = `<div class="col-span-5 flex justify-center py-10"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div></div>`;
 
         try {
-            const fromStr = new Date().toISOString().split('T')[0];
-            const toStr = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0]; // ขยายเวลาค้นหาเป็น 90 วัน
-            
-            let upcoming = [];
-            const validSymbols = wlSymbols.filter(sym => !sym.includes('BINANCE:') && !sym.includes('OANDA:') && !sym.includes('FX:'));
+            const res = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
+            const data = await res.json();
 
-            // 🚀 STEP 1: ดึงปฏิทินรวมระดับโลกมาหาหุ้นก่อน (ยิง API แค่ 1 ครั้ง ได้หุ้นหลักเกือบหมด)
-            try {
-                const globalRes = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
-                if (globalRes.ok) {
-                    const globalData = await globalRes.json();
-                    if (globalData && globalData.earningsCalendar) {
-                        const matched = globalData.earningsCalendar.filter(e => validSymbols.includes(e.symbol));
-                        upcoming.push(...matched);
+            if (data && data.earningsCalendar) {
+                // แยกข้อมูลเป็น 5 วัน (จันทร์=0, อังคาร=1, ..., ศุกร์=4)
+                const weekData = [[], [], [], [], []];
+                
+                data.earningsCalendar.forEach(item => {
+                    const itemDate = new Date(item.date);
+                    const dayIndex = itemDate.getDay() - 1; 
+                    if (dayIndex >= 0 && dayIndex <= 4) {
+                        weekData[dayIndex].push(item);
                     }
-                }
-            } catch(e) { console.warn("Global calendar fetch failed, falling back to individual fetch."); }
+                });
 
-            // 🚀 STEP 2: ตรวจหาหุ้นที่ปฏิทินรวมทำตกหล่น (เช่น TSM, ASML) แล้วเจาะจงดึงเฉพาะตัวที่หายไป
-            const foundSymbols = upcoming.map(u => u.symbol);
-            const missingSymbols = validSymbols.filter(sym => !foundSymbols.includes(sym));
-
-            for (const sym of missingSymbols) {
-                let retries = 3;
-                while (retries > 0) {
-                    try {
-                        const res = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${fromStr}&to=${toStr}&symbol=${sym}&token=${FINNHUB_API_KEY}`);
-                        
-                        if (res.status === 429) { 
-                            retries--; 
-                            await new Promise(r => setTimeout(r, 2000)); // ติดลิมิต? พัก 2 วิแล้วดึงใหม่ ไม่ข้าม!
-                            continue; 
-                        }
-                        
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (data && data.earningsCalendar && data.earningsCalendar.length > 0) {
-                                upcoming.push(data.earningsCalendar[0]);
-                            }
-                        }
-                        break; // ดึงสำเร็จออกจาก Loop Retry
-                    } catch(e) { break; }
-                }
-                await new Promise(r => setTimeout(r, 200)); // หน่วงเวลา 200ms ป้องกันโดนแบน
+                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: weekData }));
+                drawCalendarGrid(weekData);
+            } else {
+                throw new Error("No data");
             }
-            
-            // กรองเอาเฉพาะวันประกาศที่ใกล้ที่สุดของแต่ละบริษัท (เผื่อมีมาซ้ำ 2 ไตรมาส)
-            const uniqueUpcoming = [];
-            const seenSyms = new Set();
-            upcoming.forEach(u => {
-                if (!seenSyms.has(u.symbol)) {
-                    seenSyms.add(u.symbol);
-                    uniqueUpcoming.push(u);
-                }
-            });
-
-            if (uniqueUpcoming.length === 0) {
-                const emptyHtml = `<p class="text-slate-500 text-sm text-center py-10 border border-dashed border-border-dark rounded-xl">No upcoming earnings detected.</p>`;
-                earningsContainer.innerHTML = emptyHtml;
-                localStorage.setItem('koda_catalysts_cache_v4', JSON.stringify({ date: todayStr, symbols: wlSymbolsStr, html: emptyHtml }));
-                return;
-            }
-            
-            // 🚀 STEP 3: ดึงประวัติงบการเงิน (History) ทีละตัวแบบระมัดระวัง เพื่อวาดกราฟแท่ง
-            const finalData = [];
-            for (const company of uniqueUpcoming) {
-                let history = [];
-                let retries = 3;
-                while (retries > 0) {
-                    try {
-                        const res = await fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${company.symbol}&token=${FINNHUB_API_KEY}`);
-                        if (res.status === 429) { 
-                            retries--; 
-                            await new Promise(r => setTimeout(r, 2000)); 
-                            continue; 
-                        }
-                        if (res.ok) history = await res.json();
-                        break;
-                    } catch(e) { break; }
-                }
-                finalData.push({ ...company, history: history || [] });
-                await new Promise(r => setTimeout(r, 200)); // ถนอม API ไม่ให้พัง
-            }
-            
-            finalData.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            
-            const renderedHtml = finalData.map(cat => `
-                <a href="stock-detail.html?symbol=${cat.symbol}" class="relative block bg-surface-dark border border-border-dark rounded-xl p-3 mt-3 hover:bg-slate-800 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-lg bg-background-dark border border-border-dark flex flex-col items-center justify-center shrink-0">
-                            <span class="text-[8px] font-bold text-danger uppercase leading-none mt-1">${new Date(cat.date).toLocaleString('en-US', { month: 'short' })}</span>
-                            <span class="text-lg font-black text-white leading-none mt-0.5">${new Date(cat.date).getDate()}</span>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="text-white font-bold text-sm truncate">${cat.symbol}</h3>
-                            <p class="text-slate-400 text-[10px] mt-0.5">Est EPS: <span class="text-slate-200 font-medium">${cat.epsEstimate !== null && cat.epsEstimate !== undefined ? '$'+cat.epsEstimate.toFixed(2) : 'N/A'}</span></p>
-                        </div>
-                        <div class="shrink-0 flex flex-col items-end">${renderMiniBarChart(cat.history)}</div>
-                    </div>
-                </a>`).join('');
-
-            earningsContainer.innerHTML = renderedHtml;
-            localStorage.setItem('koda_catalysts_cache_v4', JSON.stringify({ date: todayStr, symbols: wlSymbolsStr, html: renderedHtml }));
-            
-        } catch (e) { 
-            earningsContainer.innerHTML = `<p class="text-danger text-sm text-center py-4">Error loading catalysts. System overloaded.</p>`; 
+        } catch (e) {
+            gridContainer.innerHTML = `<div class="col-span-5 text-center text-danger text-xs py-4">Failed to load calendar data.</div>`;
         }
     };
+
+        const drawCalendarGrid = (weekData) => {
+        const gridContainer = document.getElementById('earnings-calendar-grid');
+        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        
+        // 📌 ฟังก์ชันดึงโลโก้และชื่อหุ้น
+        const getLogoHtml = (sym) => {
+            const logo1 = `https://assets.parqet.com/logos/symbol/${sym}?format=png`;
+            const logo2 = `https://financialmodelingprep.com/image-stock/${sym}.png`;
+            return `
+            <div class="w-full flex flex-col items-center justify-center p-1 relative" title="${sym}">
+                <img src="${logo1}" 
+                     class="h-[22px] w-auto max-w-full object-contain filter drop-shadow-md" 
+                     onerror="this.onerror=null; this.src='${logo2}'; this.onerror=function(){ this.style.display='none'; };">
+                <span class="text-[8px] font-bold text-slate-300 text-center leading-tight mt-1">${sym}</span>
+            </div>`;
+        };
+
+        let html = '';
+
+        weekData.forEach((dayItems, index) => {
+            // คัดกรองหุ้น: 'bmo' = Before Market Open, 'amc' = After Market Close
+            const beforeOpen = dayItems.filter(i => i.hour === 'bmo');
+            const afterClose = dayItems.filter(i => i.hour === 'amc' || i.hour === 'dmh');
+
+            // อัลกอริทึมคัดหุ้นเด่น
+            const sortAndSlice = (arr) => arr
+                .sort((a, b) => (b.revenueEstimate || 0) - (a.revenueEstimate || 0))
+                .slice(0, 6); 
+
+            const topBefore = sortAndSlice(beforeOpen);
+            const topAfter = sortAndSlice(afterClose);
+
+            // 📌 คำนวณวันที่ของคอลัมน์นี้ (บวก index เข้ากับวันจันทร์)
+            const colDate = new Date(currentCalWeekStart);
+            colDate.setDate(colDate.getDate() + index);
+            const dateNum = colDate.getDate();
+
+            html += `
+            <div class="flex flex-col gap-[6px]">
+                <div class="text-center text-slate-400 text-[10px] font-medium py-1.5 border-b border-border-dark/50 whitespace-nowrap">
+                    <span class="text-white font-bold">${dateNum}</span> ${dayNames[index]}
+                </div>
+
+                <div class="bg-surface-dark/60 border border-border-dark/40 rounded-xl flex flex-col items-center pb-2 min-h-[160px]">
+                    <span class="text-slate-400 text-[8px] font-bold py-1.5 whitespace-nowrap">Before Open</span>
+                    <div class="flex flex-col w-full px-1 gap-1.5">
+                        ${topBefore.length > 0 ? topBefore.map(item => getLogoHtml(item.symbol)).join('') : '<span class="text-slate-600 text-[8px] text-center py-2">-</span>'}
+                    </div>
+                </div>
+
+                <div class="bg-surface-dark/60 border border-border-dark/40 rounded-xl flex flex-col items-center pb-2 min-h-[160px]">
+                    <span class="text-slate-400 text-[8px] font-bold py-1.5 whitespace-nowrap">After Close</span>
+                    <div class="flex flex-col w-full px-1 gap-1.5">
+                        ${topAfter.length > 0 ? topAfter.map(item => getLogoHtml(item.symbol)).join('') : '<span class="text-slate-600 text-[8px] text-center py-2">-</span>'}
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        gridContainer.innerHTML = html;
+    };
+
+    // 📌 กดเปลี่ยนสัปดาห์ (ซ้าย-ขวา)
+    document.addEventListener('click', (e) => {
+        const btnPrev = e.target.closest('#btn-prev-week');
+        const btnNext = e.target.closest('#btn-next-week');
+
+        if (btnPrev) {
+            currentCalWeekStart.setDate(currentCalWeekStart.getDate() - 7);
+            renderEarningsCalendar();
+        }
+        if (btnNext) {
+            currentCalWeekStart.setDate(currentCalWeekStart.getDate() + 7);
+            renderEarningsCalendar();
+        }
+    });
 
     let lastAlertFetchTime = 0;
     const runMasterController = () => {
@@ -383,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => {
         fetchFearAndGreed();
-        fetchEarningsData();
+        renderEarningsCalendar();;
         fetchMarketAlerts();
         lastAlertFetchTime = Date.now();
     }, 500);
