@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             // 1. ดึง 10 อันดับที่คนสนใจมากที่สุด (Trending) จาก Yahoo Finance
-            const trendRes = await fetchWithTimeout('https://query1.finance.yahoo.com/v1/finance/trending/US?count=10', 3000);
+            const trendRes = await fetchWithTimeout('/api/yahoo?mode=trending', 3000);
             const trendData = await trendRes.json();
             if (trendData?.finance?.result?.[0]?.quotes) {
                 const fetchedSymbols = trendData.finance.result[0].quotes.map(q => q.symbol);
@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // 2. ดึงราคาและ % เปลี่ยนแปลง เพื่อเอามาจัดอันดับ
-            const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`;
+            const quoteUrl = `/api/yahoo?mode=quote&symbols=${symbols.join(',')}`;
             const quoteRes = await fetchWithTimeout(quoteUrl, 4000);
             const quoteData = await quoteRes.json();
 
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         timeoutId = setTimeout(async () => {
             try {
                 // 🚀 ใช้ Yahoo Finance ค้นหา (เร็วและแม่นยำ)
-                const yfUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=15&newsCount=0`;
+                const yfUrl = `/api/yahoo?mode=search&q=${encodeURIComponent(query)}&quotesCount=15&newsCount=0`;
                 const res = await fetchWithTimeout(yfUrl, 4500);
                 const data = await res.json();
                 
