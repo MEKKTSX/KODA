@@ -19,70 +19,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedData = localStorage.getItem('koda_portfolio_data');
     let mockData;
 
-    if (savedData) {
+        if (savedData) {
         mockData = JSON.parse(savedData);
         if (!mockData.persistentNews) mockData.persistentNews = [];
         if (!mockData.sectors || mockData.sectors.length < 11) mockData.sectors = [...SECTOR_ETFS];
-        if (!mockData.watchlist) mockData.watchlist = [];
         
-        const uniqueWl = [];
-        const seenWl = new Set();
-        mockData.watchlist.forEach(item => {
-            if (item && item.symbol && !seenWl.has(item.symbol)) {
-                seenWl.add(item.symbol);
-                uniqueWl.push(item);
-            }
-        });
-        mockData.watchlist = uniqueWl;
+        // 📌 รองรับระบบแยกแฟ้ม (Data Migration)
+        if (!mockData.categories || !mockData.watchlists) {
+            mockData.categories = ['All'];
+            mockData.watchlists = { 'All': mockData.watchlist || [] };
+        }
+        if (mockData.watchlist) delete mockData.watchlist; // ลบของเก่าทิ้ง
+        
     } else {
         mockData = { 
             sectors: [...SECTOR_ETFS], 
             persistentNews: [], 
             holdings: [],
-            watchlist: []
+            categories: ['All'],
+            watchlists: { 'All': [] }
         };
     }
 
     window.kodaApiData = mockData;
     window.saveKodaData = () => localStorage.setItem('koda_portfolio_data', JSON.stringify(window.kodaApiData));
 
-    // 📌 ดึงเรทเงินล่าสุดที่เคยเก็บไว้ในเครื่องมาใช้เป็นค่าตั้งต้นทันที
-    const cachedFx = JSON.parse(localStorage.getItem('koda_thb_rate_data_v3'));
-    window.kodaTHBRate = (cachedFx && cachedFx.rate) ? cachedFx.rate : 34.50;
+    window.kodaTHBRate = 34.50; 
 
-    // ในไฟล์ js/api.js
     const fetchGlobalTHBRate = async () => {
+        const cacheKey = 'koda_thb_rate_data_v2'; 
+        const cached = JSON.parse(localStorage.getItem(cacheKey));
+        const now = Date.now();
+        
+        if (cached && (now - cached.timestamp < 21600000)) {
+            window.kodaTHBRate = cached.rate;
+            return;
+        }
+        
         try {
-            // เรียกใช้ api/price.py ของคุณเอง
-            const res = await fetch('/api/price?mode=fx&base=USD&target=THB');
+            const res = await fetch('https://open.er-api.com/v6/latest/USD');
             const data = await res.json();
-            if (data.success && data.rate) {
-                window.kodaTHBRate = data.rate;
+            if (data && data.rates && data.rates.THB) {
+                window.kodaTHBRate = data.rates.THB;
+                localStorage.setItem(cacheKey, JSON.stringify({ rate: data.rates.THB, timestamp: now }));
             }
         } catch (e) {
-            window.kodaTHBRate = 34.50; 
+            window.kodaTHBRate = cached ? cached.rate : 34.50; 
         }
     };
     fetchGlobalTHBRate();
 
     window.formatKodaMoney = (amount, decimals = 2) => {
         const currency = localStorage.getItem('koda_currency') || 'USD';
-        const rate = window.kodaTHBRate; // ใช้เรทล่าสุดที่มีในเครื่อง
+        const rate = window.kodaTHBRate || 34.50;
         
         if (currency === 'THB') {
-            return new Intl.NumberFormat('th-TH', { 
-                style: 'currency', 
-                currency: 'THB', 
-                minimumFractionDigits: decimals, 
-                maximumFractionDigits: decimals 
-            }).format(amount * rate);
+            return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(amount * rate);
         }
-        return new Intl.NumberFormat('en-US', { 
-            style: 'currency', 
-            currency: 'USD', 
-            minimumFractionDigits: decimals, 
-            maximumFractionDigits: decimals 
-        }).format(amount);
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(amount);
     };
     
     const formatCurrency = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
@@ -165,15 +159,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return { c: 0, pc: 0, regularPrice: 0, regularChangePct: 0, marketState: 'REGULAR', extPrice: null, extPercent: null };
     };
 
-    const fetchRealPrices = async () => {
+        const fetchRealPrices = async () => {
+        // 📌 1. จดจำว่าก่อนดึงข้อมูล เราอยู่แฟ้มไหน
+        const fetchTriggerCategory = window.currentActiveCategory || 'All';
+
         const curData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         const allSyms = new Set();
         (curData.holdings || []).forEach(h => allSyms.add(h.symbol));
-        (curData.watchlist || []).forEach(w => allSyms.add(w.symbol));
         (curData.sectors || []).forEach(s => allSyms.add(s.symbol));
+        
+        if (curData.watchlists) {
+            Object.values(curData.watchlists).forEach(list => list.forEach(w => allSyms.add(w.symbol)));
+        }
 
         const priceMap = {};
-        
         await Promise.allSettled(Array.from(allSyms).map(async (sym) => {
             const data = await fetchSafePrice(sym);
             if (data.c > 0) priceMap[sym] = data;
@@ -181,49 +180,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const freshData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         if (!freshData.holdings) freshData.holdings = [];
-        if (!freshData.watchlist) freshData.watchlist = [];
         if (!freshData.sectors) freshData.sectors = curData.sectors || [];
+        if (!freshData.watchlists) freshData.watchlists = { 'All': [] };
 
         freshData.holdings.forEach(h => { 
-            if (priceMap[h.symbol]) { 
-                const p = priceMap[h.symbol];
-                h.currentPrice = p.c; 
-                h.previousClose = p.pc; 
-                h.regularPrice = p.regularPrice;
-                h.regularChangePct = p.regularChangePct;
-                h.extPrice = p.extPrice;
-                h.extPercent = p.extPercent;
-                h.marketState = p.marketState;
-            } 
+            if (priceMap[h.symbol]) Object.assign(h, priceMap[h.symbol]);
         });
 
-        freshData.watchlist.forEach(w => { 
-            if (priceMap[w.symbol]) { 
-                const p = priceMap[w.symbol];
-                w.currentPrice = p.c; 
-                w.previousClose = p.pc; 
-                w.regularPrice = p.regularPrice;
-                w.regularChangePct = p.regularChangePct;
-                w.extPrice = p.extPrice;
-                w.extPercent = p.extPercent;
-                w.marketState = p.marketState;
-            } 
+        Object.keys(freshData.watchlists).forEach(cat => {
+            freshData.watchlists[cat].forEach(w => {
+                if (priceMap[w.symbol]) {
+                    w.currentPrice = priceMap[w.symbol].c; 
+                    w.previousClose = priceMap[w.symbol].pc; 
+                    w.regularPrice = priceMap[w.symbol].regularPrice;
+                    w.regularChangePct = priceMap[w.symbol].regularChangePct;
+                    w.extPrice = priceMap[w.symbol].extPrice;
+                    w.extPercent = priceMap[w.symbol].extPercent;
+                    w.marketState = priceMap[w.symbol].marketState;
+                }
+            });
         });
 
         freshData.sectors.forEach(s => { 
             if (priceMap[s.symbol]) { s.change = priceMap[s.symbol].pc > 0 ? ((priceMap[s.symbol].c - priceMap[s.symbol].pc) / priceMap[s.symbol].pc) * 100 : 0; } 
         });
-
         freshData.sectors.sort((a, b) => b.change - a.change);
         
         window.kodaApiData = freshData;
         localStorage.setItem('koda_portfolio_data', JSON.stringify(freshData));
         localStorage.setItem('koda_last_fetch_time', Date.now().toString());
         
-        if (typeof renderHome === 'function') renderHome();
-        if (typeof renderWatchlist === 'function') renderWatchlist();
-        if (typeof renderAllSectors === 'function') renderAllSectors();
+        // 📌 2. จุดแก้บัค: จะสั่งวาดหน้าจอใหม่ ก็ต่อเมื่อแฟ้มปัจจุบันยังคงเป็นแฟ้มเดิมกับตอนเริ่มดึงข้อมูล
+        // เพื่อป้องกันการนำข้อมูลแฟ้ม All ไปวาดทับจังหวะที่เราสลับไปหน้า Test
+        const currentCategoryNow = window.currentActiveCategory || 'All';
+        
+        if (fetchTriggerCategory === currentCategoryNow) {
+            if (typeof renderHome === 'function') renderHome();
+            if (typeof renderWatchlist === 'function') renderWatchlist();
+            if (typeof renderAllSectors === 'function') renderAllSectors();
+        }
     };
+
 
     // 🚀 เรนเดอร์หน้าจอหลัก (เปลี่ยน Top Gainer/Loser ใช้เปอร์เซ็นต์นอกเวลาทำการด้วย)
     const renderHome = () => {
@@ -306,25 +303,59 @@ document.addEventListener('DOMContentLoaded', () => {
     let symbolToDelete = null;
     let watchlistSortMode = 0; // 0 = Default, 1 = Positive, 2 = Negative
 
-    const renderWatchlist = () => {
+        const renderWatchlist = () => {
         const container = document.getElementById('watchlist-container');
         if (!container) return;
-        if(!window.kodaApiData.watchlist || window.kodaApiData.watchlist.length === 0){ 
-            container.innerHTML = `<p class="py-10 text-center text-slate-500">No items in Watchlist.</p>`; 
+        
+        // 📌 กำหนดแฟ้มที่จะแสดงผล (ถ้ายังไม่มีการเลือก ให้โชว์ All เป็นค่าเริ่มต้น)
+        let activeCat = window.currentActiveCategory || 'All';
+        
+        // 📌 ดึงหุ้นจากแฟ้มนั้นมาแสดง
+        let currentList = [];
+        if (window.kodaApiData.watchlists && window.kodaApiData.watchlists[activeCat]) {
+            currentList = window.kodaApiData.watchlists[activeCat];
+        }
+
+        if(currentList.length === 0){ 
+            container.innerHTML = `<p class="py-10 text-center text-slate-500">No items in ${activeCat}.</p>`; 
             return; 
         }
 
-        // 📌 1. โคลนข้อมูลเพื่อนำมาจัดเรียง (เพื่อไม่ให้กระทบ Default Order ของจริงในเครื่อง)
-        let displayList = [...window.kodaApiData.watchlist];
-        
-        // 📌 2. ฟังก์ชันช่วยหา % ปัจจุบัน (ดึง Pre/Post market มาใช้ถ้าตลาดปิด)
-        const getActivePct = (s) => {
-            const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
-            if (s.marketState && s.marketState !== 'REGULAR' && s.extPercent !== null && s.extPercent !== undefined) {
-                return s.extPercent;
-            }
-            return pct;
-        };
+                // ... โค้ดเดิมด้านบน ...
+        // 📌 1. โคลนข้อมูลเพื่อนำมาจัดเรียง
+        let displayList = [...currentList];
+
+        // ==========================================
+        // 🚀 [KODA Scanner] ระบบคัดกรองหุ้นให้ใช้งานได้จริง
+        // ==========================================
+        if (window.activeFilters && window.activeFilters.size > 0) {
+            displayList = displayList.filter(s => {
+                let isPass = true;
+                
+                // 💡 [สำหรับอนาคต]: เปลี่ยนค่า Mock เหล่านี้ให้ดึงจาก s.rsi หรือ s.pe ของจริงที่คุณจะ fetch มา
+                // แต่ตอนนี้เราใช้สมการจำลอง (Hash จากชื่อหุ้น) เพื่อให้หุ้นแต่ละตัวมีค่าคงที่ และทดสอบปุ่มได้ทันที
+                const charCodeSum = s.symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const mockRSI = (charCodeSum * 7) % 100; // จำลองค่า RSI (0-100)
+                const mockDropATH = (charCodeSum * 3) % 60; // จำลอง % ลงจากจุดสูงสุด
+                const mockPE = (charCodeSum * 2) % 50; // จำลองค่า P/E
+                
+                window.activeFilters.forEach(filterId => {
+                    // ถ้าเลือกเงื่อนไขไหน แล้วหุ้นตัวนั้นไม่เข้าเกณฑ์ -> ตัดทิ้ง (isPass = false)
+                    if (filterId === 'rsi_overbought' && mockRSI <= 70) isPass = false;
+                    if (filterId === 'rsi_oversold' && mockRSI >= 35) isPass = false;
+                    if (filterId === 'ath_drop_30' && mockDropATH <= 30) isPass = false;
+                    if (filterId === 'pe_below_15' && mockPE >= 15) isPass = false;
+                    
+                    // สมมติว่า Volume Spike ใช้ % การเปลี่ยนแปลงปัจจุบัน > 3% 
+                    if (filterId === 'vol_spike') {
+                        const pct = s.regularChangePct || 0;
+                        if (Math.abs(pct) < 3) isPass = false; 
+                    }
+                });
+                
+                return isPass;
+            });
+        }
 
         // 📌 3. จัดเรียงตามโหมด
         if (watchlistSortMode === 1) {
@@ -416,6 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     };
+    window.renderWatchlist = renderWatchlist; 
 
     const btnEditWatchlist = document.getElementById('btn-edit-watchlist');
     const btnSortWatchlist = document.getElementById('btn-sort-watchlist');
@@ -488,21 +520,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (btnCancelDel) btnCancelDel.addEventListener('click', closeDeleteModal);
-    if (btnConfirmDel) {
+        if (btnConfirmDel) {
         btnConfirmDel.addEventListener('click', () => {
             if (symbolToDelete) {
                 const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
-                if (savedData.watchlist) {
-                    savedData.watchlist = savedData.watchlist.filter(s => s.symbol !== symbolToDelete);
+                let activeCat = window.currentActiveCategory || 'All';
+                
+                if (savedData.watchlists && savedData.watchlists[activeCat]) {
+                    // 📌 ลบออกจากแฟ้มปัจจุบัน
+                    savedData.watchlists[activeCat] = savedData.watchlists[activeCat].filter(s => s.symbol !== symbolToDelete);
                     localStorage.setItem('koda_portfolio_data', JSON.stringify(savedData));
-                    window.kodaApiData.watchlist = savedData.watchlist;
+                    window.kodaApiData = savedData; // อัปเดตตัวแปร Global
                     renderWatchlist(); 
                 }
             }
             closeDeleteModal();
         });
     }
-           
+
 
     const mSectors = document.getElementById('modal-sectors');
     const mContent = document.getElementById('modal-sectors-content');
@@ -676,31 +711,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // 1. เพิ่มฟังก์ชันจัดการ Flow เข้าไป
-    const bootKodaApp = async () => {
-        // [A] แสดงผลด้วยข้อมูลเก่าจาก Cache ทันที (เลขจะไม่เด้งไป 108,000)
-        renderHome(); 
-        renderWatchlist(); 
-        renderAllSectors();
+    renderHome(); renderWatchlist(); renderAllSectors();
+    fetchMarketNews(); fetchRealPrices(); 
 
-        // [B] ดึงเรทเงินบาทล่าสุดมาทับ (ถ้าได้ใหม่เลขจะขยับนิดเดียว)
-        await fetchGlobalTHBRate(); 
-        
-        // [C] ดึงราคาหุ้นจริงมาทับ
-        fetchRealPrices(); 
-        fetchMarketNews(); 
-        
-        // [D] ตั้งเวลาอัปเดตต่อเนื่อง (Loop)
-        setInterval(async () => {
-            await fetchGlobalTHBRate();
-            fetchRealPrices();
-        }, 5000); 
-        
-        setInterval(fetchMarketNews, 300000); 
-    };
-
-    // 2. ลบบรรทัด renderHome(); fetchRealPrices(); ฯลฯ ของเก่าทิ้ง 
-    // แล้วใส่บรรทัดนี้เพื่อเริ่มทำงานแทน:
-    bootKodaApp();
-
-}); // ปิดท้าย DOMContentLoaded
+    // 🚀 เปลี่ยนเป็นอัปเดตทุก 5 วินาที
+    setInterval(fetchRealPrices, 5000); 
+    setInterval(fetchMarketNews, 300000); 
+});
