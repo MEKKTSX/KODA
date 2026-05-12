@@ -631,21 +631,43 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await loadLightweightCharts();
                 
-                const candleCacheKey = `koda_sr_candles_v6_${symbol}_${currentTimeframe}`;
+                // 📌 เปลี่ยนชื่อ Cache ใหม่เป็น v7 เพื่อบังคับล้างข้อมูลเก่าที่เคยพังทิ้งให้หมด
+                const candleCacheKey = `koda_sr_candles_v7_${symbol}_${currentTimeframe}`;
                 const cachedCandles = JSON.parse(localStorage.getItem(candleCacheKey));
                 const now = Date.now();
                 let candles;
 
-                if (cachedCandles && (now - cachedCandles.timestamp < 24 * 60 * 60 * 1000)) {
+                if (cachedCandles && (now - cachedCandles.timestamp < 24 * 60 * 60 * 1000) && cachedCandles.data.length >= 14) {
                     candles = cachedCandles.data;
                 } else {
                     let candleResult = await fetchCandleData(currentTimeframe);
-                    if (!candleResult) { 
+                    if (!candleResult || !candleResult.timestamps || candleResult.timestamps.length < 14) { 
                         kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold">ไม่สามารถดึงข้อมูลกราฟได้ในขณะนี้</p></div>`; 
                         return; 
                     }
-                    candles = candleResult.timestamps.map((t, i) => ({ time: t, open: Number(candleResult.opens[i]), high: Number(candleResult.highs[i]), low: Number(candleResult.lows[i]), close: Number(candleResult.closes[i]), volume: Number(candleResult.volumes[i] || 0) }))
-                        .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0)).sort((a, b) => a.time - b.time);
+                    
+                    let rawCandles = candleResult.timestamps.map((t, i) => ({ 
+                        time: t, 
+                        open: Number(candleResult.opens[i]), 
+                        high: Number(candleResult.highs[i]), 
+                        low: Number(candleResult.lows[i]), 
+                        close: Number(candleResult.closes[i]), 
+                        volume: Number(candleResult.volumes[i] || 0) 
+                    })).filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0)).sort((a, b) => a.time - b.time);
+
+                    // 🚀 กรองข้อมูลวันที่ซ้ำกันออก (เลือกเฉพาะแท่งล่าสุดของวันนั้นๆ) ป้องกันกราฟแครช
+                    candles = [];
+                    for (let i = 0; i < rawCandles.length; i++) {
+                        const currentDay = Math.floor(rawCandles[i].time / 86400);
+                        const nextDay = i < rawCandles.length - 1 ? Math.floor(rawCandles[i+1].time / 86400) : null;
+                        if (currentDay !== nextDay) candles.push(rawCandles[i]);
+                    }
+
+                    if (candles.length < 14) {
+                        kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold">ข้อมูลประวัติมีน้อยเกินไป</p></div>`; 
+                        return; 
+                    }
+
                     localStorage.setItem(candleCacheKey, JSON.stringify({ timestamp: now, data: candles }));
                 }
 
@@ -1037,16 +1059,24 @@ document.addEventListener('DOMContentLoaded', () => {
             let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
             
-            if (!candleResult) { 
+            if (!candleResult || !candleResult.timestamps || candleResult.timestamps.length < 20) { 
                 container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้</p></div>`;
                 return;
             }
 
             const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
             
-            let chartData = timestamps.map((t, i) => ({ 
+            let rawChartData = timestamps.map((t, i) => ({ 
                 time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), value: Number(volumes[i] || 0) 
             })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
+
+            // 🚀 กรองข้อมูลวันที่ซ้ำกันออก
+            let chartData = [];
+            for (let i = 0; i < rawChartData.length; i++) {
+                const currentDay = Math.floor(rawChartData[i].time / 86400);
+                const nextDay = i < rawChartData.length - 1 ? Math.floor(rawChartData[i+1].time / 86400) : null;
+                if (currentDay !== nextDay) chartData.push(rawChartData[i]);
+            }
 
             container.innerHTML = '';
             if (taChartInstance) taChartInstance.remove();
