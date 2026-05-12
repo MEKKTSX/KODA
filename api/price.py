@@ -40,6 +40,10 @@ class handler(BaseHTTPRequestHandler):
                     response = self.get_financials(ticker, symbol)
                 elif mode == 'analysis':
                     response = self.get_analysis(ticker, symbol)
+                elif mode == 'chart':  # 📌 เพิ่ม 3 บรรทัดนี้เข้าไป
+                    range_val = query.get('range', ['1y'])[0].strip()
+                    interval_val = query.get('interval', ['1d'])[0].strip()
+                    response = self.get_chart(ticker, symbol, range_val, interval_val)
                 else:
                     response = self.get_price(ticker, symbol)
 
@@ -251,3 +255,32 @@ class handler(BaseHTTPRequestHandler):
         elif 9.5 <= time_val < 16: return 'REGULAR'
         elif 16 <= time_val < 20: return 'POST'
         return 'CLOSED'
+        
+        # ==========================================
+    # 📌 ฟังก์ชันโหลดข้อมูลกราฟ (KODA S/R & TA)
+    # ==========================================
+    def get_chart(self, ticker, symbol, range_val, interval_val):
+        try:
+            hist = ticker.history(period=range_val, interval=interval_val)
+            if hist.empty:
+                return {"success": False, "error": "No data"}
+            
+            timestamps = [int(ts.timestamp()) for ts in hist.index]
+            opens = [clean_val(v) for v in hist['Open']]
+            highs = [clean_val(v) for v in hist['High']]
+            lows = [clean_val(v) for v in hist['Low']]
+            closes = [clean_val(v) for v in hist['Close']]
+            volumes = [clean_val(v) for v in hist['Volume']]
+            
+            return {
+                "success": True,
+                "symbol": symbol,
+                "timestamps": timestamps,
+                "opens": opens,
+                "highs": highs,
+                "lows": lows,
+                "closes": closes,
+                "volumes": volumes
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}        
