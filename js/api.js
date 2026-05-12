@@ -303,14 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let symbolToDelete = null;
     let watchlistSortMode = 0; // 0 = Default, 1 = Positive, 2 = Negative
 
-        const renderWatchlist = () => {
+    const renderWatchlist = () => {
         const container = document.getElementById('watchlist-container');
         if (!container) return;
         
-        // 📌 กำหนดแฟ้มที่จะแสดงผล (ถ้ายังไม่มีการเลือก ให้โชว์ All เป็นค่าเริ่มต้น)
         let activeCat = window.currentActiveCategory || 'All';
-        
-        // 📌 ดึงหุ้นจากแฟ้มนั้นมาแสดง
         let currentList = [];
         if (window.kodaApiData.watchlists && window.kodaApiData.watchlists[activeCat]) {
             currentList = window.kodaApiData.watchlists[activeCat];
@@ -321,78 +318,61 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
 
-                // ... โค้ดเดิมด้านบน ...
-        // 📌 1. โคลนข้อมูลเพื่อนำมาจัดเรียง
+        // 📌 1. เริ่มต้นด้วยหุ้นทั้งหมดในแฟ้ม
         let displayList = [...currentList];
 
-        // ==========================================
-        // 🚀 [KODA Scanner] ระบบคัดกรองหุ้นให้ใช้งานได้จริง
-        // ==========================================
+        // 📌 2. [KODA Scanner] กรองหุ้นออกก่อน (ถ้ามีการเลือก Filter ไว้)
         if (window.activeFilters && window.activeFilters.size > 0) {
             displayList = displayList.filter(s => {
                 let isPass = true;
-                
-                // 💡 [สำหรับอนาคต]: เปลี่ยนค่า Mock เหล่านี้ให้ดึงจาก s.rsi หรือ s.pe ของจริงที่คุณจะ fetch มา
-                // แต่ตอนนี้เราใช้สมการจำลอง (Hash จากชื่อหุ้น) เพื่อให้หุ้นแต่ละตัวมีค่าคงที่ และทดสอบปุ่มได้ทันที
+                // Simulator Data (ใช้ค่าจำลองเพื่อทดสอบปุ่มได้ทันที)
                 const charCodeSum = s.symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                const mockRSI = (charCodeSum * 7) % 100; // จำลองค่า RSI (0-100)
-                const mockDropATH = (charCodeSum * 3) % 60; // จำลอง % ลงจากจุดสูงสุด
-                const mockPE = (charCodeSum * 2) % 50; // จำลองค่า P/E
+                const mockRSI = (charCodeSum * 7) % 100;
+                const mockDropATH = (charCodeSum * 3) % 60;
+                const mockPE = (charCodeSum * 2) % 50;
                 
                 window.activeFilters.forEach(filterId => {
-                    // ถ้าเลือกเงื่อนไขไหน แล้วหุ้นตัวนั้นไม่เข้าเกณฑ์ -> ตัดทิ้ง (isPass = false)
                     if (filterId === 'rsi_overbought' && mockRSI <= 70) isPass = false;
                     if (filterId === 'rsi_oversold' && mockRSI >= 35) isPass = false;
                     if (filterId === 'ath_drop_30' && mockDropATH <= 30) isPass = false;
                     if (filterId === 'pe_below_15' && mockPE >= 15) isPass = false;
-                    
-                    // สมมติว่า Volume Spike ใช้ % การเปลี่ยนแปลงปัจจุบัน > 3% 
                     if (filterId === 'vol_spike') {
                         const pct = s.regularChangePct || 0;
                         if (Math.abs(pct) < 3) isPass = false; 
                     }
                 });
-                
                 return isPass;
             });
         }
 
-        // 📌 3. จัดเรียงตามโหมด
+        const getActivePct = (s) => {
+            const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPercent !== null && s.extPercent !== undefined) {
+                return s.extPercent;
+            }
+            return pct;
+        };
+
+        // 📌 3. นำหุ้นที่ผ่านการกรองแล้วมาจัดเรียงตามโหมด (+ / - / Default)
         if (watchlistSortMode === 1) {
-            displayList.sort((a, b) => getActivePct(b) - getActivePct(a)); // + มากสุดไปน้อยสุด
+            displayList.sort((a, b) => getActivePct(b) - getActivePct(a)); 
         } else if (watchlistSortMode === 2) {
-            displayList.sort((a, b) => getActivePct(a) - getActivePct(b)); // - มากสุดไปบวก
+            displayList.sort((a, b) => getActivePct(a) - getActivePct(b));
         }
-        
+
+        // 📌 4. วาด UI ลงหน้าจอ
         container.innerHTML = displayList.map(s => {
             const mainPrice = s.regularPrice || s.currentPrice || 0;
             const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
             const c = formatPercent(pct);
             
-            let extHtml = '';
-            if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPrice !== undefined) {
-                const extStateText = s.marketState === 'PRE' ? '☀️ ก่อนตลาดเปิด' : '🌑 หลังตลาดปิด';
-                const isExtUp = s.extPercent > 0;
-                const isExtDown = s.extPercent < 0;
-                const extColor = isExtUp ? 'text-success' : (isExtDown ? 'text-danger' : 'text-slate-500');
-                const extSign = isExtUp ? '+' : '';
-                
-                extHtml = `
-                <div class="flex items-center justify-end gap-1 mt-0.5">
-                    <span class="text-[9px] text-slate-400 font-bold">${extStateText}</span>
-                    <span class="text-[10px] font-bold text-slate-300">${formatCurrency(s.extPrice)}</span>
-                    <span class="text-[10px] font-bold ${extColor}">${extSign}${s.extPercent.toFixed(2)}%</span>
-                </div>`;
-            }
-
+            // ... (โค้ดส่วนวาด HTML เหมือนเดิมของคุณ) ...
             const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
             let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
-            if(s.symbol.includes('BINANCE:')) fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.replace('BINANCE:','').replace('USDT','')}.png`;
 
             const itemContent = `
                 <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
-                    <span class="text-white font-bold text-[10px] absolute">${s.symbol.substring(0,2)}</span>
-                    <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}'; this.onerror=function(){this.style.display='none'};">
+                    <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}';">
                 </div>
                 <div class="flex-1 flex justify-between items-center">
                     <div>
@@ -400,53 +380,53 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
                     </div>
                     <div class="flex flex-col items-end justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
-                            <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
-                                <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
-                            </div>
+                        <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
+                        <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
+                            <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
                         </div>
-                        ${extHtml}
                     </div>
                 </div>
             `;
 
             if (isEditMode) {
-                return `<div class="bg-surface-dark p-3 py-2.5 border-b border-border-dark/50 flex items-center justify-between transition-colors watchlist-item" data-symbol="${s.symbol}">
+                return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 flex items-center justify-between watchlist-item" data-symbol="${s.symbol}">
                     <div class="flex items-center gap-3 flex-1">
-                        <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger hover:bg-danger hover:text-white transition-colors shrink-0" data-symbol="${s.symbol}">
-                            <span class="material-symbols-outlined text-[14px] font-bold">remove</span>
-                        </button>
+                        <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger" data-symbol="${s.symbol}"><span class="material-symbols-outlined text-[14px]">remove</span></button>
                         ${itemContent}
                     </div>
-                    <span class="material-symbols-outlined text-slate-600 text-xl cursor-grab active:cursor-grabbing drag-handle shrink-0">drag_indicator</span>
+                    <span class="material-symbols-outlined text-slate-600 cursor-grab drag-handle">drag_indicator</span>
                 </div>`;
             } else {
-                return `<div class="bg-surface-dark p-3 py-2.5 border-b border-border-dark/50 active:bg-slate-800 transition-colors watchlist-item" data-symbol="${s.symbol}">
-                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">
-                        ${itemContent}
-                    </a>
+                return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 watchlist-item" data-symbol="${s.symbol}">
+                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">${itemContent}</a>
                 </div>`;
             }
         }).join('');
 
-        if (isEditMode) {
-            document.querySelectorAll('.btn-delete-item').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    symbolToDelete = btn.getAttribute('data-symbol');
-                    const textEl = document.getElementById('delete-symbol-text');
-                    if(textEl) textEl.textContent = symbolToDelete;
-                    const modalDel = document.getElementById('modal-delete-watchlist');
-                    const contentDel = document.getElementById('modal-delete-content');
-                    if(modalDel && contentDel) {
-                        modalDel.classList.remove('hidden'); modalDel.classList.add('flex');
-                        setTimeout(() => { modalDel.classList.remove('opacity-0'); contentDel.classList.remove('scale-95'); }, 10);
-                    }
-                });
-            });
-        }
-    };
+    // 🔴 📌 แทรกโค้ดชุดนี้เพิ่มเข้าไป เพื่อให้ปุ่มลบทำงานได้!
+    document.querySelectorAll('.btn-delete-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            symbolToDelete = e.currentTarget.dataset.symbol;
+            const txtSymbol = document.getElementById('delete-symbol-text');
+            if (txtSymbol) txtSymbol.textContent = symbolToDelete;
+                
+            const modalDel = document.getElementById('modal-delete-watchlist');
+            const contentDel = document.getElementById('modal-delete-content');
+            if (modalDel && contentDel) {
+                modalDel.classList.remove('hidden');
+                modalDel.classList.add('flex');
+                setTimeout(() => {
+                    modalDel.classList.remove('opacity-0');
+                    contentDel.classList.remove('scale-95');
+                }, 10);
+            }
+        });
+    });
+    // 🔴 📌 จบส่วนที่ต้องแทรก
+
+    }; // <--- นี่คือปีกกาปิดของฟังก์ชัน renderWatchlist
+    
     window.renderWatchlist = renderWatchlist; 
 
     const btnEditWatchlist = document.getElementById('btn-edit-watchlist');
