@@ -366,7 +366,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
             const c = formatPercent(pct);
             
-            // ... (โค้ดส่วนวาด HTML เหมือนเดิมของคุณ) ...
+            // 🚀 📌 ลอจิกแสดงผลราคานอกเวลาทำการ (Pre/Post Market)
+            let extHtml = '';
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPercent !== null && s.extPercent !== undefined) {
+                const isExtPos = s.extPercent >= 0;
+                const extColor = isExtPos ? 'text-success' : 'text-danger';
+                const extSign = isExtPos ? '+' : '';
+                const stateIcon = s.marketState === 'PRE' ? '☀️' : '🌙'; 
+                
+                extHtml = `
+                    <div class="flex items-center gap-1 mt-0.5 justify-end">
+                        <span class="text-[9px] text-slate-400">${stateIcon} ${formatCurrency(s.extPrice)}</span>
+                        <span class="text-[9px] font-bold ${extColor}">(${extSign}${s.extPercent.toFixed(2)}%)</span>
+                    </div>
+                `;
+            }
+
             const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
             let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
 
@@ -380,11 +395,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
                     </div>
                     <div class="flex flex-col items-end justify-center">
-                        <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
-                        <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
-                            <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
+                        <div class="flex flex-row items-center gap-1.5">
+                            <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
+                            <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
+                                <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
+                            </div>
                         </div>
-                    </div>
+                        ${extHtml} </div>
                 </div>
             `;
 
