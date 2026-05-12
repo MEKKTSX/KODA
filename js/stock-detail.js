@@ -472,91 +472,82 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     const fetchCandleData = async (tfRange) => {
-    const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
-    const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
-    const daysMap = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '5Y': 1825 };
-    const fhResMap = { '1M': 'D', '3M': 'D', '6M': 'D', '1Y': 'D', '2Y': 'D', '5Y': 'W' };
+        const rangeMap = { '1M': '1mo', '3M': '3mo', '6M': '6mo', '1Y': '1y', '2Y': '2y', '5Y': '5y' }; 
+        const intervalMap = { '1M': '1d', '3M': '1d', '6M': '1d', '1Y': '1d', '2Y': '1d', '5Y': '1wk' };
+        const daysMap = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '5Y': 1825 };
+        const fhResMap = { '1M': 'D', '3M': 'D', '6M': 'D', '1Y': 'D', '2Y': 'D', '5Y': 'W' };
 
-    let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-    
-    // 🚀 ก๊อกที่ 1: คริปโต (Binance) - ฟรีและดีที่สุด
-    if (isCrypto) {
-        try {
-            let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
-            let limit = daysMap[tfRange] || 365;
-            let interval = tfRange === '5Y' ? '1w' : '1d';
-            const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=${limit}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (data && data.length > 0) {
-                    return {
-                        timestamps: data.map(k => k[0] / 1000),
-                        opens: data.map(k => parseFloat(k[1])),
-                        highs: data.map(k => parseFloat(k[2])),
-                        lows: data.map(k => parseFloat(k[3])),
-                        closes: data.map(k => parseFloat(k[4])),
-                        volumes: data.map(k => parseFloat(k[5]))
-                    };
-                }
-            }
-        } catch(e) {}
-    }
-
-    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป (ยิง Yahoo Finance ผ่านท่อ Vercel Proxy ของเราเอง)
-    const yfRange = rangeMap[tfRange] || '1y';
-    const yfInterval = intervalMap[tfRange] || '1d';
-    let yfSym = symbol;
-    if (symbol === 'XAUUSD') yfSym = 'GC=F';
-    else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
-
-    if (!isThaiStock && !isCrypto) {
-        try {
-            // ยิงเข้าหา Vercel Backend ตัวเอง (ไม่ต้องพึ่งเว็บ Proxy นอกแล้ว)
-            const proxyUrl = `/api/yf-chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // รอสูงสุด 5 วิ
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
-            if (res.ok) {
-                const yfData = await res.json();
-                
-                if (yfData?.chart?.result?.[0]) {
-                    const q = yfData.chart.result[0].indicators.quote[0];
-                    const tRaw = yfData.chart.result[0].timestamp;
-                    const timestamps = [], opens = [], highs = [], lows = [], closes = [], volumes = [];
-                    for(let i=0; i<tRaw.length; i++) {
-                        if(q.close[i] !== null && q.open[i] !== null && q.high[i] !== null && q.low[i] !== null) {
-                            timestamps.push(tRaw[i]); opens.push(q.open[i]); highs.push(q.high[i]);
-                            lows.push(q.low[i]); closes.push(q.close[i]); volumes.push(q.volume[i] || 0);
-                        }
+        let cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+        
+        // ก๊อก 1: คริปโต (Binance)
+        if (isCrypto) {
+            try {
+                let coin = cleanSym.replace('USDT', '').replace('USD', '') + 'USDT';
+                let limit = daysMap[tfRange] || 365;
+                let interval = tfRange === '5Y' ? '1w' : '1d';
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=${limit}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        return {
+                            timestamps: data.map(k => k[0] / 1000),
+                            opens: data.map(k => parseFloat(k[1])),
+                            highs: data.map(k => parseFloat(k[2])),
+                            lows: data.map(k => parseFloat(k[3])),
+                            closes: data.map(k => parseFloat(k[4])),
+                            volumes: data.map(k => parseFloat(k[5]))
+                        };
                     }
-                    if (closes.length > 0) return { timestamps, opens, highs, lows, closes, volumes };
                 }
-            }
-        } catch(err) { 
-            console.warn('Vercel Yahoo Proxy failed:', err); 
+            } catch(e) {}
         }
-    }
 
-    // 🚀 ก๊อกที่ 3: Fallback Finnhub (กันเหนียวสุดๆ)
-    if (!isThaiStock && !isCrypto) {
-        try {
-            const to = Math.floor(Date.now() / 1000);
-            const from = to - (daysMap[tfRange] * 24 * 60 * 60);
-            const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=${fhResMap[tfRange]}&from=${from}&to=${to}&token=${getFHKey()}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (data && data.s === 'ok' && data.c && data.c.length > 0) {
-                    return { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
+        // 🚀 ก๊อก 2: หุ้นทั่วไป (วิ่งไปหา api/price.py ของเราเอง ตรงๆ ไม่ซับซ้อน)
+        if (!isCrypto) {
+            try {
+                const yfRange = rangeMap[tfRange] || '1y';
+                const yfInterval = intervalMap[tfRange] || '1d';
+                let yfSym = symbol;
+                if (symbol === 'XAUUSD') yfSym = 'GC=F';
+                else if (symbol.includes('.HK')) yfSym = symbol.split('.')[0].padStart(4, '0') + '.HK';
+
+                // ชี้ไปที่ price.py โหมด chart
+                const proxyUrl = `/api/price?symbol=${encodeURIComponent(yfSym)}&mode=chart&range=${yfRange}&interval=${yfInterval}`;
+                
+                const res = await fetch(proxyUrl);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.timestamps && data.timestamps.length > 0) {
+                        return { 
+                            timestamps: data.timestamps, 
+                            opens: data.opens, 
+                            highs: data.highs, 
+                            lows: data.lows, 
+                            closes: data.closes, 
+                            volumes: data.volumes 
+                        };
+                    }
                 }
-            }
-        } catch(e) {}
-    }
+            } catch(err) {}
+        }
 
-    return null;
-};
+        // ก๊อก 3: สำรอง Finnhub (กันเหนียว)
+        if (!isThaiStock && !isCrypto) {
+            try {
+                const to = Math.floor(Date.now() / 1000);
+                const from = to - (daysMap[tfRange] * 24 * 60 * 60);
+                const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${cleanSym}&resolution=${fhResMap[tfRange]}&from=${from}&to=${to}&token=${getFHKey()}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.s === 'ok' && data.c && data.c.length > 0) {
+                        return { timestamps: data.t, opens: data.o, highs: data.h, lows: data.l, closes: data.c, volumes: data.v };
+                    }
+                }
+            } catch(e) {}
+        }
+
+        return null;
+    };
     
     // ==========================================
     // 📌 TAB 1: กราฟ KODA S/R + Profit Matrix
@@ -631,43 +622,21 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await loadLightweightCharts();
                 
-                // 📌 เปลี่ยนชื่อ Cache ใหม่เป็น v7 เพื่อบังคับล้างข้อมูลเก่าที่เคยพังทิ้งให้หมด
-                const candleCacheKey = `koda_sr_candles_v7_${symbol}_${currentTimeframe}`;
+                const candleCacheKey = `koda_sr_candles_v6_${symbol}_${currentTimeframe}`;
                 const cachedCandles = JSON.parse(localStorage.getItem(candleCacheKey));
                 const now = Date.now();
                 let candles;
 
-                if (cachedCandles && (now - cachedCandles.timestamp < 24 * 60 * 60 * 1000) && cachedCandles.data.length >= 14) {
+                if (cachedCandles && (now - cachedCandles.timestamp < 24 * 60 * 60 * 1000)) {
                     candles = cachedCandles.data;
                 } else {
                     let candleResult = await fetchCandleData(currentTimeframe);
-                    if (!candleResult || !candleResult.timestamps || candleResult.timestamps.length < 14) { 
+                    if (!candleResult) { 
                         kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold">ไม่สามารถดึงข้อมูลกราฟได้ในขณะนี้</p></div>`; 
                         return; 
                     }
-                    
-                    let rawCandles = candleResult.timestamps.map((t, i) => ({ 
-                        time: t, 
-                        open: Number(candleResult.opens[i]), 
-                        high: Number(candleResult.highs[i]), 
-                        low: Number(candleResult.lows[i]), 
-                        close: Number(candleResult.closes[i]), 
-                        volume: Number(candleResult.volumes[i] || 0) 
-                    })).filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0)).sort((a, b) => a.time - b.time);
-
-                    // 🚀 กรองข้อมูลวันที่ซ้ำกันออก (เลือกเฉพาะแท่งล่าสุดของวันนั้นๆ) ป้องกันกราฟแครช
-                    candles = [];
-                    for (let i = 0; i < rawCandles.length; i++) {
-                        const currentDay = Math.floor(rawCandles[i].time / 86400);
-                        const nextDay = i < rawCandles.length - 1 ? Math.floor(rawCandles[i+1].time / 86400) : null;
-                        if (currentDay !== nextDay) candles.push(rawCandles[i]);
-                    }
-
-                    if (candles.length < 14) {
-                        kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold">ข้อมูลประวัติมีน้อยเกินไป</p></div>`; 
-                        return; 
-                    }
-
+                    candles = candleResult.timestamps.map((t, i) => ({ time: t, open: Number(candleResult.opens[i]), high: Number(candleResult.highs[i]), low: Number(candleResult.lows[i]), close: Number(candleResult.closes[i]), volume: Number(candleResult.volumes[i] || 0) }))
+                        .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0)).sort((a, b) => a.time - b.time);
                     localStorage.setItem(candleCacheKey, JSON.stringify({ timestamp: now, data: candles }));
                 }
 
@@ -1059,24 +1028,16 @@ document.addEventListener('DOMContentLoaded', () => {
             let rangeToFetch = currentTATF === 'daily' ? '2Y' : '5Y';
             const candleResult = await fetchCandleData(rangeToFetch);
             
-            if (!candleResult || !candleResult.timestamps || candleResult.timestamps.length < 20) { 
+            if (!candleResult) { 
                 container.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold text-center">ไม่สามารถโหลดข้อมูลเทคนิคได้</p></div>`;
                 return;
             }
 
             const { timestamps, opens, highs, lows, closes, volumes } = candleResult;
             
-            let rawChartData = timestamps.map((t, i) => ({ 
+            let chartData = timestamps.map((t, i) => ({ 
                 time: t, open: Number(opens[i]), high: Number(highs[i]), low: Number(lows[i]), close: Number(closes[i]), value: Number(volumes[i] || 0) 
             })).filter(c => isFinite(c.close)).sort((a, b) => a.time - b.time);
-
-            // 🚀 กรองข้อมูลวันที่ซ้ำกันออก
-            let chartData = [];
-            for (let i = 0; i < rawChartData.length; i++) {
-                const currentDay = Math.floor(rawChartData[i].time / 86400);
-                const nextDay = i < rawChartData.length - 1 ? Math.floor(rawChartData[i+1].time / 86400) : null;
-                if (currentDay !== nextDay) chartData.push(rawChartData[i]);
-            }
 
             container.innerHTML = '';
             if (taChartInstance) taChartInstance.remove();
