@@ -31,6 +31,31 @@
         }
     </script>
     <style>
+            /* 📌 ระบบกรอบสีทองวิ่งวน (Animated Conic Gradient) */
+        @keyframes border-spin {
+            100% { transform: rotate(360deg); }
+        }
+        .golden-border-wrapper {
+            position: relative;
+            overflow: hidden;
+            border-radius: 0.375rem; /* rounded-md */
+            padding: 1.5px; /* ความหนาของกรอบ */
+            display: inline-block;
+        }
+        .golden-border-wrapper::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%; width: 200%; height: 200%;
+            background: conic-gradient(transparent, transparent, transparent, #fbbf24);
+            animation: border-spin 2s linear infinite;
+        }
+        .golden-border-content {
+            position: relative;
+            background: #161c2b; /* สีพื้นหลังกล่อง (surface-dark) */
+            border-radius: 0.25rem;
+            z-index: 1;
+        }
+
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
         ::-webkit-scrollbar { display: none; }
@@ -57,98 +82,115 @@
         </div>
     </header>
 
-    <div class="px-4 pt-2 bg-background-dark sticky top-[68px] z-10">
-        <nav class="flex border-b border-border-dark gap-6">
-            <a id="nav-watchlist" class="flex flex-col items-center justify-center border-b-2 border-primary text-primary pb-3 pt-2 transition-colors cursor-pointer" href="#">
-                <p class="text-sm font-bold">Watchlist</p>
-            </a>
-            <a id="nav-anomaly" class="flex flex-col items-center justify-center border-b-2 border-transparent text-slate-500 hover:text-slate-300 pb-3 pt-2 transition-colors cursor-pointer" href="#">
-                <p class="text-sm font-bold">Anomaly Alerts</p>
-            </a>
-            <a id="nav-catalysts" class="flex flex-col items-center justify-center border-b-2 border-transparent text-slate-500 hover:text-slate-300 pb-3 pt-2 transition-colors cursor-pointer" href="#">
-                <p class="text-sm font-bold">Catalysts</p>
-            </a>
-        </nav>
+    <div class="px-4 pt-4 pb-3 bg-background-dark sticky top-[68px] z-10 border-b border-border-dark/50 shadow-sm">
+        <div class="flex bg-surface-dark rounded-lg p-1 border border-border-dark shadow-inner">
+            <button id="tab-btn-watchlists" class="tab-main-btn active flex-1 text-xs font-bold py-2.5 rounded-md bg-primary text-white transition-all shadow-md" data-target="section-watchlists">Watchlists</button>
+            <button id="tab-btn-earnings" class="tab-main-btn flex-1 text-xs font-bold py-2.5 rounded-md text-slate-400 hover:text-white transition-all bg-transparent" data-target="section-earnings">Earnings</button>
+            <button id="tab-btn-overview" class="tab-main-btn flex-1 text-xs font-bold py-2.5 rounded-md text-slate-400 hover:text-white transition-all bg-transparent" data-target="section-overview">Market Overview</button>
+        </div>
     </div>
 
-    <main class="flex-1 overflow-y-auto pb-28">
+    <main class="flex-1 overflow-y-auto pb-28 relative">
         
-        <section id="section-sentiment" class="px-4 pt-6">
-            <div class="bg-gradient-to-br from-surface-dark to-background-dark border border-border-dark rounded-2xl p-5 shadow-lg relative overflow-hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-white text-base font-bold flex items-center gap-2">
-                        <span class="material-symbols-outlined text-primary">speed</span> Market Sentiment
-                    </h3>
-                    <span class="text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-300 transition-colors" id="fng-status">LOADING...</span>
-                </div>
-                <div class="relative h-3 rounded-full overflow-hidden flex bg-slate-800 border border-border-dark">
-                    <div class="h-full bg-danger w-1/4"></div>
-                    <div class="h-full bg-orange-500 w-1/4"></div>
-                    <div class="h-full bg-yellow-500 w-1/4"></div>
-                    <div class="h-full bg-success w-1/4"></div>
-                    <div id="fng-pin" class="absolute top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all duration-1000 ease-out" style="left: 0%;"></div>
-                </div>
-                <div class="flex justify-between mt-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                    <span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span>
-                </div>
-                <div class="mt-3 text-center">
-                    <span class="text-4xl font-black text-white" id="fng-value">--</span><span class="text-slate-400 text-xs ml-1 font-medium">/ 100</span>
-                </div>
-            </div>
-        </section>
-
-        <section id="section-heatmap" class="px-4 pt-6">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-white text-sm font-bold flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-primary text-[16px]">grid_view</span> Market Heatmap (S&P 500)
-                </h3>
-            </div>
-            <div class="bg-surface-dark border border-border-dark rounded-xl overflow-hidden shadow-sm relative w-full h-[400px]">
-                <div id="tv-heatmap-container" class="absolute inset-0"></div>
-            </div>
-        </section>
-
-        <section id="section-watchlist" class="px-4 pt-8">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-1">
-                    <h3 class="text-slate-100 text-lg font-bold">My Watchlist</h3>
-                    <button id="btn-sort-watchlist" class="text-slate-500 hover:text-white p-1 rounded transition-colors flex items-center justify-center h-6 w-6">
-                        <span class="material-symbols-outlined text-[20px]" id="icon-sort-watchlist">sort</span>
-                    </button>
-                </div>
-                <button id="btn-edit-watchlist" class="text-xs font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors">Edit</button>
-            </div>
-            <div class="space-y-1" id="watchlist-container"></div>
-        </section>
-
-        <section id="section-anomaly" class="px-4 pt-8">
+        <section id="section-watchlists" class="tab-main-content block px-4 pt-4">
+            
             <div class="flex items-center gap-2 mb-4">
-                <span class="material-symbols-outlined text-primary text-xl animate-pulse">bolt</span>
-                <h3 class="text-slate-100 text-lg font-bold">Anomaly Alerts</h3>
+                <div class="flex-1 flex overflow-x-auto no-scrollbar gap-2" id="watchlist-categories">
+                    </div>
+                <button id="btn-manage-categories" class="size-8 shrink-0 bg-surface-dark border border-border-dark text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-colors shadow-sm">
+                    <span class="material-symbols-outlined text-[16px]">tune</span>
+                </button>
             </div>
-            <div class="space-y-3" id="anomaly-container">
-                <div class="bg-surface-dark border-l-2 border-slate-600 p-4 rounded-r-lg opacity-50">
-                    <div class="h-4 bg-border-dark rounded w-full mb-2"></div>
-                    <div class="h-4 bg-border-dark rounded w-2/3"></div>
+
+            <div class="bg-surface-dark/50 border border-border-dark rounded-2xl p-2 shadow-lg mb-4">
+                 <div class="flex items-center justify-between mb-2 px-2 pt-2">
+                    <div class="flex items-center gap-1">
+                        <h3 class="text-slate-100 text-sm font-bold" id="current-category-title">All</h3>
+                        <button id="btn-sort-watchlist" class="text-slate-500 hover:text-white p-1 rounded transition-colors flex items-center justify-center h-6 w-6">
+                            <span class="material-symbols-outlined text-[16px]" id="icon-sort-watchlist">sort</span>
+                        </button>
+                        
+                        <button id="btn-filter-scanner" class="golden-border-wrapper ml-1 transition-transform active:scale-95">
+                            <div class="golden-border-content px-2 py-0.5 flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[#fbbf24] text-[14px]">filter_alt</span>
+                                <span class="text-[#fbbf24] text-[10px] font-bold">พื้นฐาน</span>
+                            </div>
+                        </button>
+
+                    </div>
+                    <button id="btn-edit-watchlist" class="text-[10px] font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors">Edit</button>
                 </div>
+                <div class="space-y-1 max-h-[60vh] overflow-y-auto no-scrollbar" id="watchlist-container"></div>
             </div>
         </section>
+        
+        <section id="section-earnings" class="tab-main-content hidden pb-8 px-2 pt-4">
+            <div class="flex items-center justify-between bg-surface-dark border border-border-dark rounded-xl p-2 mb-4 shadow-sm">
+                <button id="btn-prev-week" class="p-2 text-slate-400 hover:text-white transition-colors active:scale-95"><span class="material-symbols-outlined text-xl">chevron_left</span></button>
+                <span id="earnings-week-display" class="text-white font-bold text-[13px] tracking-wide">LOADING...</span>
+                <button id="btn-next-week" class="p-2 text-slate-400 hover:text-white transition-colors active:scale-95"><span class="material-symbols-outlined text-xl">chevron_right</span></button>
+            </div>
 
-        <section id="section-catalysts" class="px-4 pt-8 pb-4">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-2">
-                    <span class="material-symbols-outlined text-primary text-xl">calendar_month</span>
-                    <h3 class="text-slate-100 text-lg font-bold">Upcoming Catalysts</h3>
+            <div id="earnings-calendar-grid" class="grid grid-cols-5 gap-[4px]">
+                </div>
+        </section>
+
+        <section id="section-overview" class="tab-main-content hidden pb-8">
+            <div id="section-sentiment" class="px-4 pt-4">
+                <div class="bg-gradient-to-br from-surface-dark to-background-dark border border-border-dark rounded-2xl p-5 shadow-lg relative overflow-hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-white text-base font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary">speed</span> Market Sentiment
+                        </h3>
+                        <span class="text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-300 transition-colors" id="fng-status">LOADING...</span>
+                    </div>
+                    <div class="relative h-3 rounded-full overflow-hidden flex bg-slate-800 border border-border-dark">
+                        <div class="h-full bg-danger w-1/4"></div>
+                        <div class="h-full bg-orange-500 w-1/4"></div>
+                        <div class="h-full bg-yellow-500 w-1/4"></div>
+                        <div class="h-full bg-success w-1/4"></div>
+                        <div id="fng-pin" class="absolute top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all duration-1000 ease-out" style="left: 0%;"></div>
+                    </div>
+                    <div class="flex justify-between mt-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                        <span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span>
+                    </div>
+                    <div class="mt-3 text-center">
+                        <span class="text-4xl font-black text-white" id="fng-value">--</span><span class="text-slate-400 text-xs ml-1 font-medium">/ 100</span>
+                    </div>
                 </div>
             </div>
-            <div class="flex items-center justify-end gap-3 mb-3 px-2">
-                <div class="flex items-center gap-1.5"><div class="size-2 rounded-sm bg-slate-600"></div><span class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Estimate</span></div>
-                <div class="flex items-center gap-1.5"><div class="size-2 rounded-sm bg-success"></div><span class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Actual</span></div>
+
+            <div id="section-heatmap" class="px-4 pt-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-white text-sm font-bold flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-primary text-[16px]">grid_view</span> Market Heatmap (S&P 500)
+                    </h3>
+                </div>
+                <div class="bg-surface-dark border border-border-dark rounded-xl overflow-hidden shadow-sm relative w-full h-[350px]">
+                    <div id="tv-heatmap-container" class="absolute inset-0"></div>
+                </div>
             </div>
-            <div class="space-y-3" id="earnings-container">
-                <div class="bg-surface-dark border border-border-dark/50 p-4 rounded-lg opacity-50 flex items-center gap-4">
-                    <div class="w-12 h-12 bg-slate-800 rounded-lg"></div>
-                    <div class="flex-1 space-y-2"><div class="h-4 bg-border-dark rounded w-1/2"></div><div class="h-3 bg-border-dark rounded w-1/3"></div></div>
+
+            <div class="px-4 pt-6">
+                <h3 class="text-white text-sm font-bold flex items-center gap-1.5 mb-3">
+                    <span class="material-symbols-outlined text-primary text-[16px]">show_chart</span> Major Indices
+                </h3>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="bg-surface-dark border border-border-dark rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-sm">
+                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">S&P 500</span>
+                        <span class="text-white font-black text-[13px] tracking-tight" id="idx-spy-val">--</span>
+                        <span class="text-[9px] font-bold mt-0.5" id="idx-spy-pct">--</span>
+                    </div>
+                    <div class="bg-surface-dark border border-border-dark rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-sm">
+                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">NASDAQ</span>
+                        <span class="text-white font-black text-[13px] tracking-tight" id="idx-qqq-val">--</span>
+                        <span class="text-[9px] font-bold mt-0.5" id="idx-qqq-pct">--</span>
+                    </div>
+                    <div class="bg-surface-dark border border-border-dark rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-sm">
+                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Bitcoin</span>
+                        <span class="text-white font-black text-[13px] tracking-tight" id="idx-btc-val">--</span>
+                        <span class="text-[9px] font-bold mt-0.5" id="idx-btc-pct">--</span>
+                    </div>
                 </div>
             </div>
         </section>
@@ -170,7 +212,7 @@
 
     <div id="bottom-nav-container"></div>
 </div>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+
     <script src="js/nav.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
@@ -185,33 +227,73 @@
         });
     });
 </script>
-
-
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const smoothScroll = (id) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    const y = el.getBoundingClientRect().top + window.scrollY - 120;
-                    window.scrollTo({top: y, behavior: 'smooth'});
-                }
-            };
-            
-            const updateNavStyle = (activeId) => {
-                ['nav-watchlist', 'nav-anomaly', 'nav-catalysts'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (!el) return;
-                    if (id === activeId) {
-                        el.className = "flex flex-col items-center justify-center border-b-2 border-primary text-primary pb-3 pt-2 transition-colors cursor-pointer";
-                    } else {
-                        el.className = "flex flex-col items-center justify-center border-b-2 border-transparent text-slate-500 hover:text-slate-300 pb-3 pt-2 transition-colors cursor-pointer";
-                    }
-                });
-            };
+            // ระบบเปลี่ยนแท็บใหม่
+            const tabBtns = document.querySelectorAll('.tab-main-btn');
+            const tabContents = document.querySelectorAll('.tab-main-content');
 
-            document.getElementById('nav-watchlist')?.addEventListener('click', (e) => { e.preventDefault(); smoothScroll('section-watchlist'); updateNavStyle('nav-watchlist'); });
-            document.getElementById('nav-anomaly')?.addEventListener('click', (e) => { e.preventDefault(); smoothScroll('section-anomaly'); updateNavStyle('nav-anomaly'); });
-            document.getElementById('nav-catalysts')?.addEventListener('click', (e) => { e.preventDefault(); smoothScroll('section-catalysts'); updateNavStyle('nav-catalysts'); });
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // 1. รีเซ็ตปุ่มทั้งหมด
+                    tabBtns.forEach(b => {
+                        b.classList.remove('bg-primary', 'text-white', 'shadow-md');
+                        b.classList.add('text-slate-400', 'bg-transparent');
+                    });
+                    
+                    // 2. ซ่อนเนื้อหาทั้งหมด
+                    tabContents.forEach(c => {
+                        c.classList.add('hidden');
+                        c.classList.remove('block');
+                    });
+
+                    // 3. เปิดใช้งานแท็บที่ถูกคลิก
+                    btn.classList.remove('text-slate-400', 'bg-transparent');
+                    btn.classList.add('bg-primary', 'text-white', 'shadow-md');
+
+                    const targetId = btn.getAttribute('data-target');
+                    document.getElementById(targetId).classList.remove('hidden');
+                    document.getElementById(targetId).classList.add('block');
+                });
+            });
+
+            // ดึงราคา 3 ดัชนีหลักง่ายๆ ผ่าน Finnhub
+            const fetchIndices = async () => {
+                const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+                if(!FINNHUB_API_KEY) return;
+                
+                const formatData = (elVal, elPct, data) => {
+                    if(!data || data.c === 0) return;
+                    elVal.textContent = data.c.toLocaleString(undefined, {minimumFractionDigits: 2});
+                    elPct.textContent = `${data.dp > 0 ? '+' : ''}${data.dp.toFixed(2)}%`;
+                    elPct.className = `text-[9px] font-bold mt-0.5 ${data.dp >= 0 ? 'text-success' : 'text-danger'}`;
+                };
+
+                try {
+                    // SPY, QQQ, BTC
+                    const [spy, qqq, btc] = await Promise.all([
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=QQQ&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=BINANCE:BTCUSDT&token=${FINNHUB_API_KEY}`).then(r=>r.json()).catch(e=>null)
+                    ]);
+                    
+                    formatData(document.getElementById('idx-spy-val'), document.getElementById('idx-spy-pct'), spy);
+                    formatData(document.getElementById('idx-qqq-val'), document.getElementById('idx-qqq-pct'), qqq);
+                    
+                    // ส่วน BTC Binance ไม่ให้ % แบบเดียวกัน เลยดึงตรงจาก Binance เบาๆ
+                    if (btc && btc.c === 0) {
+                        const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r=>r.json());
+                        if (binanceRes) {
+                            document.getElementById('idx-btc-val').textContent = parseFloat(binanceRes.lastPrice).toLocaleString(undefined, {minimumFractionDigits: 2});
+                            const pct = parseFloat(binanceRes.priceChangePercent);
+                            document.getElementById('idx-btc-pct').textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
+                            document.getElementById('idx-btc-pct').className = `text-[9px] font-bold mt-0.5 ${pct >= 0 ? 'text-success' : 'text-danger'}`;
+                        }
+                    }
+                } catch(e) {}
+            };
+            fetchIndices();
+            setInterval(fetchIndices, 10000); // อัปเดตทุก 10 วิ
         });
     </script>
 <script>
@@ -221,5 +303,385 @@
     });
   }
 </script>
+    
+<div id="modal-manage-categories" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0 pb-10">
+        <div class="bg-surface-dark border border-border-dark w-[90%] max-w-sm rounded-2xl flex flex-col shadow-2xl transform scale-95 transition-transform" id="modal-categories-content">
+            <div class="flex items-center justify-between p-4 border-b border-border-dark shrink-0">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">category</span><h3 class="text-white font-bold text-sm">จัดการหมวดหมู่</h3></div>
+                <button id="btn-close-categories" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1 active:scale-90 transition-all"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="p-4 flex gap-2">
+                <input type="text" id="new-category-input" placeholder="ตั้งชื่อหมวดหมู่ใหม่..." class="flex-1 bg-background-dark border border-border-dark rounded-xl px-3 py-2 text-sm text-white focus:border-primary outline-none">
+                <button id="btn-add-category" class="bg-primary text-white px-3 py-2 rounded-xl font-bold text-sm">เพิ่ม</button>
+            </div>
+            <div class="p-4 pt-0 overflow-y-auto max-h-[50vh] no-scrollbar space-y-2" id="categories-list-container">
+                </div>
+        </div>
+    </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // ==========================================
+    // 📌 โครงสร้างข้อมูล Filter (ออกแบบให้เพิ่ม/ลดได้ง่ายในอนาคต)
+    // ==========================================
+    const SCANNER_FEATURES = [
+        { id: 'rsi_overbought', label: 'RSI > 70 (Overbought)' },
+        { id: 'rsi_oversold', label: 'RSI < 35 (Oversold)' },
+        { id: 'ath_drop_30', label: 'ลดลงจาก ATH > 30%' },
+        { id: 'vol_spike', label: 'Volume Spike > 200%' },
+        { id: 'pe_below_15', label: 'P/E < 15 (Value)' }
+    ];
+
+    window.activeFilters = new Set(); // เก็บค่า ID ของตัวกรองที่ถูกเลือก
+
+    const btnFilter = document.getElementById('btn-filter-scanner');
+    const modalFilter = document.getElementById('modal-filter-scanner');
+    const btnCloseFilter = document.getElementById('btn-close-filter');
+    const btnClearFilter = document.getElementById('btn-clear-filters');
+    const btnApplyFilter = document.getElementById('btn-apply-filters');
+    const optionsContainer = document.getElementById('filter-options-container');
+
+    // 📌 ฟังก์ชันวาดปุ่มเลือกตัวกรอง
+    const renderFilterOptions = () => {
+        if (!optionsContainer) return;
+        optionsContainer.innerHTML = SCANNER_FEATURES.map(feat => {
+            const isActive = window.activeFilters.has(feat.id);
+            return `
+            <button data-id="${feat.id}" class="filter-option-btn flex items-center justify-between p-3 rounded-xl border transition-all ${
+                isActive ? 'border-[#fbbf24] bg-[#fbbf24]/10' : 'border-border-dark bg-background-dark hover:bg-slate-800'
+            }">
+                <span class="text-sm font-bold ${isActive ? 'text-[#fbbf24]' : 'text-slate-300'}">${feat.label}</span>
+                ${isActive ? '<span class="material-symbols-outlined text-[#fbbf24] text-[18px]">check_circle</span>' : ''}
+            </button>`;
+        }).join('');
+
+        // ผูก Event ให้แต่ละปุ่ม
+        document.querySelectorAll('.filter-option-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.currentTarget.dataset.id;
+                if (window.activeFilters.has(id)) {
+                    window.activeFilters.delete(id);
+                } else {
+                    window.activeFilters.add(id);
+                }
+                renderFilterOptions(); // วาดใหม่เพื่ออัปเดตสี
+            });
+        });
+    };
+
+    if (btnFilter) {
+        btnFilter.addEventListener('click', () => {
+            renderFilterOptions();
+            modalFilter.classList.remove('hidden');
+            modalFilter.classList.add('flex');
+            setTimeout(() => {
+                modalFilter.classList.remove('opacity-0');
+                document.getElementById('modal-filter-content').classList.remove('scale-95');
+            }, 10);
+        });
+
+        const closeModal = () => {
+            modalFilter.classList.add('opacity-0');
+            document.getElementById('modal-filter-content').classList.add('scale-95');
+            setTimeout(() => {
+                modalFilter.classList.add('hidden');
+                modalFilter.classList.remove('flex');
+            }, 200);
+        };
+
+        btnCloseFilter.addEventListener('click', closeModal);
+
+        btnClearFilter.addEventListener('click', () => {
+            window.activeFilters.clear();
+            renderFilterOptions();
+        });
+
+        btnApplyFilter.addEventListener('click', () => {
+            closeModal();
+            // 📌 เมื่อกด "ใช้ตัวกรอง" ให้สั่งวาดหน้า Watchlist ใหม่
+            if (typeof window.renderWatchlist === 'function') {
+                window.renderWatchlist();
+            }
+        });
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. ตั้งค่าตัวแปร Global เพื่อให้ระบบรู้ว่าตอนนี้อยู่หน้าแฟ้มไหน
+    window.currentActiveCategory = 'All';
+
+    // 2. ดึงข้อมูลพอร์ตโฟลิโอ (พร้อมสร้างโครงสร้างพื้นฐานถ้ายังไม่มี)
+        const getPortfolioData = () => {
+        let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
+        if (!data.categories || !data.watchlists) {
+            data.categories = ['All'];
+            data.watchlists = { 'All': data.watchlist || [] };
+        }
+        if (data.watchlist) {
+            delete data.watchlist;
+            localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
+        }
+        return data;
+    };
+
+
+    // 3. ฟังก์ชันวาดปุ่มแถบเลื่อนด้านบน (All, Tech, Energy ฯลฯ)
+    window.renderCategoryPills = () => {
+        const data = getPortfolioData();
+        const container = document.getElementById('watchlist-categories');
+        if (!container) return;
+
+        // วาดปุ่มแต่ละอัน
+        container.innerHTML = data.categories.map(cat => `
+            <button class="cat-pill-btn px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
+                cat === window.currentActiveCategory 
+                ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm' // สีปุ่มตอนถูกเลือก
+                : 'bg-surface-dark text-slate-400 border border-border-dark hover:text-slate-200' // สีปุ่มตอนไม่ได้เลือก
+            }" data-cat="${cat}">
+                ${cat === window.currentActiveCategory ? '<span class="material-symbols-outlined text-[14px] align-middle mr-1">check</span>' : ''}${cat}
+            </button>
+        `).join('');
+
+        // ใส่ Event ให้กดเปลี่ยนแฟ้มได้
+        document.querySelectorAll('.cat-pill-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                window.currentActiveCategory = e.currentTarget.dataset.cat;
+                document.getElementById('current-category-title').textContent = window.currentActiveCategory;
+                window.renderCategoryPills(); // วาดปุ่มใหม่เพื่อเปลี่ยนสี
+                
+                // 📌 จุดแก้บัค: สั่งวาดหุ้นบนหน้าจอ "ทันที" แบบไม่ต้องรอ Delay 5 วิ
+                if (typeof window.renderWatchlist === 'function') {
+                    window.renderWatchlist();
+                }
+            });
+        });
+    };
+
+    // 4. ระบบจัดการแฟ้ม (เปิด/ปิด Modal, เพิ่มแฟ้ม, ลบแฟ้ม)
+    const btnManage = document.getElementById('btn-manage-categories');
+    const modalCategories = document.getElementById('modal-manage-categories');
+    const btnCloseCat = document.getElementById('btn-close-categories');
+    const inputNewCat = document.getElementById('new-category-input');
+    const btnAddCat = document.getElementById('btn-add-category');
+    const listContainer = document.getElementById('categories-list-container');
+
+    const renderManageList = () => {
+        const data = getPortfolioData();
+        listContainer.innerHTML = data.categories.map(cat => `
+            <div class="flex items-center justify-between p-3 bg-background-dark border border-border-dark rounded-xl">
+                <span class="text-sm font-bold text-slate-200">${cat}</span>
+                ${cat !== 'All' ? `
+                    <button class="btn-delete-cat text-danger hover:bg-danger/20 p-1.5 rounded-lg transition-colors flex items-center" data-cat="${cat}">
+                        <span class="material-symbols-outlined text-[18px]">delete</span>
+                    </button>
+                ` : '<span class="text-slate-500 text-[10px] uppercase font-bold px-2">Default</span>'}
+            </div>
+        `).join('');
+
+        // ลบแฟ้ม
+        document.querySelectorAll('.btn-delete-cat').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const catToDelete = e.currentTarget.dataset.cat;
+                if(confirm(`ต้องการลบแฟ้ม "${catToDelete}" ใช่หรือไม่?`)) {
+                    let data = getPortfolioData();
+                    data.categories = data.categories.filter(c => c !== catToDelete);
+                    delete data.watchlists[catToDelete];
+                    localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
+                    
+                    // ถ้าลบแฟ้มที่เปิดอยู่ ให้กลับไปหน้า All
+                    if (window.currentActiveCategory === catToDelete) {
+                        window.currentActiveCategory = 'All';
+                        document.getElementById('current-category-title').textContent = 'All';
+                    }
+                    
+                    renderManageList();
+                    window.renderCategoryPills();
+                    if (typeof loadWatchlist === 'function') loadWatchlist();
+                }
+            });
+        });
+    };
+
+    if (btnManage) {
+        // กดไอคอน Tune เพื่อเปิดหน้าต่างจัดการแฟ้ม
+        btnManage.addEventListener('click', () => {
+            renderManageList();
+            modalCategories.classList.remove('hidden');
+            modalCategories.classList.add('flex');
+            setTimeout(() => modalCategories.classList.remove('opacity-0'), 10);
+        });
+
+        // ปิดหน้าต่างจัดการแฟ้ม
+        btnCloseCat.addEventListener('click', () => {
+            modalCategories.classList.add('opacity-0');
+            setTimeout(() => {
+                modalCategories.classList.add('hidden');
+                modalCategories.classList.remove('flex');
+            }, 200);
+        });
+
+        // พิมพ์ชื่อแล้วกดเพิ่มแฟ้ม
+        btnAddCat.addEventListener('click', () => {
+            const newCat = inputNewCat.value.trim();
+            if (!newCat) return;
+
+            let data = getPortfolioData();
+            
+            // เช็คชื่อซ้ำ
+            if (data.categories.includes(newCat)) {
+                alert('ชื่อแฟ้มนี้มีอยู่แล้ว!');
+                return;
+            }
+
+            // บันทึกแฟ้มใหม่
+            data.categories.push(newCat);
+            data.watchlists[newCat] = []; // สร้างอาร์เรย์ว่างรับข้อมูลหุ้น
+            localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
+            
+            inputNewCat.value = ''; // เคลียร์ช่องพิมพ์
+            renderManageList(); // อัปเดตรายการในหน้าต่าง
+            window.renderCategoryPills(); // อัปเดตปุ่มด้านบน
+        });
+    }
+
+    // สั่งรันสร้างปุ่มครั้งแรกเมื่อเปิดหน้าเว็บ
+    window.renderCategoryPills();
+});
+</script>
+    <div id="modal-filter-scanner" class="fixed inset-0 z-[100] hidden items-end sm:items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0 pb-0 sm:pb-10">
+        <div class="bg-surface-dark border border-[#fbbf24]/30 w-full sm:w-[90%] max-w-md sm:rounded-2xl rounded-t-3xl flex flex-col shadow-[0_-10px_40px_rgba(251,191,36,0.1)] transform translate-y-full sm:translate-y-0 sm:scale-95 transition-transform duration-300" id="modal-filter-content">
+            
+            <div class="flex items-center justify-between p-5 border-b border-border-dark shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="size-8 rounded-lg bg-[#fbbf24]/10 border border-[#fbbf24]/30 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[#fbbf24] text-[18px]">tune</span>
+                    </div>
+                    <div>
+                        <h3 class="text-white font-bold text-base leading-none">KODA Scanner</h3>
+                        <p class="text-slate-400 text-[10px] mt-1">คัดกรองหุ้นตามปัจจัยพื้นฐานและเทคนิค</p>
+                    </div>
+                </div>
+                <button id="btn-close-filter" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1.5 active:scale-90 transition-all"><span class="material-symbols-outlined text-[18px]">close</span></button>
+            </div>
+            
+            <div class="p-5 overflow-y-auto max-h-[60vh] no-scrollbar flex flex-col gap-5" id="filter-options-container">
+                </div>
+
+            <div class="p-5 border-t border-border-dark flex gap-3 bg-background-dark/50 sm:rounded-b-2xl rounded-none">
+                <button id="btn-clear-filters" class="w-1/3 py-2.5 rounded-xl font-bold text-slate-400 bg-slate-800 hover:bg-slate-700 hover:text-white transition-colors text-sm">ล้างค่า</button>
+                <button id="btn-apply-filters" class="w-2/3 py-2.5 rounded-xl font-bold text-background-dark bg-gradient-to-r from-[#fbbf24] to-yellow-500 hover:opacity-90 transition-all text-sm shadow-lg shadow-yellow-500/20">ดูผลลัพธ์ (<span id="filter-count">0</span>)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // ==========================================
+            // 📌 โครงสร้างข้อมูล Filter (แบ่งเป็นหมวดหมู่)
+            // ==========================================
+            const SCANNER_CATEGORIES = [
+                {
+                    title: '📊 สัญญาณเทคนิค (Technical)',
+                    items: [
+                        { id: 'rsi_overbought', label: 'RSI > 70 (Overbought)', icon: 'show_chart' },
+                        { id: 'rsi_oversold', label: 'RSI < 35 (Oversold)', icon: 'trending_down' },
+                        { id: 'vol_spike', label: 'Volume Spike > 200%', icon: 'leaderboard' }
+                    ]
+                },
+                {
+                    title: '🏢 ปัจจัยพื้นฐาน & ราคา (Fundamental)',
+                    items: [
+                        { id: 'ath_drop_30', label: 'ราคาลดลงจาก ATH > 30%', icon: 'waterfall_chart' },
+                        { id: 'pe_below_15', label: 'P/E < 15 (Value Stock)', icon: 'account_balance' }
+                    ]
+                }
+            ];
+
+            window.activeFilters = new Set(); 
+
+            const btnFilter = document.getElementById('btn-filter-scanner');
+            const modalFilter = document.getElementById('modal-filter-scanner');
+            const btnCloseFilter = document.getElementById('btn-close-filter');
+            const btnClearFilter = document.getElementById('btn-clear-filters');
+            const btnApplyFilter = document.getElementById('btn-apply-filters');
+            const optionsContainer = document.getElementById('filter-options-container');
+            const filterCount = document.getElementById('filter-count');
+
+            // 📌 ฟังก์ชันวาด UI แบบแบ่งหมวดหมู่
+            const renderFilterOptions = () => {
+                if (!optionsContainer) return;
+                
+                optionsContainer.innerHTML = SCANNER_CATEGORIES.map(cat => `
+                    <div>
+                        <h4 class="text-slate-400 text-xs font-bold mb-3 uppercase tracking-wider">${cat.title}</h4>
+                        <div class="flex flex-wrap gap-2">
+                            ${cat.items.map(feat => {
+                                const isActive = window.activeFilters.has(feat.id);
+                                return `
+                                <button data-id="${feat.id}" class="filter-option-btn flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all duration-200 active:scale-95 ${
+                                    isActive 
+                                    ? 'border-[#fbbf24] bg-[#fbbf24]/10 text-[#fbbf24] shadow-[0_0_10px_rgba(251,191,36,0.15)]' 
+                                    : 'border-border-dark bg-background-dark text-slate-300 hover:border-slate-500'
+                                }">
+                                    <span class="material-symbols-outlined text-[14px] ${isActive ? 'text-[#fbbf24]' : 'text-slate-500'}">${feat.icon}</span>
+                                    <span class="text-xs font-semibold">${feat.label}</span>
+                                </button>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `).join('');
+
+                filterCount.textContent = window.activeFilters.size;
+
+                document.querySelectorAll('.filter-option-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = e.currentTarget.dataset.id;
+                        if (window.activeFilters.has(id)) window.activeFilters.delete(id);
+                        else window.activeFilters.add(id);
+                        renderFilterOptions(); 
+                    });
+                });
+            };
+
+            if (btnFilter) {
+                btnFilter.addEventListener('click', () => {
+                    renderFilterOptions();
+                    modalFilter.classList.remove('hidden');
+                    modalFilter.classList.add('flex');
+                    setTimeout(() => {
+                        modalFilter.classList.remove('opacity-0');
+                        const content = document.getElementById('modal-filter-content');
+                        content.classList.remove('translate-y-full', 'sm:scale-95');
+                    }, 10);
+                });
+
+                const closeModal = () => {
+                    modalFilter.classList.add('opacity-0');
+                    const content = document.getElementById('modal-filter-content');
+                    content.classList.add('translate-y-full', 'sm:scale-95');
+                    setTimeout(() => {
+                        modalFilter.classList.add('hidden');
+                        modalFilter.classList.remove('flex');
+                    }, 300);
+                };
+
+                btnCloseFilter.addEventListener('click', closeModal);
+
+                btnClearFilter.addEventListener('click', () => {
+                    window.activeFilters.clear();
+                    renderFilterOptions();
+                });
+
+                btnApplyFilter.addEventListener('click', () => {
+                    closeModal();
+                    // 🚀 สั่งอัปเดตหน้า Watchlist ทันทีเมื่อกดใช้ตัวกรอง
+                    if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                });
+            }
+        });
+    </script>
+
+    
 </body>
 </html>
