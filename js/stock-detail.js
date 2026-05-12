@@ -74,17 +74,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ==========================================
-    // 📌 Watchlist (Star) 
+        // ==========================================
+    // 📌 Watchlist (Star) - ระบบแยกแฟ้มหมวดหมู่
     // ==========================================
     const btnStar = document.getElementById('btn-toggle-star');
     const iconStar = document.getElementById('icon-star');
-    const modalRemove = document.getElementById('modal-remove-star');
+
+    // ตัวช่วยดึงข้อมูลและแปลงโครงสร้างเก่าเป็นใหม่ (Data Migration)
+        const getPortfolioData = () => {
+        let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
+        
+        // 1. ถ้าไม่มีโครงสร้างแฟ้มเลย ให้สร้างโครงสร้างพื้นฐาน
+        if (!data.categories || !data.watchlists) {
+            data.categories = ['All'];
+            data.watchlists = { 'All': data.watchlist || [] };
+        }
+        
+        // 2. 📌 จุดแก้บัค: ถ้ามี Array หุ้นแบบเก่าหลงเหลืออยู่ ให้ลบทิ้งอย่างเดียว 
+        // (ห้ามไปล้าง data.categories เด็ดขาด ไม่งั้นแฟ้มใหม่จะหาย)
+        if (data.watchlist) {
+            delete data.watchlist;
+            localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
+        }
+        
+        return data;
+    };
+
 
     const updateStarUI = () => {
         if (!iconStar) return;
-        const data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"watchlist":[]}');
-        const isStarred = data.watchlist && data.watchlist.some(s => s.symbol === symbol);
+        const data = getPortfolioData();
+        
+        // เช็คว่ามีหุ้นตัวนี้ติดอยู่ในแฟ้มไหนบ้างไหม?
+        let isStarred = false;
+        if (data.watchlists) {
+            for (let cat in data.watchlists) {
+                if (data.watchlists[cat].some(s => s.symbol === symbol)) {
+                    isStarred = true;
+                    break;
+                }
+            }
+        }
+        
         if (isStarred) {
             iconStar.classList.add('fill-icon', 'text-primary');
             iconStar.classList.remove('text-slate-300');
@@ -94,38 +125,103 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // สร้าง Modal UI สำหรับเลือกแฟ้ม (Inject ลงไปในหน้าเว็บอัตโนมัติ)
+    const createCategoryModal = () => {
+        if (document.getElementById('modal-category-select')) return;
+        const modalHTML = `
+        <div id="modal-category-select" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0">
+            <div class="bg-surface-dark border border-border-dark w-[300px] rounded-2xl p-5 shadow-2xl transform scale-95 transition-transform" id="modal-category-content">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-white text-lg font-bold">Add to Watchlist</h3>
+                    <button id="btn-close-cat-modal" class="text-slate-400 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+                </div>
+                <div id="category-checkbox-list" class="space-y-2 mb-4 max-h-[40vh] overflow-y-auto no-scrollbar">
+                    </div>
+                <button id="btn-save-categories" class="w-full py-2.5 rounded-xl font-bold text-white bg-primary hover:bg-primary/80 transition-colors shadow-lg">Save Changes</button>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        document.getElementById('btn-close-cat-modal').addEventListener('click', () => {
+            const modal = document.getElementById('modal-category-select');
+            modal.classList.add('opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 200);
+        });
+    };
+
     if (btnStar) {
+        createCategoryModal();
         updateStarUI(); 
+
         btnStar.addEventListener('click', () => {
-            let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"watchlist":[]}');
-            if (!data.watchlist) data.watchlist = [];
+            const data = getPortfolioData();
+            const container = document.getElementById('category-checkbox-list');
+            const modal = document.getElementById('modal-category-select');
             
-            const exists = data.watchlist.some(s => s.symbol === symbol);
-            if (exists) {
-                document.getElementById('remove-symbol-text').textContent = symbol;
-                modalRemove.classList.remove('hidden');
-                modalRemove.classList.add('flex');
-                setTimeout(() => modalRemove.classList.remove('opacity-0'), 10);
-            } else {
-                data.watchlist.push({ symbol: symbol, name: currentStockName, currentPrice: parseFloat(document.getElementById('detail-price').dataset.rawPrice || 0), previousClose: 0 });
-                localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-                updateStarUI();
-            }
+            // ตรวจสอบสถานะว่าหุ้นอยู่หมวดหมู่ไหนบ้าง
+            let inCategories = {};
+            data.categories.forEach(cat => {
+                inCategories[cat] = data.watchlists[cat] ? data.watchlists[cat].some(s => s.symbol === symbol) : false;
+            });
+
+            // วาด Checkbox ตามหมวดหมู่ที่มี
+            container.innerHTML = data.categories.map(cat => `
+                <label class="flex items-center justify-between p-3 rounded-xl border ${inCategories[cat] ? 'border-primary bg-primary/10' : 'border-border-dark bg-surface-dark'} cursor-pointer transition-colors">
+                    <span class="text-sm font-bold ${inCategories[cat] ? 'text-primary' : 'text-slate-300'}">${cat}</span>
+                    <input type="checkbox" value="${cat}" class="cat-checkbox size-4 rounded bg-slate-800 border-border-dark text-primary focus:ring-primary focus:ring-offset-background-dark" 
+                    ${inCategories[cat] ? 'checked' : ''} 
+                    ${cat === 'All' && !Object.values(inCategories).includes(true) ? 'checked' : ''}>
+                </label>
+            `).join('');
+
+            // อัปเดตสีเวลาติ๊ก
+            document.querySelectorAll('.cat-checkbox').forEach(chk => {
+                chk.addEventListener('change', (e) => {
+                    const label = e.target.closest('label');
+                    const text = label.querySelector('span');
+                    if(e.target.checked) {
+                        label.className = "flex items-center justify-between p-3 rounded-xl border border-primary bg-primary/10 cursor-pointer transition-colors";
+                        text.className = "text-sm font-bold text-primary";
+                    } else {
+                        label.className = "flex items-center justify-between p-3 rounded-xl border border-border-dark bg-surface-dark cursor-pointer transition-colors";
+                        text.className = "text-sm font-bold text-slate-300";
+                    }
+                });
+            });
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        });
+
+        // ลอจิกปุ่ม Save (ยัดเข้าแฟ้มที่ถูกติ๊ก ลบออกจากแฟ้มที่ไม่ได้ติ๊ก)
+        document.getElementById('btn-save-categories').addEventListener('click', () => {
+            let data = getPortfolioData();
+            const checkboxes = document.querySelectorAll('.cat-checkbox');
+            
+            checkboxes.forEach(chk => {
+                const cat = chk.value;
+                if (!data.watchlists[cat]) data.watchlists[cat] = [];
+                
+                if (chk.checked) {
+                    if (!data.watchlists[cat].some(s => s.symbol === symbol)) {
+                        data.watchlists[cat].push({ 
+                            symbol: symbol, 
+                            name: currentStockName, 
+                            currentPrice: parseFloat(document.getElementById('detail-price').dataset.rawPrice || 0), 
+                            previousClose: 0 
+                        });
+                    }
+                } else {
+                    data.watchlists[cat] = data.watchlists[cat].filter(s => s.symbol !== symbol);
+                }
+            });
+
+            localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
+            updateStarUI();
+            document.getElementById('btn-close-cat-modal').click();
         });
     }
-
-    document.getElementById('btn-cancel-remove')?.addEventListener('click', () => {
-        modalRemove.classList.add('opacity-0');
-        setTimeout(() => { modalRemove.classList.add('hidden'); modalRemove.classList.remove('flex'); }, 200);
-    });
-
-    document.getElementById('btn-confirm-remove')?.addEventListener('click', () => {
-        let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"watchlist":[]}');
-        data.watchlist = data.watchlist.filter(s => s.symbol !== symbol);
-        localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-        updateStarUI();
-        document.getElementById('btn-cancel-remove')?.click();
-    });
 
     // ==========================================
     // 📌 ดึงข้อมูลราคา (Real-Time 5 วินาที)
