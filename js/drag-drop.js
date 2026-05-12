@@ -44,8 +44,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     container.addEventListener('touchstart', (e) => {
+        // 📌 จุดสำคัญ: ถ้ามีการเปิด Filter อยู่ ห้ามลากวางเด็ดขาด (เพื่อความปลอดภัยของข้อมูล)
+        if (window.activeFilters && window.activeFilters.size > 0) {
+            alert("กรุณาล้างตัวกรอง (Scanner) ก่อนจึงจะสามารถจัดเรียงลำดับด้วยตนเองได้");
+            return;
+        }
+
         const item = e.target.closest('.watchlist-item');
         if (!item) return;
+        // ... (โค้ดเดิมด้านล่าง) ...
 
         longPressTimer = setTimeout(() => {
             isDragging = true;
