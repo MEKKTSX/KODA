@@ -337,12 +337,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let html = '';
 
-        weekData.forEach((dayItems, index) => {
-            // คัดกรองหุ้น: 'bmo' = Before Market Open, 'amc' = After Market Close
+        // 🚀 Loop วาดคอลัมน์ทีละวัน (ตัวแปร index อยู่ที่นี่)
+                weekData.forEach((dayItems, index) => {
             const beforeOpen = dayItems.filter(i => i.hour === 'bmo');
             const afterClose = dayItems.filter(i => i.hour === 'amc' || i.hour === 'dmh');
 
-            // อัลกอริทึมคัดหุ้นเด่น
             const sortAndSlice = (arr) => arr
                 .sort((a, b) => (b.revenueEstimate || 0) - (a.revenueEstimate || 0))
                 .slice(0, 6); 
@@ -350,25 +349,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const topBefore = sortAndSlice(beforeOpen);
             const topAfter = sortAndSlice(afterClose);
 
-            // 📌 คำนวณวันที่ของคอลัมน์นี้ (บวก index เข้ากับวันจันทร์)
             const colDate = new Date(currentCalWeekStart);
             colDate.setDate(colDate.getDate() + index);
             const dateNum = colDate.getDate();
 
+            const realToday = new Date();
+            const isToday = colDate.getDate() === realToday.getDate() && 
+                            colDate.getMonth() === realToday.getMonth() && 
+                            colDate.getFullYear() === realToday.getFullYear();
+
+            // 1. ปรับ Class ให้รัดเฉพาะพื้นที่หัวข้อ (เอา pb-1 ออกเพื่อให้กรอบไม่ยืดลงมาข้างล่าง)
+            const colHighlightClass = isToday ? 'highlight-today-col' : ''; 
+            const dayTextClass = isToday ? 'text-success font-bold' : 'text-slate-400 font-medium';
+            const numTextClass = isToday ? 'text-success' : 'text-white';
+
             html += `
-            <div class="flex flex-col gap-[6px]">
-                <div class="text-center text-slate-400 text-[10px] font-medium py-1.5 border-b border-border-dark/50 whitespace-nowrap">
-                    <span class="text-white font-bold">${dateNum}</span> ${dayNames[index]}
+            <div class="flex flex-col gap-[6px] h-full pt-1 px-0.5">
+                
+                <div class="text-center ${dayTextClass} text-[10px] py-1.5 border-b border-border-dark/50 whitespace-nowrap ${colHighlightClass}">
+                    <span class="${numTextClass} font-bold">${dateNum}</span> ${dayNames[index]}
                 </div>
 
-                <div class="bg-surface-dark/60 border border-border-dark/40 rounded-xl flex flex-col items-center pb-2 min-h-[160px]">
+                <div class="${isToday ? 'bg-surface-dark/80' : 'bg-surface-dark/60'} border border-border-dark/40 rounded-xl flex flex-col items-center pb-2 min-h-[160px] relative z-0">
                     <span class="text-slate-400 text-[8px] font-bold py-1.5 whitespace-nowrap">Before Open</span>
                     <div class="flex flex-col w-full px-1 gap-1.5">
                         ${topBefore.length > 0 ? topBefore.map(item => getLogoHtml(item.symbol)).join('') : '<span class="text-slate-600 text-[8px] text-center py-2">-</span>'}
                     </div>
                 </div>
 
-                <div class="bg-surface-dark/60 border border-border-dark/40 rounded-xl flex flex-col items-center pb-2 min-h-[160px]">
+                <div class="${isToday ? 'bg-surface-dark/80' : 'bg-surface-dark/60'} border border-border-dark/40 rounded-xl flex flex-col items-center pb-2 min-h-[160px] relative z-0">
                     <span class="text-slate-400 text-[8px] font-bold py-1.5 whitespace-nowrap">After Close</span>
                     <div class="flex flex-col w-full px-1 gap-1.5">
                         ${topAfter.length > 0 ? topAfter.map(item => getLogoHtml(item.symbol)).join('') : '<span class="text-slate-600 text-[8px] text-center py-2">-</span>'}
