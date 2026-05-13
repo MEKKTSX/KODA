@@ -724,15 +724,99 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderFilterOptions();
                 });
 
-                btnApplyFilter.addEventListener('click', () => {
+                                btnApplyFilter.addEventListener('click', async () => {
+                    // 1. ปิดหน้าต่างลงไปก่อน และเปลี่ยนปุ่มเป็นสถานะกำลังโหลด
                     closeModal();
-                    // 🚀 สั่งอัปเดตหน้า Watchlist ทันทีเมื่อกดใช้ตัวกรอง
-                    if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                    
+                    // สมมติฐานว่า List หุ้นของคุณใช้ class 'watchlist-item' (อิงจาก drag-drop)
+                    const items = document.querySelectorAll('.watchlist-item'); 
+                    if (!items || items.length === 0) return;
+
+                    // 2. ถ้ายกเลิกกรอง ให้โชว์หุ้นทุกตัวตามปกติ
+                    if (window.activeFilters.size === 0) {
+                        items.forEach(item => item.style.display = '');
+                        if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                        return;
+                    }
+
+                    // 3. แสดงแถบ Loading เล็กๆ แจ้งผู้ใช้ว่ากำลังสแกน
+                    const container = document.getElementById('watchlist-container');
+                    const loadingHtml = `<div id="scanner-loading" class="text-center py-4 text-primary text-xs font-bold animate-pulse flex items-center justify-center gap-2"><span class="material-symbols-outlined animate-spin">sync</span> KODA Scanner กำลังวิเคราะห์ข้อมูล...</div>`;
+                    container.insertAdjacentHTML('afterbegin', loadingHtml);
+
+                    const FINNHUB_KEY = window.ENV_KEYS?.FINNHUB_ARRAY ? window.ENV_KEYS.FINNHUB_ARRAY[0] : (window.ENV_KEYS?.FINNHUB || '');
+
+                    // 4. วนลูปเช็คหุ้นทีละตัวแบบ Real-time
+                    for (let item of items) {
+                        const sym = item.getAttribute('data-symbol');
+                        if (!sym) continue;
+
+                        let pass = true;
+                        let cleanSym = sym.split(':')[1] || sym.split('.')[0];
+                        
+                        try {
+                            // ดึงราคาล่าสุดจาก Finnhub
+                            const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_KEY}`).then(r=>r.json());
+                            const currentPrice = quote.c;
+
+                            // 📊 ตรวจสอบ Technicals (RSI / Volume)
+                            if (window.activeFilters.has('rsi_overbought') || window.activeFilters.has('rsi_oversold') || window.activeFilters.has('vol_spike')) {
+                                // โหลดกราฟย้อนหลัง 6 เดือนเพื่อความแม่นยำของ RSI
+                                const chartRes = await fetch(`/api/price?symbol=${sym}&mode=chart&range=6mo&interval=1d`);
+                                const chartData = await chartRes.json();
+                                
+                                if (chartData.success && chartData.closes && chartData.closes.length > 0) {
+                                    // โยงไปหาสูตรคำนวณที่เขียนไว้ใน market-plus.js
+                                    const rsi = window.KodaMarketPlus.calculateExactRSI(chartData.closes);
+                                    
+                                    if (window.activeFilters.has('rsi_overbought') && rsi <= 70) pass = false;
+                                    if (window.activeFilters.has('rsi_oversold') && rsi >= 35) pass = false;
+                                    
+                                    if (pass && window.activeFilters.has('vol_spike') && chartData.volumes.length >= 21) {
+                                        const lastVol = chartData.volumes[chartData.volumes.length - 1];
+                                        const avgVol = chartData.volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+                                        if (lastVol < avgVol * 2) pass = false;
+                                    }
+                                } else {
+                                    pass = false; // ถ้าดึงกราฟไม่ได้ ให้ตกไปเลย
+                                }
+                            }
+
+                            // 🏢 ตรวจสอบ Fundamentals
+                            if (pass && (window.activeFilters.has('ath_drop_30') || window.activeFilters.has('low_up_30') || window.activeFilters.has('pe_below_15'))) {
+                                const metricRes = await fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${FINNHUB_KEY}`);
+                                const metricData = await metricRes.json();
+                                const m = metricData.metric || {};
+
+                                if (window.activeFilters.has('ath_drop_30')) {
+                                    const high52 = m['52WeekHigh'] || currentPrice;
+                                    if (((high52 - currentPrice) / high52) * 100 <= 30) pass = false;
+                                }
+                                if (pass && window.activeFilters.has('low_up_30')) {
+                                    const low52 = m['52WeekLow'] || currentPrice;
+                                    if (((currentPrice - low52) / low52) * 100 <= 30) pass = false;
+                                }
+                                if (pass && window.activeFilters.has('pe_below_15')) {
+                                    const pe = m['peExclExtraTTM'] || 999;
+                                    if (pe >= 15 || pe <= 0) pass = false; // กรอง PE ติดลบออกด้วย
+                                }
+                            }
+
+                        } catch (e) {
+                            console.error('Scanner error for', sym, e);
+                            pass = false; // เกิด Error API ให้ข้ามไป
+                        }
+
+                        // ซ่อนหุ้นที่ไม่ตรงเงื่อนไข
+                        item.style.display = pass ? '' : 'none';
+                    }
+
+                    // เอาแถบ Loading ออกเมื่อสแกนเสร็จ
+                    const loadingEl = document.getElementById('scanner-loading');
+                    if (loadingEl) loadingEl.remove();
                 });
             }
         });
     </script>
-
-    
 </body>
 </html>
