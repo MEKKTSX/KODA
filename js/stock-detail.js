@@ -61,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => {
                         const container = document.getElementById('ta-chart-container');
                         if (container && container.clientWidth > 0) {
-                            taChartInstance.resize(container.clientWidth, 220);
+                            // เปลี่ยนบรรทัด 61 เป็น:
+                            taChartInstance.applyOptions({ width: container.clientWidth, height: 220 });
                             taChartInstance.timeScale().fitContent(); // ขยับสเกลให้พอดีจอ
                         }
                     }, 50); // ดีเลย์นิดนึงให้กล่องโชว์ออกมาก่อน
@@ -878,7 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const profile = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json());
             const industry = profile.finnhubIndustry || 'General';
             
-            const GEMINI_API_KEY = window.ENV_KEYS?.GEMINI ? window.ENV_KEYS.GEMINI[0] : '';
+            const GEMINI_API_KEY = Array.isArray(window.ENV_KEYS?.GEMINI) ? window.ENV_KEYS.GEMINI[0] : (window.ENV_KEYS?.GEMINI || '');
             if (!GEMINI_API_KEY) throw new Error('No Gemini Key');
 
             const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดสรุป Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${symbol} (${currentStockName}) อุตสาหกรรม: ${industry}
