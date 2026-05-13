@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (local.length > 0) renderResults(local, false);
                 else searchResults.innerHTML = `<p class="text-danger text-sm text-center py-10">ระบบค้นหาขัดข้องชั่วคราว โปรดลองใหม่</p>`;
             }
-        }, 150); 
+        }, 600); 
     });
 
     const openSearch = async () => {
