@@ -10,24 +10,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let longPressTimer = null;
     let isDragging = false;
 
-    // 📌 แก้ไขฟังก์ชันอัปเดตลำดับ ให้เซฟลงหมวดหมู่ปัจจุบัน (Category)
+    // 📌 ฟังก์ชันอัปเดตลำดับ ให้เซฟลงหมวดหมู่ปัจจุบัน (Category)
     const saveNewOrder = () => {
         const currentElements = Array.from(container.querySelectorAll('.watchlist-item'));
         const newOrderSymbols = currentElements.map(el => el.getAttribute('data-symbol'));
         
-        // ดึงข้อมูลเดิมจากเครื่อง
         const savedData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
-        
-        // ถ้าไม่มีโครงสร้าง watchlists หรือไม่มีหมวดหมู่นี้ ให้หยุดทำงาน
         if (!savedData.watchlists || !savedData.watchlists[window.currentActiveCategory]) return;
 
-        // ดึงข้อมูลหุ้นในหมวดหมู่ปัจจุบันมาเรียงใหม่
         const currentCategoryList = savedData.watchlists[window.currentActiveCategory];
         const newWatchlistArray = newOrderSymbols.map(sym => {
             return currentCategoryList.find(s => s.symbol === sym);
         }).filter(item => item !== undefined); 
 
-        // เซฟทับของเดิมเฉพาะหมวดหมู่นี้
         savedData.watchlists[window.currentActiveCategory] = newWatchlistArray;
         localStorage.setItem('koda_portfolio_data', JSON.stringify(savedData));
     };
@@ -44,16 +39,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     container.addEventListener('touchstart', (e) => {
-        // 📌 จุดสำคัญ: ถ้ามีการเปิด Filter อยู่ ห้ามลากวางเด็ดขาด (เพื่อความปลอดภัยของข้อมูล)
-        if (window.activeFilters && window.activeFilters.size > 0) {
-            alert("กรุณาล้างตัวกรอง (Scanner) ก่อนจึงจะสามารถจัดเรียงลำดับด้วยตนเองได้");
-            return;
-        }
+        // 🚀 1. แค่ข้ามการทำงานไปเลย ถ้าเปิด Filter อยู่ (ไม่ต้องเด้ง Alert กวนใจแล้ว)
+        if (window.activeFilters && window.activeFilters.size > 0) return;
 
         const item = e.target.closest('.watchlist-item');
         if (!item) return;
-        // ... (โค้ดเดิมด้านล่าง) ...
 
+        // 🚀 2. หน่วงเวลา 400ms เพื่อแยกแยะการเลื่อนจอกับการกดค้าง
         longPressTimer = setTimeout(() => {
             isDragging = true;
             draggingItem = item;
@@ -74,10 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             container.insertBefore(placeholder, draggingItem.nextSibling);
             moveItem(e.touches[0].clientY);
-        }, 500); 
-    }, { passive: false });
+        }, 400); 
+    }, { passive: true }); // 🚀 3. เปิดให้เลื่อนจอได้ลื่นๆ (passive: true)
 
     container.addEventListener('touchmove', (e) => {
+        // ถ้าแค่เลื่อนนิ้วไถจอ (ไม่ได้ลากหุ้น) ให้ยกเลิกเวลากดค้างซะ
         if (!isDragging) {
             clearTimeout(longPressTimer);
             return;
@@ -106,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(longPressTimer);
         if (!isDragging || !draggingItem) return;
 
-        e.preventDefault();
+        // ถ้าลากเสร็จแล้วให้เอา scroll กลับมา
         document.body.style.overflow = '';
         container.insertBefore(draggingItem, placeholder);
         
@@ -123,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         draggingItem.style.transform = '';
         draggingItem.style.pointerEvents = '';
 
-        saveNewOrder(); // เซฟระบบใหม่
+        saveNewOrder(); 
 
         draggingItem = null;
         placeholder = null;
@@ -132,7 +125,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     container.addEventListener('touchend', endDrag);
     container.addEventListener('touchcancel', endDrag);
-    container.addEventListener('contextmenu', (e) => e.preventDefault());
+    container.addEventListener('contextmenu', (e) => {
+        // ป้องกันเด้งเมนูคลิกขวาตอนลากหุ้น
+        if (isDragging) e.preventDefault(); 
+    });
 
     function moveItem(clientY) {
         if (!draggingItem) return;
