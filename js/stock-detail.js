@@ -639,6 +639,24 @@ document.addEventListener('DOMContentLoaded', () => {
                         .filter(c => [c.open, c.high, c.low, c.close].every(v => isFinite(v) && v > 0)).sort((a, b) => a.time - b.time);
                     localStorage.setItem(candleCacheKey, JSON.stringify({ timestamp: now, data: candles }));
                 }
+                
+                // 🚀 ดักจับ Bug วันที่ซ้ำซ้อนจาก Yahoo Finance
+                let seenDays = new Set();
+                let filteredCandles = [];
+                candles.forEach(c => {
+                    let dayString = new Date(c.time * 1000).toDateString();
+                    if(!seenDays.has(dayString)) {
+                        seenDays.add(dayString);
+                        filteredCandles.push(c);
+                    }
+                });
+                candles = filteredCandles; // อัปเดตข้อมูลเป็นชุดที่กรองแล้ว
+
+                // 🚨 ดักจับ Bug คณิตศาสตร์ (ป้องกัน -Infinity)
+                if (candles.length < 15) {
+                    kodaContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><p class="text-danger text-xs font-bold">ข้อมูลประวัติมีน้อยเกินไป ไม่สามารถวาดกราฟได้</p></div>`; 
+                    return; 
+                }
 
                 // 📌 อัลกอริทึมหา S/R แบบเดียวกับใน KODA Lab (แม่นยำสูง)
                 const closes = candles.map(c => c.close);
@@ -871,7 +889,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="margin-bottom: 12px;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> ...</div>
             <div style="padding: 12px; background: rgba(52,168,235,0.1); border-radius: 8px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> ...</div>
             ตอบด้วยรหัส HTML ล้วน ห้ามมีเครื่องหมาย \`\`\`html`;
-
+            
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
@@ -1524,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!GEMINI_API_KEY) throw new Error('No Key');
             
             const prompt = `ในฐานะนักวิเคราะห์การเงิน โปรดอ่านหัวข้อข่าวและเนื้อหาย่อต่อไปนี้:\nHeadline: ${headline}\nSummary: ${summary}\nโปรดวิเคราะห์ข่าวนี้เป็น "ภาษาไทย" ให้เห็นภาพชัดเจน โดยบังคับใช้โครงสร้าง HTML ดังนี้:\n<p>📝 <strong style="color:#fff;">สรุปเหตุการณ์:</strong>...</p>\n<p>🌍 <strong style="color:#fff;">ผลกระทบ:</strong>...</p>\n<div style="background: rgba(52,168,235,0.1); border: 1px solid rgba(52,168,235,0.3); padding: 12px; border-radius: 8px; margin-top: 16px;">💡 <strong style="color:#34a8eb;">สรุปย่อ (TL;DR):</strong>...</div>\nตอบด้วย HTML format ห้ามใช้ Markdown`;
-
+            
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, 
                 body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
