@@ -512,7 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isThaiStock && !isCrypto) {
         try {
             // ยิงเข้าหา Vercel Backend ตัวเอง (ไม่ต้องพึ่งเว็บ Proxy นอกแล้ว)
-            const proxyUrl = `/api/yf-chart/${yfSym}?range=${yfRange}&interval=${yfInterval}`;
+            const proxyUrl = `/api/price?symbol=${yfSym}&mode=chart&range=${yfRange}&interval=${yfInterval}`;
             
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 5000); // รอสูงสุด 5 วิ
