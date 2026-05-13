@@ -447,6 +447,97 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-close-sell-modal').click();
     });
 
-    updateUI();
-    setInterval(() => { if (!isWhatIfMode) updateUI(); }, 3000); 
+        // ==========================================
+    // 🚀 ระบบ Portfolio Real-time Engine (รองรับตลาดเปิด/ปิด)
+    // ==========================================
+    
+    // ฟังก์ชันดึงราคา Live แบบเงียบๆ หลังบ้าน
+    const fetchLivePrices = async () => {
+        const data = loadData();
+        const holdings = data.holdings || [];
+        if (holdings.length === 0) return false;
+
+        const symbols = holdings.map(h => {
+            if (h.symbol === 'XAUUSD') return 'GC=F';
+            if (h.symbol.includes('.HK')) return h.symbol.split('.')[0].padStart(4, '0') + '.HK';
+            if (h.symbol.includes('BINANCE:')) return h.symbol.replace('BINANCE:', '').replace('USDT', '-USD');
+            return h.symbol;
+        });
+
+        try {
+            const url = `/api/yahoo?mode=quote&symbols=${symbols.join(',')}`;
+            const res = await fetch(url);
+            if (res.ok) {
+                const apiData = await res.json();
+                let isChanged = false;
+
+                if (apiData?.quoteResponse?.result) {
+                    apiData.quoteResponse.result.forEach(q => {
+                        // ปรับชื่อสัญลักษณ์ให้ตรงกับในฐานข้อมูลเรา
+                        let origSym = q.symbol;
+                        if (origSym === 'GC=F') origSym = 'XAUUSD';
+                        else if (origSym.includes('-USD')) origSym = `BINANCE:${origSym.replace('-USD', 'USDT')}`;
+                        else if (origSym.includes('.HK')) origSym = origSym.replace('.HK', '').replace(/^0+/, '') + '.HK';
+
+                        const holding = holdings.find(h => h.symbol === origSym);
+                        if (holding) {
+                            let currentPrice = q.regularMarketPrice;
+                            let prevClose = q.regularMarketPreviousClose || q.previousClose;
+                            const marketState = q.marketState;
+
+                            // สลับไปดึงราคา Pre/Post Market ถ้านอกเวลาทำการ
+                            if (marketState === 'PRE' && q.preMarketPrice) {
+                                currentPrice = q.preMarketPrice;
+                            } else if ((marketState === 'POST' || marketState === 'CLOSED') && q.postMarketPrice) {
+                                currentPrice = q.postMarketPrice;
+                            }
+
+                            // เช็คว่าราคาขยับไหม? ถ้าขยับให้บันทึก
+                            if (currentPrice && currentPrice !== holding.currentPrice) {
+                                holding.currentPrice = currentPrice;
+                                holding.previousClose = prevClose || holding.previousClose;
+                                isChanged = true;
+                            }
+                        }
+                    });
+
+                    // ถ้ามีอย่างน้อย 1 หุ้นที่ราคาเปลี่ยน ให้เซฟข้อมูลลง LocalStorage
+                    if (isChanged) {
+                        data.holdings = holdings;
+                        saveData(data); // คำสั่ง saveData จะ Trigger ให้ UI อัปเดตเอง
+                        return true;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to sync live portfolio prices");
+        }
+        return false;
+    };
+
+    // 🚀 Master Controller สำหรับควบคุมการทำงานของ Portfolio
+    const startPortfolioEngine = async () => {
+        // ครั้งแรก: วาดหน้าจอจาก Data เก่าทันที ไม่ต้องรอ API
+        updateUI();
+
+        // ฟังชันย่อยสำหรับวนลูป
+        const loop = async () => {
+            if (!document.hidden && !isWhatIfMode) {
+                const didUpdate = await fetchLivePrices();
+                // ถ้า saveData ถูกเรียกไปแล้ว มันจะยิงอีเวนต์ไปอัปเดต UI เอง 
+                // แต่ถ้าดึงข้อมูลแล้วราคาไม่เปลี่ยน ให้บังคับอัปเดต UI เพื่อความชัวร์ 
+                if (!didUpdate) updateUI();
+            }
+        };
+
+        // วิ่งไปดึงราคาใหม่ทันที
+        await loop();
+
+        // ตั้งเวลาวิ่งเช็คราคาซ้ำทุกๆ 5 วินาที
+        setInterval(loop, 5000);
+    };
+
+    // ให้ระบบเริ่มทำงานเมื่อหน้าเว็บพร้อม
+    startPortfolioEngine();
 });
+
