@@ -466,9 +466,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         try {
-            const url = `/api/yahoo?mode=quote&symbols=${symbols.join(',')}`;
-            const res = await fetch(url);
+            // 🚨 แก้บัค: เพิ่ม Timestamp ต่อท้าย url เพื่อบังคับให้เบราว์เซอร์เลิกจำข้อมูลเก่า (Cache Busting)
+            const url = `/api/yahoo?mode=quote&symbols=${symbols.join(',')}&_=${Date.now()}`;
+            
+            // 🚨 บังคับ fetch แบบไม่ใช้ Cache
+            const res = await fetch(url, { cache: 'no-store' });
+            
             if (res.ok) {
+
                 const apiData = await res.json();
                 let isChanged = false;
 
