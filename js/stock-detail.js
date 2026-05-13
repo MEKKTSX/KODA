@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {}
     }
 
-    // 🚀 ก๊อกที่ 2: หุ้นทั่วไป (ยิง Yahoo Finance ผ่านท่อ Vercel Proxy ของเราเอง)
+        // 🚀 ก๊อกที่ 2: หุ้นทั่วไป (ยิงผ่าน price.py ของเราเอง)
     const yfRange = rangeMap[tfRange] || '1y';
     const yfInterval = intervalMap[tfRange] || '1d';
     let yfSym = symbol;
@@ -511,34 +511,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!isThaiStock && !isCrypto) {
         try {
-            // ยิงเข้าหา Vercel Backend ตัวเอง (ไม่ต้องพึ่งเว็บ Proxy นอกแล้ว)
+            // 🚨 1. เปลี่ยน URL ให้เรียกใช้ price.py และส่ง mode=chart
             const proxyUrl = `/api/price?symbol=${yfSym}&mode=chart&range=${yfRange}&interval=${yfInterval}`;
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // รอสูงสุด 5 วิ
+            const timeoutId = setTimeout(() => controller.abort(), 5000); 
             const res = await fetch(proxyUrl, { signal: controller.signal });
             clearTimeout(timeoutId);
 
             if (res.ok) {
                 const yfData = await res.json();
                 
-                if (yfData?.chart?.result?.[0]) {
-                    const q = yfData.chart.result[0].indicators.quote[0];
-                    const tRaw = yfData.chart.result[0].timestamp;
-                    const timestamps = [], opens = [], highs = [], lows = [], closes = [], volumes = [];
-                    for(let i=0; i<tRaw.length; i++) {
-                        if(q.close[i] !== null && q.open[i] !== null && q.high[i] !== null && q.low[i] !== null) {
-                            timestamps.push(tRaw[i]); opens.push(q.open[i]); highs.push(q.high[i]);
-                            lows.push(q.low[i]); closes.push(q.close[i]); volumes.push(q.volume[i] || 0);
-                        }
-                    }
-                    if (closes.length > 0) return { timestamps, opens, highs, lows, closes, volumes };
+                // 🚨 2. อ่านค่า Data ตามโครงสร้างที่ price.py ส่งมา
+                if (yfData && yfData.success === true && yfData.timestamps && yfData.timestamps.length > 0) {
+                    return { 
+                        timestamps: yfData.timestamps, 
+                        opens: yfData.opens, 
+                        highs: yfData.highs, 
+                        lows: yfData.lows, 
+                        closes: yfData.closes, 
+                        volumes: yfData.volumes 
+                    };
                 }
             }
         } catch(err) { 
             console.warn('Vercel Yahoo Proxy failed:', err); 
         }
     }
+
 
     // 🚀 ก๊อกที่ 3: Fallback Finnhub (กันเหนียวสุดๆ)
     if (!isThaiStock && !isCrypto) {
