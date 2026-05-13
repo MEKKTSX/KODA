@@ -322,32 +322,47 @@ document.addEventListener('DOMContentLoaded', () => {
         const gridContainer = document.getElementById('earnings-calendar-grid');
         const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         
-        // 📌 ฟังก์ชันดึงโลโก้และชื่อหุ้น
+        // 🚀 1. ดึงรายชื่อหุ้นใน Watchlist มาเตรียมไว้เพื่อใช้ตรวจสอบ
+        const wlSymbols = getWatchlistSymbols();
+
+        // 📌 ฟังก์ชันดึงโลโก้ (เพิ่มการเช็คสถานะดาว)
         const getLogoHtml = (sym) => {
+            const isStarred = wlSymbols.includes(sym);
             const logo1 = `https://assets.parqet.com/logos/symbol/${sym}?format=png`;
             const logo2 = `https://financialmodelingprep.com/image-stock/${sym}.png`;
+            
             return `
-            <div class="w-full flex flex-col items-center justify-center p-1 relative" title="${sym}">
+            <div class="w-full flex flex-col items-center justify-center p-1 relative group" title="${sym}">
+                ${isStarred ? '<span class="absolute -top-1.5 -right-0.5 text-[10px] text-yellow-500 drop-shadow-md z-10 animate-pulse">⭐</span>' : ''}
+                
                 <img src="${logo1}" 
-                     class="h-[22px] w-auto max-w-full object-contain filter drop-shadow-md" 
+                     class="h-[22px] w-auto max-w-full object-contain filter drop-shadow-md ${isStarred ? 'ring-1 ring-yellow-500/50 rounded-sm' : ''}" 
                      onerror="this.onerror=null; this.src='${logo2}'; this.onerror=function(){ this.style.display='none'; };">
-                <span class="text-[8px] font-bold text-slate-300 text-center leading-tight mt-1">${sym}</span>
+                <span class="text-[8px] font-bold ${isStarred ? 'text-yellow-500' : 'text-slate-300'} text-center leading-tight mt-1">${sym}</span>
             </div>`;
         };
 
         let html = '';
 
-        // 🚀 Loop วาดคอลัมน์ทีละวัน (ตัวแปร index อยู่ที่นี่)
-                weekData.forEach((dayItems, index) => {
+        weekData.forEach((dayItems, index) => {
             const beforeOpen = dayItems.filter(i => i.hour === 'bmo');
             const afterClose = dayItems.filter(i => i.hour === 'amc' || i.hour === 'dmh');
 
-            const sortAndSlice = (arr) => arr
-                .sort((a, b) => (b.revenueEstimate || 0) - (a.revenueEstimate || 0))
-                .slice(0, 6); 
+            // 🚀 2. ปรับปรุงระบบคัดเลือก: หุ้นใน Watchlist ต้องได้ขึ้นก่อน ตัวท็อปที่เหลือตามมา
+            const sortWithWatchlistPriority = (arr) => {
+                // แยกกลุ่มหุ้นใน Watchlist ออกมา
+                const starred = arr.filter(i => wlSymbols.includes(i.symbol));
+                
+                // กลุ่มหุ้นอื่นๆ เรียงตามรายได้คาดการณ์เหมือนเดิม
+                const others = arr.filter(i => !wlSymbols.includes(i.symbol))
+                                  .sort((a, b) => (b.revenueEstimate || 0) - (a.revenueEstimate || 0));
+                
+                // รวมร่าง: Watchlist ขึ้นก่อน -> ตามด้วยตัวท็อปอื่นๆ -> แล้วตัดเหลือ 6 ตัว
+                return [...starred, ...others].slice(0, 6);
+            };
 
-            const topBefore = sortAndSlice(beforeOpen);
-            const topAfter = sortAndSlice(afterClose);
+            const topBefore = sortWithWatchlistPriority(beforeOpen);
+            const topAfter = sortWithWatchlistPriority(afterClose);
 
             const colDate = new Date(currentCalWeekStart);
             colDate.setDate(colDate.getDate() + index);
@@ -358,14 +373,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             colDate.getMonth() === realToday.getMonth() && 
                             colDate.getFullYear() === realToday.getFullYear();
 
-            // 1. ปรับ Class ให้รัดเฉพาะพื้นที่หัวข้อ (เอา pb-1 ออกเพื่อให้กรอบไม่ยืดลงมาข้างล่าง)
             const colHighlightClass = isToday ? 'highlight-today-col' : ''; 
             const dayTextClass = isToday ? 'text-success font-bold' : 'text-slate-400 font-medium';
             const numTextClass = isToday ? 'text-success' : 'text-white';
 
             html += `
             <div class="flex flex-col gap-[6px] h-full pt-1 px-0.5">
-                
                 <div class="text-center ${dayTextClass} text-[10px] py-1.5 border-b border-border-dark/50 whitespace-nowrap ${colHighlightClass}">
                     <span class="${numTextClass} font-bold">${dateNum}</span> ${dayNames[index]}
                 </div>
@@ -388,6 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         gridContainer.innerHTML = html;
     };
+
 
     // 📌 กดเปลี่ยนสัปดาห์ (ซ้าย-ขวา)
     document.addEventListener('click', (e) => {
