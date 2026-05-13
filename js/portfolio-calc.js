@@ -207,23 +207,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const updateUI = () => {
+        const updateUI = () => {
         const data = loadData();
         let holdings = data.holdings || [];
         
         let cash = data.cash || 0; 
-        let totalValue = cash; // Total Value เอา Cash ตั้งไว้ก่อน
+        let totalValue = cash; 
         let totalCost = 0;
 
         holdings.forEach(h => {
-            h.calculatedPrice = h.currentPrice || h.avgCost;
+            // 🚀 แก้บัคที่ 1: ดึงราคาที่ api.js อัปเดตเตรียมไว้ให้แล้ว (h.c)
+            // เลิกพึ่งพา currentPrice เก่าที่ค้างตายอยู่ใน JSON
+            let activePrice = h.c || h.currentPrice || h.avgCost;
+            let prevClose = h.pc || h.previousClose || h.avgCost;
+
+            // 🚀 แก้บัคที่ 2: ดึงสถานะตลาดและราคา Pre/Post Market ให้ถูกต้อง
+            if (h.marketState && h.marketState !== 'REGULAR' && h.extPrice !== null && h.extPrice !== undefined) {
+                activePrice = h.extPrice;
+                h.dailyUpside = h.extPercent || 0;
+            } else {
+                h.dailyUpside = h.regularChangePct !== undefined ? h.regularChangePct : (prevClose ? ((activePrice - prevClose) / prevClose) * 100 : 0);
+            }
+
+            h.calculatedPrice = activePrice;
             h.calculatedValue = h.shares * h.calculatedPrice;
             h.calculatedCost = h.shares * h.avgCost;
             h.calculatedProfit = h.calculatedValue - h.calculatedCost;
-            h.dailyUpside = h.previousClose ? ((h.calculatedPrice - h.previousClose) / h.previousClose) * 100 : 0;
             h.calculatedProfitPct = h.calculatedCost > 0 ? (h.calculatedProfit / h.calculatedCost) * 100 : 0;
             
-            totalValue += h.calculatedValue; // เอามูลค่าหุ้นบวกเข้าไป
+            totalValue += h.calculatedValue; 
             totalCost += h.calculatedCost;
         });
 
@@ -291,11 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const portCashValEl = document.getElementById('port-cash-val'); 
         const portUnrealizedValEl = document.getElementById('port-unrealized-val');
         if (portTotalValEl) portTotalValEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(totalValue) : `$${totalValue.toFixed(2)}`;
-        if (portCashValEl) portCashValEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(cash) : `$${cash.toFixed(2)}`; // อัพเดทยอด Cash ลง UI
+        if (portCashValEl) portCashValEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(cash) : `$${cash.toFixed(2)}`;
         document.getElementById('position-count').textContent = holdings.length;
 
         if (portUnrealizedValEl) {
-            const totalProfit = (totalValue - cash) - totalCost; // กำไรคิดจากมูลค่าหุ้นเพียวๆ
+            const totalProfit = (totalValue - cash) - totalCost; 
             const totalProfitPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
             const isTotalUp = totalProfit >= 0;
             portUnrealizedValEl.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isTotalUp ? 'trending_up' : 'trending_down'}</span> ${isTotalUp ? '+' : ''}${window.formatKodaMoney ? window.formatKodaMoney(Math.abs(totalProfit)) : `$${Math.abs(totalProfit)}`} (${totalProfitPct.toFixed(2)}%) All Time`;
@@ -349,7 +361,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const whatIfAssetBtn = document.getElementById('whatif-asset-btn');
     const whatIfAssetMenu = document.getElementById('whatif-asset-menu');
     
-    //whatIfAssetBtn?.addEventListener('click', (e) => { e.stopPropagation(); whatIfAssetMenu.classList.toggle('hidden'); });
     document.getElementById('mode-whatif')?.addEventListener('click', () => {
         const holdings = loadData().holdings || [];
         if (holdings.length === 0) { alert("Your portfolio is empty."); return; }
@@ -402,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!sym || sh <= 0 || cost < 0) return;
         const data = loadData(); if (!data.holdings) data.holdings = [];
         
-        data.cash -= (sh * cost); // หัก Cash ตอนซื้อ
+        data.cash -= (sh * cost); 
 
         const existing = data.holdings.find(h => h.symbol === sym);
         if (existing) { existing.avgCost = ((existing.shares * existing.avgCost) + (sh * cost)) / (existing.shares += sh); } 
@@ -429,13 +440,13 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const sym = document.getElementById('sell-index').value; 
         const shToSell = parseFloat(document.getElementById('sell-shares').value);
-        const sellPrice = parseFloat(document.getElementById('sell-price').value); // ดึงราคาที่ปลดล็อก
+        const sellPrice = parseFloat(document.getElementById('sell-price').value); 
         const data = loadData();
         
         if (data.holdings) {
             const targetIdx = data.holdings.findIndex(h => h.symbol === sym);
             if (targetIdx !== -1) {
-                data.cash += (shToSell * sellPrice); // คืน Cash ตอนขาย
+                data.cash += (shToSell * sellPrice); 
 
                 data.holdings[targetIdx].shares -= shToSell;
                 if (data.holdings[targetIdx].shares <= 0.0001) data.holdings.splice(targetIdx, 1);
@@ -447,92 +458,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-close-sell-modal').click();
     });
 
-        // ==========================================
-    // 🚀 ระบบ Portfolio Real-time Engine (อัปเดตหน้าจอ 100%)
-    // ==========================================
-    
-    const fetchLivePrices = async () => {
-        const data = loadData();
-        const holdings = data.holdings || [];
-        if (holdings.length === 0) return false;
-
-        // 1. แปลงชื่อหุ้นเพื่อส่งให้ Yahoo
-        const symbols = holdings.map(h => {
-            if (h.symbol === 'XAUUSD') return 'GC=F';
-            if (h.symbol.includes('.HK')) return h.symbol.split('.')[0].padStart(4, '0') + '.HK';
-            // 🚨 แก้บัคแปลงชื่อคริปโตให้ Yahoo รู้จัก
-            if (h.symbol.includes('BINANCE:')) return h.symbol.replace('BINANCE:', '').replace('USDT', '-USD'); 
-            return h.symbol;
-        });
-
-        try {
-            // 🚨 แก้บัค: เพิ่ม Timestamp ต่อท้าย url เพื่อบังคับให้เบราว์เซอร์เลิกจำข้อมูลเก่า (Cache Busting)
-            const url = `/api/yahoo?mode=quote&symbols=${symbols.join(',')}&_=${Date.now()}`;
-            
-            // 🚨 บังคับ fetch แบบไม่ใช้ Cache
-            const res = await fetch(url, { cache: 'no-store' });
-            
-            if (res.ok) {
-
-                const apiData = await res.json();
-                let isChanged = false;
-
-                if (apiData?.quoteResponse?.result) {
-                    apiData.quoteResponse.result.forEach(q => {
-                        // 2. แปลงชื่อที่ได้จาก Yahoo กลับมาหาชื่อหุ้นในพอร์ตเราให้เจอ
-                        let origSym = q.symbol;
-                        if (origSym === 'GC=F') origSym = 'XAUUSD';
-                        else if (origSym.includes('-USD')) origSym = `BINANCE:${origSym.replace('-USD', 'USDT')}`; // 🚨 แก้บัคจับคู่กลับมา
-                        else if (origSym.includes('.HK')) origSym = origSym.replace('.HK', '').replace(/^0+/, '') + '.HK';
-
-                        const holding = holdings.find(h => h.symbol === origSym);
-                        if (holding) {
-                            let currentPrice = q.regularMarketPrice;
-                            let prevClose = q.regularMarketPreviousClose || q.previousClose;
-                            const marketState = q.marketState;
-
-                            // ดึงราคาจาก Pre/Post ถ้านอกเวลาทำการ
-                            if (marketState === 'PRE' && q.preMarketPrice) currentPrice = q.preMarketPrice;
-                            else if ((marketState === 'POST' || marketState === 'CLOSED') && q.postMarketPrice) currentPrice = q.postMarketPrice;
-
-                            // เช็คการขยับของราคา
-                            if (currentPrice && currentPrice !== holding.currentPrice) {
-                                holding.currentPrice = currentPrice;
-                                holding.previousClose = prevClose || holding.previousClose;
-                                isChanged = true;
-                            }
-                        }
-                    });
-
-                    if (isChanged) {
-                        data.holdings = holdings;
-                        saveData(data); 
-                        // 🚀 สั่งวาดหน้าจอทันที ไม่ต้องรอ Event!
-                        updateUI();
-                        return true;
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("Live Price Fetch Error:", e);
+    // 🚀 ระบบ Auto-Refresh ที่กินทรัพยากรน้อยที่สุด
+    // โดยอาศัยข้อมูลสดใหม่จาก api.js ที่วิ่งอยู่เบื้องหลังแล้ว
+    updateUI();
+    setInterval(() => {
+        if (!document.hidden && !isWhatIfMode) {
+            updateUI();
         }
-        return false;
-    };
+    }, 2000); 
 
-    const startPortfolioEngine = async () => {
-        // วาดครั้งแรก
-        updateUI();
-
-        const loop = async () => {
-            if (!document.hidden && !isWhatIfMode) {
-                await fetchLivePrices();
-            }
-        };
-
-        // เริ่มลูปดึงราคาทุกๆ 5 วินาที
-        setInterval(loop, 5000);
-    };
-
-    startPortfolioEngine();
 });
-
