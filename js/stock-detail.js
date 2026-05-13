@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-        // ==========================================
+    // ==========================================
     // 📌 Watchlist (Star) - ระบบแยกแฟ้มหมวดหมู่
     // ==========================================
     const btnStar = document.getElementById('btn-toggle-star');
@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 extPrice = data.postMarketPrice || currentPrice;
                 extChange = data.postMarketChange || 0;
                 extPercent = data.postMarketChangePercent || 0;
-                stateText = '🌑 หลังตลาดปิด';
+                stateText = '🌙 หลังตลาดปิด';
             }
             
             if (marketState === 'REGULAR') {
