@@ -890,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="padding: 12px; background: rgba(52,168,235,0.1); border-radius: 8px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> ...</div>
             ตอบด้วยรหัส HTML ล้วน ห้ามมีเครื่องหมาย \`\`\`html`;
             
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
             });
@@ -1543,7 +1543,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const prompt = `ในฐานะนักวิเคราะห์การเงิน โปรดอ่านหัวข้อข่าวและเนื้อหาย่อต่อไปนี้:\nHeadline: ${headline}\nSummary: ${summary}\nโปรดวิเคราะห์ข่าวนี้เป็น "ภาษาไทย" ให้เห็นภาพชัดเจน โดยบังคับใช้โครงสร้าง HTML ดังนี้:\n<p>📝 <strong style="color:#fff;">สรุปเหตุการณ์:</strong>...</p>\n<p>🌍 <strong style="color:#fff;">ผลกระทบ:</strong>...</p>\n<div style="background: rgba(52,168,235,0.1); border: 1px solid rgba(52,168,235,0.3); padding: 12px; border-radius: 8px; margin-top: 16px;">💡 <strong style="color:#34a8eb;">สรุปย่อ (TL;DR):</strong>...</div>\nตอบด้วย HTML format ห้ามใช้ Markdown`;
             
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, 
                 body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
             });
