@@ -61,6 +61,38 @@
         ::-webkit-scrollbar { display: none; }
         body { min-height: max(884px, 100dvh); }
         a, button { -webkit-tap-highlight-color: transparent; }
+    
+                /* 📌 กรอบไฮไลท์วันปัจจุบัน (กระจกสีเขียววิบวับ) */
+        .highlight-today-col {
+            position: relative;
+            border: 1.5px solid #00c076; /* สีเขียว success */
+            border-radius: 0.5rem; /* ความโค้งพอดีกับ grid */
+            background-color: rgba(0, 192, 118, 0.05); /* พื้นหลังเขียวจางๆ */
+            box-shadow: 0 0 12px rgba(0, 192, 118, 0.2), inset 0 0 8px rgba(0, 192, 118, 0.15);
+            overflow: hidden;
+        }
+        
+        /* สร้างเงากระจกสะท้อนแสง */
+        .highlight-today-col::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -150%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), rgba(0, 192, 118, 0.8), transparent);
+            transform: skewX(-25deg); /* เอียงให้ดูเหมือนแสงวิ่ง */
+            animation: glass-sweep 2s infinite cubic-bezier(0.4, 0, 0.2, 1); /* เล่นซ้ำทุก 2 วินาที */
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* ควบคุมจังหวะแสงวิ่ง */
+        @keyframes glass-sweep {
+            0% { left: -150%; opacity: 0; }
+            10% { opacity: 1; }
+            45% { left: 150%; opacity: 0; }
+            100% { left: 150%; opacity: 0; } /* หน่วงเวลาที่เหลือให้ครบ 2 วิแล้วค่อยเริ่มใหม่ */
+        }
+
     </style>
 </head>
 <body class="bg-background-dark text-slate-100 min-h-screen font-display">
@@ -254,6 +286,24 @@
                     const targetId = btn.getAttribute('data-target');
                     document.getElementById(targetId).classList.remove('hidden');
                     document.getElementById(targetId).classList.add('block');
+                    
+                    // 🚀 4. เพิ่มโค้ดล้างค่า Scanner อัตโนมัติเมื่อออกจากหน้า Watchlist
+                    if (targetId !== 'section-watchlists' && window.activeFilters && window.activeFilters.size > 0) {
+                        window.activeFilters.clear();
+                        const countEl = document.getElementById('filter-count');
+                        if (countEl) countEl.textContent = '0';
+                        
+                        // รีเซ็ตสีปุ่ม Filter ให้กลับเป็นค่าเริ่มต้น
+                        document.querySelectorAll('.filter-option-btn').forEach(b => {
+                            b.classList.remove('border-[#fbbf24]', 'bg-[#fbbf24]/10', 'text-[#fbbf24]', 'shadow-[0_0_10px_rgba(251,191,36,0.15)]');
+                            b.classList.add('border-border-dark', 'bg-background-dark', 'text-slate-300');
+                            const icon = b.querySelector('.material-symbols-outlined');
+                            if (icon) { icon.classList.remove('text-[#fbbf24]'); icon.classList.add('text-slate-500'); }
+                        });
+                        
+                        // สั่งวาดหน้า Watchlist ใหม่ให้เป็นปกติ (ไม่ถูกกรอง)
+                        if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                    }
                 });
             });
 
@@ -580,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // ==========================================
             // 📌 โครงสร้างข้อมูล Filter (แบ่งเป็นหมวดหมู่)
             // ==========================================
-            const SCANNER_CATEGORIES = [
+                        const SCANNER_CATEGORIES = [
                 {
                     title: '📊 สัญญาณเทคนิค (Technical)',
                     items: [
@@ -593,6 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     title: '🏢 ปัจจัยพื้นฐาน & ราคา (Fundamental)',
                     items: [
                         { id: 'ath_drop_30', label: 'ราคาลดลงจาก ATH > 30%', icon: 'waterfall_chart' },
+                        { id: 'low_up_30', label: 'ราคาเพิ่มขึ้นจาก 52W Low > 30%', icon: 'rocket_launch' }, // 📌 เพิ่มตัวกรองนี้เข้ามา
                         { id: 'pe_below_15', label: 'P/E < 15 (Value Stock)', icon: 'account_balance' }
                     ]
                 }
