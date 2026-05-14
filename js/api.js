@@ -227,28 +227,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalValueEl = document.getElementById('total-value');
         if (!totalValueEl) return;
         
-        let cash = window.kodaApiData.cash || 0;
-        let total = cash, prevTotal = cash, best = null, worst = null; 
+        // 1. โหลดข้อมูลล่าสุดจาก localStorage เพื่อให้แน่ใจว่าได้ค่าเดียวกับ Portfolio 100%
+        const currentData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{"holdings": [], "cash": 0}');
+        let cash = currentData.cash || 0;
+        let total = cash; 
+        let prevTotal = cash; 
+        let best = null, worst = null; 
 
-        window.kodaApiData.holdings.forEach(s => {
-            total += (s.shares * s.currentPrice);
-            prevTotal += (s.shares * s.previousClose);
-
-            // 📌 ดึงเปอร์เซ็นต์เปลี่ยนไปใช้นอกเวลา (Pre/Post) ถ้าตลาดปิด
+        // 2. คำนวณมูลค่าพอร์ตทั้งหมดให้ตรงเป๊ะ
+        (currentData.holdings || []).forEach(s => {
+            // ดึงราคาที่ดีที่สุดมาใช้ (รองรับ Pre/Post แบบเดียวกับ portfolio-calc)
+            let activePrice = s.c || s.currentPrice || s.avgCost;
+            let prevClose = s.pc || s.previousClose || s.avgCost;
             let pct = 0;
-            if (s.marketState && s.marketState !== 'REGULAR' && s.extPercent !== null && s.extPercent !== undefined) {
-                pct = s.extPercent; // ใช้ค่า Pre/Post 
+
+            if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPrice !== undefined) {
+                activePrice = s.extPrice;
+                pct = s.extPercent !== null && s.extPercent !== undefined ? s.extPercent : 0;
             } else {
-                pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
+                pct = s.regularChangePct !== undefined ? s.regularChangePct : (prevClose ? ((activePrice - prevClose) / prevClose) * 100 : 0);
             }
 
+            // คำนวณยอดเงินรวม
+            total += (s.shares * activePrice);
+            prevTotal += (s.shares * prevClose);
+
+            // คัดแยก Top Gainer & Loser
             if (!best || pct > best.change) best = { symbol: s.symbol, change: pct };
             if (!worst || pct < worst.change) worst = { symbol: s.symbol, change: pct };
         });
         
+        // 3. อัปเดตตัวเลขหน้าจอ
         totalValueEl.textContent = window.formatKodaMoney ? window.formatKodaMoney(total) : formatCurrency(total);
         
-        const change = formatPercent(prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0);
+        const changePct = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0;
+        const change = formatPercent(changePct);
         const totalPctEl = document.getElementById('total-percent');
         totalPctEl.className = `text-sm font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${change.colorClass} ${change.bgClass}`;
         totalPctEl.innerHTML = `<span class="material-symbols-outlined text-sm">${change.icon}</span> ${change.text}`;
@@ -266,7 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const sectorContainer = document.getElementById('sector-container');
         if (sectorContainer) {
-            sectorContainer.innerHTML = window.kodaApiData.sectors.slice(0, 4).map(sec => {
+            // ดึง Sectors ใหม่จาก kodaApiData มาแสดงผล
+            sectorContainer.innerHTML = (window.kodaApiData.sectors || []).slice(0, 4).map(sec => {
                 const c = formatPercent(sec.change);
                 return `<div class="min-w-[140px] bg-surface-dark border border-border-dark rounded-xl p-4 relative overflow-hidden">
                     <div class="absolute inset-0 opacity-10 bg-gradient-to-br ${sec.change >= 0 ? 'from-success' : 'from-danger'} to-transparent"></div>
@@ -277,7 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
         }
     };
-
+    
     const renderAllSectors = () => {
         const list = document.getElementById('all-sectors-list');
         if (!list) return;
