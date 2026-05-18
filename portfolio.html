@@ -520,7 +520,7 @@
         const scripts = ["js/api.js", "js/portfolio-calc.js", "js/analytics.js", "js/kodalab1.js"];
         scripts.forEach(src => {
             const s = document.createElement('script');
-            s.src = src;
+            s.src = src + '?v=' + Date.now();
             document.body.appendChild(s);
         });
     });
