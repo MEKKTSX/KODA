@@ -1,5 +1,28 @@
 document.addEventListener('DOMContentLoaded', () => {
     
+    // 🚀 ฟังก์ชัน Rolling Number สำหรับราคาหลักหน้า Detail (ไม่เอากรอบสี)
+    const animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
+        if (startValue === endValue) {
+            element.textContent = endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return;
+        }
+        const startTime = performance.now();
+        const step = (now) => {
+            const progress = Math.min((now - startTime) / duration, 1);
+            const easeProgress = progress * (2 - progress); // Ease Out
+            const currentValue = startValue + (endValue - startValue) * easeProgress;
+            
+            element.textContent = currentValue.toLocaleString('en-US', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+            });
+            
+            if (progress < 1) window.requestAnimationFrame(step);
+            else element.textContent = endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+        window.requestAnimationFrame(step);
+    };
+    
     // 📌 1. ดึง Keys ปลอดภัย
     const finnhubKeys = (window.ENV_KEYS?.FINNHUB_ARRAY && window.ENV_KEYS.FINNHUB_ARRAY.length > 0) 
                         ? window.ENV_KEYS.FINNHUB_ARRAY 
@@ -74,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ==========================================
+        // ==========================================
     // 📌 Watchlist (Star) - ระบบแยกแฟ้มหมวดหมู่
     // ==========================================
     const btnStar = document.getElementById('btn-toggle-star');
@@ -292,14 +315,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const fmtPrice = (num) => num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
-        if (priceEl.dataset.rawPrice && parseFloat(priceEl.dataset.rawPrice) !== currentPrice) {
-            priceEl.classList.remove('price-update');
-            void priceEl.offsetWidth; 
-            priceEl.classList.add('price-update');
+        // 🚀 โค้ดใหม่: อัปเดต Rolling Number แบบคลีน (ไม่มีกรอบสีแดง/เขียว)
+        if (currentPrice === undefined || currentPrice === null) return;
+
+        const fmtPrice = (num) => num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        
+        const oldPriceRaw = priceEl.dataset.rawPrice;
+        const oldPrice = oldPriceRaw ? parseFloat(oldPriceRaw) : currentPrice;
+
+        // ถ้าราคาเปลี่ยนและไม่ใช่การโหลดครั้งแรก ให้วิ่งแอนิเมชันตัวเลขหมุน
+        if (oldPrice !== currentPrice && oldPriceRaw) {
+            animateKodaRollingNumber(priceEl, oldPrice, currentPrice, 450);
+        } else {
+            priceEl.textContent = fmtPrice(currentPrice); // โหลดครั้งแรกให้ขึ้นตัวเลขเต็มทันที
         }
         
+        // บันทึกราคาปัจจุบันลงเครื่องเพื่อใช้เป็นฐานเทียบในวินาทีถัดไป
         priceEl.dataset.rawPrice = currentPrice;
-        priceEl.textContent = fmtPrice(currentPrice);
         document.getElementById('detail-currency').textContent = currencyCode;
         
         changeEl.className = `text-sm font-bold flex items-center gap-1 mt-1 ${isPositive ? 'text-success' : 'text-danger'}`;
