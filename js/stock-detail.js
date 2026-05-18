@@ -311,10 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
             dotEl.classList.add('hidden');
         }
 
-        if (currentPrice === undefined || currentPrice === null) return;
-
-        const fmtPrice = (num) => num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        
         // 🚀 โค้ดใหม่: อัปเดต Rolling Number แบบคลีน (ไม่มีกรอบสีแดง/เขียว)
         if (currentPrice === undefined || currentPrice === null) return;
 
