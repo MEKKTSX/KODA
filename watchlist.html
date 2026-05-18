@@ -92,6 +92,19 @@
             45% { left: 150%; opacity: 0; }
             100% { left: 150%; opacity: 0; } /* หน่วงเวลาที่เหลือให้ครบ 2 วิแล้วค่อยเริ่มใหม่ */
         }
+    
+    /* 📌 เอฟเฟกต์กระพริบกรอบ (Border Flash) เวลาหุ้นขยับ (Tick-by-Tick) */
+        .flash-up-border { animation: flashGreenBorder 0.8s ease-out; }
+        .flash-down-border { animation: flashRedBorder 0.8s ease-out; }
+
+        @keyframes flashGreenBorder {
+            0% { background-color: rgba(0, 192, 118, 0.2); border-color: rgba(0, 192, 118, 0.8); }
+            100% { background-color: transparent; border-color: #232b3e; }
+        }
+        @keyframes flashRedBorder {
+            0% { background-color: rgba(255, 77, 77, 0.2); border-color: rgba(255, 77, 77, 0.8); }
+            100% { background-color: transparent; border-color: #232b3e; }
+        }
 
     </style>
 </head>
