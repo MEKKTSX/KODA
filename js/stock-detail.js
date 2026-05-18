@@ -311,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
             dotEl.classList.add('hidden');
         }
 
+                
         // 🚀 โค้ดใหม่: อัปเดต Rolling Number แบบคลีน (ไม่มีกรอบสีแดง/เขียว)
         if (currentPrice === undefined || currentPrice === null) return;
 
