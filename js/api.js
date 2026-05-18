@@ -454,47 +454,49 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             // ✅ โค้ดใหม่ (แยกการคลิก)
+            // 📌 ส่วนประกอบกล่องซ้าย (โลโก้ + ชื่อหุ้น)
+            const itemLeftContent = `
+                <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
+                    <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}';">
+                </div>
+                <div>
+                    <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
+                    <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
+                </div>
+            `;
+
+            // 📌 ส่วนประกอบกล่องขวา (ราคา + เปอร์เซ็นต์)
+            const itemRightContent = `
+                <div class="flex flex-col items-end justify-center">
+                    <div class="flex flex-row items-center gap-1.5">
+                        <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
+                            ${window.formatKodaMoney ? window.formatKodaMoney(oldPrice) : formatCurrency(oldPrice)}
+                        </p>
+                        <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
+                            <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
+                        </div>
+                    </div>
+                    ${extHtml} 
+                </div>
+            `;
+
+            // 📌 รวมร่าง: สังเกตว่าแท็ก <a> จะครอบแค่ itemLeftContent เท่านั้น!
             if (isEditMode) {
                 return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 flex items-center justify-between watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
                     <div class="flex items-center gap-3 flex-1">
                         <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger" data-symbol="${s.symbol}"><span class="material-symbols-outlined text-[14px]">remove</span></button>
-                        <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
-                            <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}';">
-                        </div>
-                        <div class="flex-1 flex justify-between items-center">
-                            <div>
-                                <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
-                                <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
-                            </div>
-                        </div>
+                        ${itemLeftContent}
+                        ${itemRightContent}
                     </div>
                     <span class="material-symbols-outlined text-slate-600 cursor-grab drag-handle">drag_indicator</span>
                 </div>`;
             } else {
-                // 🚀 โหมดปกติ: ให้ลิงก์ครอบแค่ตรง โลโก้ และ ชื่อหุ้น เท่านั้น ส่วนฝั่งราคาให้แยกออกมา
                 return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
-                    <div class="flex items-center gap-3">
-                        <a href="stock-detail.html?symbol=${s.symbol}" class="flex items-center gap-3 flex-1">
-                            <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
-                                <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}';">
-                            </div>
-                            <div>
-                                <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
-                                <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
-                            </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">
+                            ${itemLeftContent}
                         </a>
-                        
-                        <div class="flex flex-col items-end justify-center">
-                            <div class="flex flex-row items-center gap-1.5">
-                                <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
-                                    ${window.formatKodaMoney ? window.formatKodaMoney(oldPrice) : formatCurrency(oldPrice)}
-                                </p>
-                                <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
-                                    <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
-                                </div>
-                            </div>
-                            ${extHtml} 
-                        </div>
+                        ${itemRightContent}
                     </div>
                 </div>`;
             }
