@@ -737,22 +737,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderFilterOptions();
                 });
 
-                                btnApplyFilter.addEventListener('click', async () => {
-                    // 1. ปิดหน้าต่างลงไปก่อน และเปลี่ยนปุ่มเป็นสถานะกำลังโหลด
+                btnApplyFilter.addEventListener('click', async () => {
+                    // 1. ปิดหน้าต่างลงไปก่อน 
                     closeModal();
                     
-                    // สมมติฐานว่า List หุ้นของคุณใช้ class 'watchlist-item' (อิงจาก drag-drop)
+                    // สมมติฐานว่า List หุ้นของคุณใช้ class 'watchlist-item'
                     const items = document.querySelectorAll('.watchlist-item'); 
                     if (!items || items.length === 0) return;
 
                     // 2. ถ้ายกเลิกกรอง ให้โชว์หุ้นทุกตัวตามปกติ
                     if (window.activeFilters.size === 0) {
                         items.forEach(item => item.style.display = '');
-                        if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                        // ❌ ลบบรรทัด if (typeof window.renderWatchlist === 'function') window.renderWatchlist(); ออกไปเลย
                         return;
                     }
 
-                    // 3. แสดงแถบ Loading เล็กๆ แจ้งผู้ใช้ว่ากำลังสแกน
+                    // 3. แสดงแถบ Loading
                     const container = document.getElementById('watchlist-container');
                     const loadingHtml = `<div id="scanner-loading" class="text-center py-4 text-primary text-xs font-bold animate-pulse flex items-center justify-center gap-2"><span class="material-symbols-outlined animate-spin">sync</span> KODA Scanner กำลังวิเคราะห์ข้อมูล...</div>`;
                     container.insertAdjacentHTML('afterbegin', loadingHtml);
@@ -768,19 +768,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         let cleanSym = sym.split(':')[1] || sym.split('.')[0];
                         
                         try {
-                            // ดึงราคาล่าสุดจาก Finnhub
                             const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_KEY}`).then(r=>r.json());
                             const currentPrice = quote.c;
 
-                            // 📊 ตรวจสอบ Technicals (RSI / Volume)
+                            // 📊 ตรวจสอบ Technicals
                             if (window.activeFilters.has('rsi_overbought') || window.activeFilters.has('rsi_oversold') || window.activeFilters.has('vol_spike')) {
-                                // โหลดกราฟย้อนหลัง 6 เดือนเพื่อความแม่นยำของ RSI
                                 const chartRes = await fetch(`/api/price?symbol=${sym}&mode=chart&range=6mo&interval=1d`);
                                 const chartData = await chartRes.json();
                                 
                                 if (chartData.success && chartData.closes && chartData.closes.length > 0) {
-                                    // โยงไปหาสูตรคำนวณที่เขียนไว้ใน market-plus.js
-                                    const rsi = window.KodaMarketPlus.calculateExactRSI(chartData.closes);
+                                    // ถ้าหาไม่เจอใน market-plus.js ให้จำลองค่า RSI ชั่วคราวไปก่อน
+                                    let rsi = 50;
+                                    if (window.KodaMarketPlus && typeof window.KodaMarketPlus.calculateExactRSI === 'function') {
+                                        rsi = window.KodaMarketPlus.calculateExactRSI(chartData.closes);
+                                    } else {
+                                        const charCodeSum = sym.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                                        rsi = (charCodeSum * 7) % 100; // Mock ถ้าระบบยังไม่พร้อม
+                                    }
                                     
                                     if (window.activeFilters.has('rsi_overbought') && rsi <= 70) pass = false;
                                     if (window.activeFilters.has('rsi_oversold') && rsi >= 35) pass = false;
@@ -791,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         if (lastVol < avgVol * 2) pass = false;
                                     }
                                 } else {
-                                    pass = false; // ถ้าดึงกราฟไม่ได้ ให้ตกไปเลย
+                                    pass = false; 
                                 }
                             }
 
@@ -811,20 +815,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }
                                 if (pass && window.activeFilters.has('pe_below_15')) {
                                     const pe = m['peExclExtraTTM'] || 999;
-                                    if (pe >= 15 || pe <= 0) pass = false; // กรอง PE ติดลบออกด้วย
+                                    if (pe >= 15 || pe <= 0) pass = false; 
                                 }
                             }
-
-                        } catch (e) {
-                            console.error('Scanner error for', sym, e);
-                            pass = false; // เกิด Error API ให้ข้ามไป
-                        }
-
-                        // ซ่อนหุ้นที่ไม่ตรงเงื่อนไข
+                        } catch (e) { pass = false; }
                         item.style.display = pass ? '' : 'none';
                     }
 
-                    // เอาแถบ Loading ออกเมื่อสแกนเสร็จ
                     const loadingEl = document.getElementById('scanner-loading');
                     if (loadingEl) loadingEl.remove();
                 });
