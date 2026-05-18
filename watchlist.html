@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>KODA - Watchlist & Markets</title>
+    <title>KODA - Stock Details</title>
     <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
@@ -11,260 +11,306 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0a0e17">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#34a8eb", 
-                        "success": "#00c076", 
-                        "danger": "#ff4d4d", 
-                        "background-dark": "#0a0e17", 
-                        "surface-dark": "#161c2b", 
-                        "border-dark": "#232b3e",
-                    },
-                    fontFamily: { "display": ["Inter", "sans-serif"] },
-                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "9999px" },
-                },
-            },
-        }
+        tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#34a8eb", "success": "#00c076", "danger": "#ff4d4d", "background-dark": "#0a0e17", "surface-dark": "#161c2b", "border-dark": "#232b3e" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
     </script>
     <style>
-            /* 📌 ระบบกรอบสีทองวิ่งวน (Animated Conic Gradient) */
-        @keyframes border-spin {
-            100% { transform: rotate(360deg); }
-        }
-        .golden-border-wrapper {
-            position: relative;
-            overflow: hidden;
-            border-radius: 0.375rem; /* rounded-md */
-            padding: 1.5px; /* ความหนาของกรอบ */
-            display: inline-block;
-        }
-        .golden-border-wrapper::before {
-            content: '';
-            position: absolute;
-            top: -50%; left: -50%; width: 200%; height: 200%;
-            background: conic-gradient(transparent, transparent, transparent, #fbbf24);
-            animation: border-spin 2s linear infinite;
-        }
-        .golden-border-content {
-            position: relative;
-            background: #161c2b; /* สีพื้นหลังกล่อง (surface-dark) */
-            border-radius: 0.25rem;
-            z-index: 1;
-        }
-
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .fill-icon { font-variation-settings: 'FILL' 1; }
         ::-webkit-scrollbar { display: none; }
         body { min-height: max(884px, 100dvh); }
-        a, button { -webkit-tap-highlight-color: transparent; }
-    
-                /* 📌 กรอบไฮไลท์วันปัจจุบัน (กระจกสีเขียววิบวับ) */
-        .highlight-today-col {
-            position: relative;
-            border: 1.5px solid #00c076; /* สีเขียว success */
-            border-radius: 0.5rem; /* ความโค้งพอดีกับ grid */
-            background-color: rgba(0, 192, 118, 0.05); /* พื้นหลังเขียวจางๆ */
-            box-shadow: 0 0 12px rgba(0, 192, 118, 0.2), inset 0 0 8px rgba(0, 192, 118, 0.15);
-            overflow: hidden;
-        }
-        
-        /* สร้างเงากระจกสะท้อนแสง */
-        .highlight-today-col::after {
-            content: '';
-            position: absolute;
-            top: 0; left: -150%;
-            width: 100%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), rgba(0, 192, 118, 0.8), transparent);
-            transform: skewX(-25deg); /* เอียงให้ดูเหมือนแสงวิ่ง */
-            animation: glass-sweep 2s infinite cubic-bezier(0.4, 0, 0.2, 1); /* เล่นซ้ำทุก 2 วินาที */
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        /* ควบคุมจังหวะแสงวิ่ง */
-        @keyframes glass-sweep {
-            0% { left: -150%; opacity: 0; }
-            10% { opacity: 1; }
-            45% { left: 150%; opacity: 0; }
-            100% { left: 150%; opacity: 0; } /* หน่วงเวลาที่เหลือให้ครบ 2 วิแล้วค่อยเริ่มใหม่ */
-        }
-    
-    /* 📌 เอฟเฟกต์กระพริบกรอบ (Border Flash) เวลาหุ้นขยับ (Tick-by-Tick) */
-        .flash-up-border { animation: flashGreenBorder 0.8s ease-out; }
-        .flash-down-border { animation: flashRedBorder 0.8s ease-out; }
-
-        @keyframes flashGreenBorder {
-            0% { background-color: rgba(0, 192, 118, 0.2); border-color: rgba(0, 192, 118, 0.8); }
-            100% { background-color: transparent; border-color: #232b3e; }
-        }
-        @keyframes flashRedBorder {
-            0% { background-color: rgba(255, 77, 77, 0.2); border-color: rgba(255, 77, 77, 0.8); }
-            100% { background-color: transparent; border-color: #232b3e; }
-        }
-
+        .tab-btn.active { color: #34a8eb; border-bottom: 2px solid #34a8eb; }
+        .tab-btn { border-bottom: 2px solid transparent; }
+        @keyframes pulse-glow { 0% { opacity: 1; } 50% { opacity: 0.5; transform: scale(1.02); } 100% { opacity: 1; } }
+        .price-update { animation: pulse-glow 0.8s ease-out; }
     </style>
 </head>
 <body class="bg-background-dark text-slate-100 min-h-screen font-display">
-<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative">
+<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative overflow-x-hidden">
     
-    <header class="flex items-center p-4 pb-2 justify-between sticky top-0 bg-background-dark z-20 border-b border-border-dark/30">
-        <div class="text-slate-400 flex size-10 shrink-0 items-center justify-center">
-            <span class="material-symbols-outlined text-3xl">account_circle</span>
+    <header class="flex items-center p-4 justify-between sticky top-0 bg-background-dark/95 backdrop-blur-md z-30 border-b border-border-dark/30">
+        <button onclick="window.history.back()" class="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors"><span class="material-symbols-outlined">arrow_back</span></button>
+        <div class="flex flex-col items-center flex-1">
+            <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight" id="detail-symbol">-</h2>
+            <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider" id="detail-name">Loading...</p>
         </div>
-        <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight flex-1 px-3">Markets</h2>
-        <div class="flex gap-2 items-center">
-            <button class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300">
-                <span class="material-symbols-outlined">search</span>
-            </button>
-            <button class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 relative">
-                <span class="material-symbols-outlined">notifications</span>
-                <span class="absolute top-2.5 right-2.5 size-2 bg-danger rounded-full border-2 border-background-dark"></span>
-            </button>
-        </div>
+        <button id="btn-toggle-star" class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors"><span id="icon-star" class="material-symbols-outlined transition-colors">star</span></button>
     </header>
 
-    <div class="px-4 pt-4 pb-3 bg-background-dark sticky top-[68px] z-10 border-b border-border-dark/50 shadow-sm">
-        <div class="flex bg-surface-dark rounded-lg p-1 border border-border-dark shadow-inner">
-            <button id="tab-btn-watchlists" class="tab-main-btn active flex-1 text-xs font-bold py-2.5 rounded-md bg-primary text-white transition-all shadow-md" data-target="section-watchlists">Watchlists</button>
-            <button id="tab-btn-earnings" class="tab-main-btn flex-1 text-xs font-bold py-2.5 rounded-md text-slate-400 hover:text-white transition-all bg-transparent" data-target="section-earnings">Earnings</button>
-            <button id="tab-btn-overview" class="tab-main-btn flex-1 text-xs font-bold py-2.5 rounded-md text-slate-400 hover:text-white transition-all bg-transparent" data-target="section-overview">Market Overview</button>
-        </div>
-    </div>
-
-    <main class="flex-1 overflow-y-auto pb-28 relative">
+    <main class="flex-1 overflow-y-auto pb-24">
         
-        <section id="section-watchlists" class="tab-main-content block px-4 pt-4">
-            
-            <div class="flex items-center gap-2 mb-4">
-                <div class="flex-1 flex overflow-x-auto no-scrollbar gap-2" id="watchlist-categories">
+        <section class="px-4 pt-4 pb-4">
+            <div class="flex justify-between items-start w-full">
+                <div class="flex flex-col items-start flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-slate-500 text-xs font-bold">ราคาหุ้น</span>
+                        <div id="market-status-dot" class="size-2 rounded-full bg-slate-600 animate-pulse hidden"></div>
                     </div>
-                <button id="btn-manage-categories" class="size-8 shrink-0 bg-surface-dark border border-border-dark text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-colors shadow-sm">
-                    <span class="material-symbols-outlined text-[16px]">tune</span>
+                    <div class="flex items-baseline gap-1.5">
+                        <h1 class="text-white text-4xl font-black tracking-tight transition-all duration-300" id="detail-price">0.00</h1>
+                        <span class="text-slate-400 font-bold text-lg" id="detail-currency">USD</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 mt-1">
+                        <span class="text-slate-400 text-sm font-bold flex items-center gap-1" id="detail-change">
+                            <span class="material-symbols-outlined text-[14px]">horizontal_rule</span> 0.00 (0.00%)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-end text-right hidden shrink-0" id="extended-price-container">
+                    <span class="text-slate-400 mb-1 text-[10px] font-bold tracking-wide" id="extended-label">🌑 หลังตลาดปิด</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <h2 class="text-white text-xl font-black tracking-tight" id="extended-price">0.00</h2>
+                        <span class="text-slate-500 font-bold text-[10px]" id="extended-currency">USD</span>
+                    </div>
+                    <span class="font-bold text-[11px] mt-0.5" id="extended-change">+0.00 (0.00%)</span>
+                </div>
+            </div>
+            
+                        <div class="grid grid-cols-4 gap-x-2 gap-y-4 text-[10px] mt-6 pt-4 border-t border-border-dark/50">
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">ราคาเปิด</span><span id="stat-open" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">ราคาสูงสุด</span><span id="stat-high" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">ราคาต่ำสุด</span><span id="stat-low" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">ปิดก่อนหน้า</span><span id="stat-prev" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">สูงสุด 52W</span><span id="stat-52high" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">ต่ำสุด 52W</span><span id="stat-52low" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">Market Cap</span><span id="stat-mcap" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">Volume</span><span id="stat-vol" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">P/E Ratio</span><span id="stat-pe" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">P/S Ratio</span><span id="stat-ps" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">EPS (TTM)</span><span id="stat-eps" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">Div Yield</span><span id="stat-div" class="text-white font-bold text-xs">-</span></div>
+                
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">FCF</span><span id="stat-fcf" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">ROE</span><span id="stat-roe" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">Current R.</span><span id="stat-cr" class="text-white font-bold text-xs">-</span></div>
+                <div class="flex flex-col"><span class="text-slate-500 mb-0.5">D/E Ratio</span><span id="stat-de" class="text-white font-bold text-xs">-</span></div>
+            </div>
+
+            <div class="flex justify-end mt-3">
+                <button id="btn-fin-detail" class="text-[9px] font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded-md hover:bg-primary hover:text-white transition-colors flex items-center gap-1 active:scale-95">
+                    <span class="material-symbols-outlined text-[12px]">info</span> Financial Detail
                 </button>
             </div>
+        </section>
 
-            <div class="bg-surface-dark/50 border border-border-dark rounded-2xl p-2 shadow-lg mb-4">
-                 <div class="flex items-center justify-between mb-2 px-2 pt-2">
-                    <div class="flex items-center gap-1">
-                        <h3 class="text-slate-100 text-sm font-bold" id="current-category-title">All</h3>
-                        <button id="btn-sort-watchlist" class="text-slate-500 hover:text-white p-1 rounded transition-colors flex items-center justify-center h-6 w-6">
-                            <span class="material-symbols-outlined text-[16px]" id="icon-sort-watchlist">sort</span>
-                        </button>
-                        
-                        <button id="btn-filter-scanner" class="golden-border-wrapper ml-1 transition-transform active:scale-95">
-                            <div class="golden-border-content px-2 py-0.5 flex items-center gap-1">
-                                <span class="material-symbols-outlined text-[#fbbf24] text-[14px]">filter_alt</span>
-                                <span class="text-[#fbbf24] text-[10px] font-bold">พื้นฐาน</span>
-                            </div>
-                        </button>
+        <div class="flex overflow-x-auto no-scrollbar border-y border-border-dark bg-background-dark/95 backdrop-blur-md sticky top-[72px] z-20 px-2" id="detail-tabs">
+            <button class="tab-btn active px-4 py-3 text-xs font-bold text-slate-400 whitespace-nowrap transition-colors" data-target="tab-chart">กราฟ</button>
+            <button class="tab-btn px-4 py-3 text-xs font-bold text-slate-400 whitespace-nowrap transition-colors" data-target="tab-company">สรุปบริษัท</button>
+            <button class="tab-btn px-4 py-3 text-xs font-bold text-slate-400 whitespace-nowrap transition-colors" data-target="tab-analysis">บทวิเคราะห์</button>
+            <button class="tab-btn px-4 py-3 text-xs font-bold text-slate-400 whitespace-nowrap transition-colors" data-target="tab-quarterly">สรุปไตรมาส</button>
+            <button class="tab-btn px-4 py-3 text-xs font-bold text-slate-400 whitespace-nowrap transition-colors" data-target="tab-financials">ข้อมูลการเงิน</button>
+            <button class="tab-btn px-4 py-3 text-xs font-bold text-slate-400 whitespace-nowrap transition-colors" data-target="tab-news">ข่าวล่าสุด</button>
+        </div>
 
+        <section id="tab-chart" class="tab-content block">
+            <div class="bg-background-dark border-b border-border-dark/30">
+                <div class="flex justify-between items-center px-4 py-2">
+                    <div class="bg-surface-dark border border-border-dark rounded-lg p-0.5 flex text-[10px] font-bold uppercase tracking-wider">
+                        <!-- 📌 สลับให้ KODA S/R เป็น Default (Active) -->
+                        <button id="btn-chart-tv" class="px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-300 transition-colors">TradingView</button>
+                        <button id="btn-chart-koda" class="px-3 py-1.5 rounded-md bg-primary/20 text-primary transition-colors">KODA S/R</button>
                     </div>
-                    <button id="btn-edit-watchlist" class="text-[10px] font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors">Edit</button>
+                    <!-- 📌 โชว์ Timeframe เลยตั้งแต่เปิดหน้า -->
+                    <div id="tf-selector" class="flex gap-1">
+                        <button class="tf-btn px-2.5 py-1.5 text-[10px] font-black rounded-md text-slate-500 hover:text-slate-300 transition-all" data-tf="3M">3M</button>
+                        <button class="tf-btn px-2.5 py-1.5 text-[10px] font-black rounded-md text-slate-500 hover:text-slate-300 transition-all" data-tf="6M">6M</button>
+                        <button class="tf-btn px-2.5 py-1.5 text-[10px] font-black rounded-md text-primary bg-primary/10 transition-all" data-tf="1Y">1Y</button>
+                        <button class="tf-btn px-2.5 py-1.5 text-[10px] font-black rounded-md text-slate-500 hover:text-slate-300 transition-all" data-tf="5Y">5Y</button>
+                    </div>
                 </div>
-                <div class="space-y-1 max-h-[60vh] overflow-y-auto no-scrollbar" id="watchlist-container"></div>
             </div>
-        </section>
-        
-        <section id="section-earnings" class="tab-main-content hidden pb-8 px-2 pt-4">
-            <div class="flex items-center justify-between bg-surface-dark border border-border-dark rounded-xl p-2 mb-4 shadow-sm">
-                <button id="btn-prev-week" class="p-2 text-slate-400 hover:text-white transition-colors active:scale-95"><span class="material-symbols-outlined text-xl">chevron_left</span></button>
-                <span id="earnings-week-display" class="text-white font-bold text-[13px] tracking-wide">LOADING...</span>
-                <button id="btn-next-week" class="p-2 text-slate-400 hover:text-white transition-colors active:scale-95"><span class="material-symbols-outlined text-xl">chevron_right</span></button>
-            </div>
+            
+            <!-- 📌 ซ่อน TV โชว์ Koda -->
+            <div id="tv-chart-container" class="w-full h-[380px] relative bg-background-dark hidden"></div>
+            <div id="koda-chart-container" class="w-full h-[380px] relative bg-background-dark block"></div>
 
-            <div id="earnings-calendar-grid" class="grid grid-cols-5 gap-[4px]">
+            <!-- 📌 เพิ่ม KODA Lab (Profit Matrix) แบบย่อส่วน ไว้ใต้กราฟ -->
+            <div class="mt-4 px-4 pb-4">
+                <div class="bg-surface-dark border border-border-dark rounded-2xl p-4 shadow-lg mb-4">
+                    <label class="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1.5 block">Investment Capital (USD)</label>
+                    <div class="flex items-center bg-background-dark border border-border-dark rounded-xl px-3 py-2.5">
+                        <span class="text-slate-500 font-bold mr-2">$</span>
+                        <input type="number" id="detail-capital-input" value="200" class="bg-transparent border-none text-white font-black text-lg w-full focus:ring-0 p-0">
+                    </div>
                 </div>
-        </section>
 
-        <section id="section-overview" class="tab-main-content hidden pb-8">
-            <div id="section-sentiment" class="px-4 pt-4">
-                <div class="bg-gradient-to-br from-surface-dark to-background-dark border border-border-dark rounded-2xl p-5 shadow-lg relative overflow-hidden">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-white text-base font-bold flex items-center gap-2">
-                            <span class="material-symbols-outlined text-primary">speed</span> Market Sentiment
+                <div class="bg-surface-dark border border-border-dark rounded-2xl shadow-xl overflow-hidden relative">
+                    <div class="p-3 border-b border-border-dark bg-background-dark/50 flex items-center justify-between">
+                        <h3 class="text-white text-xs font-bold flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-success text-[16px]">grid_on</span> Profit Matrix (KODA Lab)
                         </h3>
-                        <span class="text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-300 transition-colors" id="fng-status">LOADING...</span>
                     </div>
-                    <div class="relative h-3 rounded-full overflow-hidden flex bg-slate-800 border border-border-dark">
-                        <div class="h-full bg-danger w-1/4"></div>
-                        <div class="h-full bg-orange-500 w-1/4"></div>
-                        <div class="h-full bg-yellow-500 w-1/4"></div>
-                        <div class="h-full bg-success w-1/4"></div>
-                        <div id="fng-pin" class="absolute top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all duration-1000 ease-out" style="left: 0%;"></div>
-                    </div>
-                    <div class="flex justify-between mt-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                        <span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span>
-                    </div>
-                    <div class="mt-3 text-center">
-                        <span class="text-4xl font-black text-white" id="fng-value">--</span><span class="text-slate-400 text-xs ml-1 font-medium">/ 100</span>
-                    </div>
-                </div>
-            </div>
-
-            <div id="section-heatmap" class="px-4 pt-6">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-white text-sm font-bold flex items-center gap-1.5">
-                        <span class="material-symbols-outlined text-primary text-[16px]">grid_view</span> Market Heatmap (S&P 500)
-                    </h3>
-                </div>
-                <div class="bg-surface-dark border border-border-dark rounded-xl overflow-hidden shadow-sm relative w-full h-[350px]">
-                    <div id="tv-heatmap-container" class="absolute inset-0"></div>
-                </div>
-            </div>
-
-            <div class="px-4 pt-6">
-                <h3 class="text-white text-sm font-bold flex items-center gap-1.5 mb-3">
-                    <span class="material-symbols-outlined text-primary text-[16px]">show_chart</span> Major Indices
-                </h3>
-                <div class="grid grid-cols-3 gap-2">
-                    <div class="bg-surface-dark border border-border-dark rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-sm">
-                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">S&P 500</span>
-                        <span class="text-white font-black text-[13px] tracking-tight" id="idx-spy-val">--</span>
-                        <span class="text-[9px] font-bold mt-0.5" id="idx-spy-pct">--</span>
-                    </div>
-                    <div class="bg-surface-dark border border-border-dark rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-sm">
-                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">NASDAQ</span>
-                        <span class="text-white font-black text-[13px] tracking-tight" id="idx-qqq-val">--</span>
-                        <span class="text-[9px] font-bold mt-0.5" id="idx-qqq-pct">--</span>
-                    </div>
-                    <div class="bg-surface-dark border border-border-dark rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-sm">
-                        <span class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Bitcoin</span>
-                        <span class="text-white font-black text-[13px] tracking-tight" id="idx-btc-val">--</span>
-                        <span class="text-[9px] font-bold mt-0.5" id="idx-btc-pct">--</span>
+                    <div class="overflow-x-auto w-full pb-2 no-scrollbar">
+                        <table class="w-full text-center border-collapse min-w-[450px]">
+                            <thead id="detail-matrix-head"></thead>
+                            <tbody id="detail-matrix-body"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </section>
+
+        <section id="tab-company" class="tab-content hidden px-4 pt-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary text-[20px]">psychology</span><h3 class="text-white text-base font-bold">KODA AI Summary</h3></div>
+                <button id="btn-refresh-summary" class="text-slate-500 hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">sync</span></button>
+            </div>
+            <div class="bg-surface-dark border border-border-dark rounded-xl p-5 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-primary"></div>
+                <div id="ai-company-content" class="text-slate-300 text-sm leading-relaxed space-y-4"><p class="text-center text-slate-500 text-xs py-6 animate-pulse">AI กำลังวิเคราะห์...</p></div>
+                <p class="text-slate-500 text-[9px] mt-4 text-right" id="ai-summary-date">Last updated: -</p>
+            </div>
+        </section>
+
+        <section id="tab-analysis" class="tab-content hidden pt-4 pb-8">
+            <div id="analysis-loading" class="text-center text-slate-500 text-xs py-10 animate-pulse">กำลังโหลดข้อมูลการวิเคราะห์...</div>
+            <div id="analysis-content" class="hidden space-y-8">
+                
+                <div class="px-4">
+                    <h2 class="text-white font-bold text-lg mb-1">คะแนนนักวิเคราะห์</h2>
+                    <p class="text-slate-400 text-xs mb-6" id="analyst-subtitle">อิงตามนักวิเคราะห์ -- คน</p>
+                    
+                    <div class="flex items-center justify-between gap-6">
+                        <div class="size-28 rounded-full border-[6px] border-[#00c076]/20 flex items-center justify-center shrink-0 bg-surface-dark">
+                            <span id="analyst-consensus-badge" class="text-[#00c076] text-xl font-black text-center">--</span>
+                        </div>
+                        <div class="flex-1 space-y-3" id="analyst-bars"></div>
+                    </div>
+                </div>
+
+                <div class="px-4">
+                    <h2 class="text-white font-bold text-lg mb-1">ราคาเป้าหมายวิเคราะห์</h2>
+                    <p class="text-slate-400 text-xs leading-relaxed mb-4" id="target-subtitle">
+                        สำหรับการคาดการณ์ราคาในหนึ่งปี ค่าเฉลี่ยราคาเป้าหมายอยู่ที่ -- โดยมีค่าสูงสุดที่ -- และค่าต่ำสุดที่ --
+                    </p>
+                    
+                    <div class="bg-surface-dark border border-border-dark rounded-xl pt-4 pb-2 relative h-[250px] overflow-hidden">
+                        <canvas id="target-line-chart" class="absolute inset-0 w-full h-full"></canvas>
+                        <div id="target-badges-container" class="absolute right-0 top-4 bottom-4 w-32 pointer-events-none"></div>
+                    </div>
+                </div>
+
+                <div class="px-4">
+                    <h2 class="text-white font-bold text-lg mb-4 flex items-center gap-1">การวิเคราะห์ทางเทคนิค <span class="material-symbols-outlined text-[14px] text-slate-500">info</span></h2>
+                    
+                    <div class="flex gap-2 mb-4 bg-background-dark p-1 rounded-lg border border-border-dark">
+                        <button class="ta-mode-btn flex-1 bg-[#00c076] text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all" data-mode="short">ระยะสั้น <span class="material-symbols-outlined text-[14px]">call_made</span></button>
+                        <button class="ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all" data-mode="medium">ระยะกลาง <span class="material-symbols-outlined text-[14px]">call_made</span></button>
+                        <button class="ta-mode-btn flex-1 text-slate-400 hover:text-white text-xs font-bold py-2 rounded-md flex items-center justify-center gap-1 transition-all" data-mode="long">ระยะยาว <span class="material-symbols-outlined text-[14px]">call_made</span></button>
+                    </div>
+
+                    <div class="mb-4">
+                        <h3 id="ta-signal-title" class="text-white text-base font-bold mb-1">กำลังคำนวณ...</h3>
+                        <p class="text-slate-400 text-xs">เหตุการณ์บวกล่าสุดมีมากกว่าเหตุการณ์ลบ</p>
+                    </div>
+
+                    <div class="flex gap-2 mb-3">
+                        <button class="ta-tf-btn bg-slate-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors" data-tf="daily">รายวัน</button>
+                        <button class="ta-tf-btn text-slate-400 hover:text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors" data-tf="weekly">รายสัปดาห์</button>
+                    </div>
+
+                    <div class="bg-surface-dark border border-border-dark rounded-xl p-2 pb-0">
+                        <div id="ta-chart-container" class="w-full h-[220px] relative"></div>
+                        <div class="flex items-center justify-between border-t border-border-dark/50 pt-2 pb-2 px-2 mt-1">
+                            <span class="text-slate-400 text-xs font-bold">เหตุการณ์</span>
+                            <div class="flex gap-2">
+                                <span id="ta-bull-badge" class="bg-success/20 text-success text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-0.5"><span class="material-symbols-outlined text-[12px]">call_made</span> 4 ขาขึ้น</span>
+                                <span id="ta-bear-badge" class="bg-danger/20 text-danger text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-0.5"><span class="material-symbols-outlined text-[12px]">call_received</span> 1 ขาลง</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="tab-quarterly" class="tab-content hidden px-4 pt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-white text-base font-bold flex items-center gap-2"><span class="material-symbols-outlined text-orange-400">monitoring</span> ผลประกอบการ (EPS)</h3>
+                <span id="quarterly-next-date" class="text-[10px] text-slate-400 bg-surface-dark px-2 py-1 rounded border border-border-dark hidden">Next: --</span>
+            </div>
+            <div class="bg-surface-dark border border-border-dark rounded-xl overflow-hidden shadow-sm">
+                <div class="grid grid-cols-12 bg-background-dark/80 p-3 border-b border-border-dark text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <div class="col-span-3">Quarter</div><div class="col-span-3 text-right">Estimate</div><div class="col-span-3 text-right">Actual</div><div class="col-span-3 text-right">Surprise</div>
+                </div>
+                <div id="quarterly-list" class="divide-y divide-border-dark/50"><p class="text-center text-slate-500 text-xs py-8">กำลังดึงข้อมูล...</p></div>
+            </div>
+        </section>
+
+        <section id="tab-financials" class="tab-content hidden px-4 pt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-white text-base font-bold flex items-center gap-2"><span class="material-symbols-outlined text-success">account_balance</span> งบกำไรขาดทุน</h3>
+                <span class="text-[10px] bg-surface-dark border border-border-dark px-2 py-1 rounded text-slate-400">รายไตรมาส</span>
+            </div>
+            
+            <div class="bg-surface-dark border border-border-dark rounded-xl p-4 shadow-sm mb-4">
+                <div class="grid grid-cols-4 bg-background-dark rounded-lg p-1 border border-border-dark mb-4" id="fin-metric-selector">
+                    <button class="fin-metric-btn active rounded-md py-2 text-[10px] font-bold transition-all bg-slate-700 text-white shadow-md border border-slate-600" data-metric="totalRevenue">Total<br>Revenue</button>
+                    <button class="fin-metric-btn rounded-md py-2 text-[10px] font-bold transition-all text-slate-400 hover:text-slate-200 border border-transparent" data-metric="grossProfit">Gross<br>Profit</button>
+                    <button class="fin-metric-btn rounded-md py-2 text-[10px] font-bold transition-all text-slate-400 hover:text-slate-200 border border-transparent" data-metric="operatingIncome">Operating<br>Income</button>
+                    <button class="fin-metric-btn rounded-md py-2 text-[10px] font-bold transition-all text-slate-400 hover:text-slate-200 border border-transparent" data-metric="netIncome">Net<br>Income</button>
+                </div>
+                <div class="w-full h-[240px] relative mb-4"><canvas id="financials-chart"></canvas></div>
+                <div id="financials-legend" class="grid gap-1 text-center pt-3 border-t border-border-dark/50" style="grid-template-columns: minmax(40px, auto) repeat(4, 1fr);"></div>
+                <div id="fin-error-msg"></div>
+            </div>
+        </section>
+
+        <section id="tab-news" class="tab-content hidden px-4 pt-6">
+            <h3 class="text-white text-base font-bold mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-primary">feed</span> ข่าวล่าสุดที่เกี่ยวข้อง</h3>
+            <div class="space-y-3" id="stock-news-container"><p class="text-slate-500 text-sm text-center py-8">กำลังดึงข้อมูลข่าวสาร...</p></div>
+        </section>
+
     </main>
 
-    <div id="modal-delete-watchlist" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0">
-        <div class="bg-surface-dark border border-border-dark w-[300px] rounded-2xl p-5 shadow-2xl transform scale-95 transition-transform" id="modal-delete-content">
-            <div class="flex items-center gap-3 mb-3">
-                <span class="material-symbols-outlined text-danger text-3xl">warning</span>
-                <h3 class="text-white text-lg font-bold">Remove Asset?</h3>
-            </div>
-            <p class="text-slate-400 text-sm mb-6">Are you sure you want to remove <span id="delete-symbol-text" class="font-bold text-white"></span> from your watchlist?</p>
+    <div id="modal-remove-star" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-surface-dark border border-border-dark w-[300px] rounded-2xl p-5 shadow-2xl transform scale-95 transition-transform" id="modal-remove-content">
+            <div class="flex items-center gap-3 mb-3"><span class="material-symbols-outlined text-danger text-3xl">warning</span><h3 class="text-white text-lg font-bold">Remove Asset?</h3></div>
+            <p class="text-slate-400 text-sm mb-6">Are you sure you want to remove <span id="remove-symbol-text" class="font-bold text-white"></span> from your watchlist?</p>
             <div class="flex gap-3">
-                <button id="btn-cancel-delete" class="flex-1 py-2.5 rounded-xl font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors">Cancel</button>
-                <button id="btn-confirm-delete" class="flex-1 py-2.5 rounded-xl font-bold text-white bg-danger hover:bg-danger/80 transition-colors shadow-lg shadow-danger/20">Remove</button>
+                <button id="btn-cancel-remove" class="flex-1 py-2.5 rounded-xl font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors">Cancel</button>
+                <button id="btn-confirm-remove" class="flex-1 py-2.5 rounded-xl font-bold text-white bg-danger hover:bg-danger/80 transition-colors shadow-lg shadow-danger/20">Remove</button>
             </div>
         </div>
     </div>
+    
+    <div id="modal-news-detail" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/90 backdrop-blur-sm transition-opacity opacity-0 pb-10">
+        <div class="bg-surface-dark border border-border-dark w-[90%] max-w-md rounded-2xl flex flex-col max-h-[85vh] shadow-2xl transform scale-95 transition-transform" id="modal-news-content">
+            <div class="flex items-center justify-between p-4 border-b border-border-dark shrink-0">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">psychology</span><h3 class="text-white font-bold text-sm uppercase tracking-wider">KODA Deep Summary</h3></div>
+                <button id="btn-close-news" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1 active:scale-90 transition-all"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="p-4 overflow-y-auto no-scrollbar flex-1 space-y-4" id="news-modal-body"></div>
+            <div class="p-4 border-t border-border-dark shrink-0">
+                <a id="news-modal-link" href="#" target="_blank" class="flex items-center justify-center gap-2 w-full py-3 bg-primary/10 border border-primary/30 text-primary text-center font-bold rounded-xl hover:bg-primary hover:text-white transition-colors text-xs uppercase tracking-wider">
+                    <span class="material-symbols-outlined text-[16px]">open_in_new</span> อ่านข่าวต้นฉบับ
+                </a>
+            </div>
+        </div>
+    </div>
+    <div id="modal-fin-detail" class="fixed inset-0 z-[120] hidden items-center justify-center bg-background-dark/50 backdrop-blur-sm transition-opacity opacity-0 pb-10">
+        <div class="bg-surface-dark/80 backdrop-blur-xl border border-border-dark w-[90%] max-w-md rounded-2xl flex flex-col max-h-[80vh] shadow-[0_0_40px_rgba(0,0,0,0.5)] transform scale-95 transition-transform" id="modal-fin-content">
+            <div class="flex items-center justify-between p-4 border-b border-border-dark/50 shrink-0">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary text-[20px]">menu_book</span><h3 class="text-white font-bold text-sm uppercase tracking-wider">คู่มือตัวเลขการเงิน</h3></div>
+                <button id="btn-close-fin-detail" class="text-slate-400 hover:text-white bg-slate-800/50 rounded-full p-1 active:scale-90 transition-all"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="p-5 overflow-y-auto no-scrollbar flex-1 space-y-5 text-sm" id="fin-modal-body">
+                </div>
+        </div>
+    </div>
 
-    <div id="bottom-nav-container"></div>
+    <div id="bottom-nav-container"></div>   
+    
 </div>
-
-    <script src="js/nav.js"></script>
+<script src="js/nav.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
-        const scripts = [
-            "js/api.js", "js/drag-drop.js", "js/search.js", 
-            "js/markets.js", "js/ai-helper.js", "js/market-plus.js", "js/ai-pro.js"
-        ];
+        const scripts = ["js/ai-helper.js", "js/stock-detail.js", "js/financial-details.js"];
         scripts.forEach(src => {
             const s = document.createElement('script');
             s.src = src;
@@ -272,564 +318,5 @@
         });
     });
 </script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // ระบบเปลี่ยนแท็บใหม่
-            const tabBtns = document.querySelectorAll('.tab-main-btn');
-            const tabContents = document.querySelectorAll('.tab-main-content');
-
-            tabBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    // 1. รีเซ็ตปุ่มทั้งหมด
-                    tabBtns.forEach(b => {
-                        b.classList.remove('bg-primary', 'text-white', 'shadow-md');
-                        b.classList.add('text-slate-400', 'bg-transparent');
-                    });
-                    
-                    // 2. ซ่อนเนื้อหาทั้งหมด
-                    tabContents.forEach(c => {
-                        c.classList.add('hidden');
-                        c.classList.remove('block');
-                    });
-
-                    // 3. เปิดใช้งานแท็บที่ถูกคลิก
-                    btn.classList.remove('text-slate-400', 'bg-transparent');
-                    btn.classList.add('bg-primary', 'text-white', 'shadow-md');
-
-                    const targetId = btn.getAttribute('data-target');
-                    document.getElementById(targetId).classList.remove('hidden');
-                    document.getElementById(targetId).classList.add('block');
-                    
-                    // 🚀 4. เพิ่มโค้ดล้างค่า Scanner อัตโนมัติเมื่อออกจากหน้า Watchlist
-                    if (targetId !== 'section-watchlists' && window.activeFilters && window.activeFilters.size > 0) {
-                        window.activeFilters.clear();
-                        const countEl = document.getElementById('filter-count');
-                        if (countEl) countEl.textContent = '0';
-                        
-                        // รีเซ็ตสีปุ่ม Filter ให้กลับเป็นค่าเริ่มต้น
-                        document.querySelectorAll('.filter-option-btn').forEach(b => {
-                            b.classList.remove('border-[#fbbf24]', 'bg-[#fbbf24]/10', 'text-[#fbbf24]', 'shadow-[0_0_10px_rgba(251,191,36,0.15)]');
-                            b.classList.add('border-border-dark', 'bg-background-dark', 'text-slate-300');
-                            const icon = b.querySelector('.material-symbols-outlined');
-                            if (icon) { icon.classList.remove('text-[#fbbf24]'); icon.classList.add('text-slate-500'); }
-                        });
-                        
-                        // สั่งวาดหน้า Watchlist ใหม่ให้เป็นปกติ (ไม่ถูกกรอง)
-                        if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
-                    }
-                });
-            });
-
-            // ดึงราคา 3 ดัชนีหลักง่ายๆ ผ่าน Finnhub
-            const fetchIndices = async () => {
-                const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
-                if(!FINNHUB_API_KEY) return;
-                
-                const formatData = (elVal, elPct, data) => {
-                    if(!data || data.c === 0) return;
-                    elVal.textContent = data.c.toLocaleString(undefined, {minimumFractionDigits: 2});
-                    elPct.textContent = `${data.dp > 0 ? '+' : ''}${data.dp.toFixed(2)}%`;
-                    elPct.className = `text-[9px] font-bold mt-0.5 ${data.dp >= 0 ? 'text-success' : 'text-danger'}`;
-                };
-
-                try {
-                    // SPY, QQQ, BTC
-                    const [spy, qqq, btc] = await Promise.all([
-                        fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                        fetch(`https://finnhub.io/api/v1/quote?symbol=QQQ&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                        fetch(`https://finnhub.io/api/v1/quote?symbol=BINANCE:BTCUSDT&token=${FINNHUB_API_KEY}`).then(r=>r.json()).catch(e=>null)
-                    ]);
-                    
-                    formatData(document.getElementById('idx-spy-val'), document.getElementById('idx-spy-pct'), spy);
-                    formatData(document.getElementById('idx-qqq-val'), document.getElementById('idx-qqq-pct'), qqq);
-                    
-                    // ส่วน BTC Binance ไม่ให้ % แบบเดียวกัน เลยดึงตรงจาก Binance เบาๆ
-                    if (btc && btc.c === 0) {
-                        const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r=>r.json());
-                        if (binanceRes) {
-                            document.getElementById('idx-btc-val').textContent = parseFloat(binanceRes.lastPrice).toLocaleString(undefined, {minimumFractionDigits: 2});
-                            const pct = parseFloat(binanceRes.priceChangePercent);
-                            document.getElementById('idx-btc-pct').textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
-                            document.getElementById('idx-btc-pct').className = `text-[9px] font-bold mt-0.5 ${pct >= 0 ? 'text-success' : 'text-danger'}`;
-                        }
-                    }
-                } catch(e) {}
-            };
-            fetchIndices();
-            setInterval(fetchIndices, 10000); // อัปเดตทุก 10 วิ
-        });
-    </script>
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(() => {
-      console.log('Service Worker Registered');
-    });
-  }
-</script>
-    
-<div id="modal-manage-categories" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0 pb-10">
-        <div class="bg-surface-dark border border-border-dark w-[90%] max-w-sm rounded-2xl flex flex-col shadow-2xl transform scale-95 transition-transform" id="modal-categories-content">
-            <div class="flex items-center justify-between p-4 border-b border-border-dark shrink-0">
-                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">category</span><h3 class="text-white font-bold text-sm">จัดการหมวดหมู่</h3></div>
-                <button id="btn-close-categories" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1 active:scale-90 transition-all"><span class="material-symbols-outlined">close</span></button>
-            </div>
-            <div class="p-4 flex gap-2">
-                <input type="text" id="new-category-input" placeholder="ตั้งชื่อหมวดหมู่ใหม่..." class="flex-1 bg-background-dark border border-border-dark rounded-xl px-3 py-2 text-sm text-white focus:border-primary outline-none">
-                <button id="btn-add-category" class="bg-primary text-white px-3 py-2 rounded-xl font-bold text-sm">เพิ่ม</button>
-            </div>
-            <div class="p-4 pt-0 overflow-y-auto max-h-[50vh] no-scrollbar space-y-2" id="categories-list-container">
-                </div>
-        </div>
-    </div>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // ==========================================
-    // 📌 โครงสร้างข้อมูล Filter (ออกแบบให้เพิ่ม/ลดได้ง่ายในอนาคต)
-    // ==========================================
-    const SCANNER_FEATURES = [
-        { id: 'rsi_overbought', label: 'RSI > 70 (Overbought)' },
-        { id: 'rsi_oversold', label: 'RSI < 35 (Oversold)' },
-        { id: 'ath_drop_30', label: 'ลดลงจาก ATH > 30%' },
-        { id: 'vol_spike', label: 'Volume Spike > 200%' },
-        { id: 'pe_below_15', label: 'P/E < 15 (Value)' }
-    ];
-
-    window.activeFilters = new Set(); // เก็บค่า ID ของตัวกรองที่ถูกเลือก
-
-    const btnFilter = document.getElementById('btn-filter-scanner');
-    const modalFilter = document.getElementById('modal-filter-scanner');
-    const btnCloseFilter = document.getElementById('btn-close-filter');
-    const btnClearFilter = document.getElementById('btn-clear-filters');
-    const btnApplyFilter = document.getElementById('btn-apply-filters');
-    const optionsContainer = document.getElementById('filter-options-container');
-
-    // 📌 ฟังก์ชันวาดปุ่มเลือกตัวกรอง
-    const renderFilterOptions = () => {
-        if (!optionsContainer) return;
-        optionsContainer.innerHTML = SCANNER_FEATURES.map(feat => {
-            const isActive = window.activeFilters.has(feat.id);
-            return `
-            <button data-id="${feat.id}" class="filter-option-btn flex items-center justify-between p-3 rounded-xl border transition-all ${
-                isActive ? 'border-[#fbbf24] bg-[#fbbf24]/10' : 'border-border-dark bg-background-dark hover:bg-slate-800'
-            }">
-                <span class="text-sm font-bold ${isActive ? 'text-[#fbbf24]' : 'text-slate-300'}">${feat.label}</span>
-                ${isActive ? '<span class="material-symbols-outlined text-[#fbbf24] text-[18px]">check_circle</span>' : ''}
-            </button>`;
-        }).join('');
-
-        // ผูก Event ให้แต่ละปุ่ม
-        document.querySelectorAll('.filter-option-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.currentTarget.dataset.id;
-                if (window.activeFilters.has(id)) {
-                    window.activeFilters.delete(id);
-                } else {
-                    window.activeFilters.add(id);
-                }
-                renderFilterOptions(); // วาดใหม่เพื่ออัปเดตสี
-            });
-        });
-    };
-
-    if (btnFilter) {
-        btnFilter.addEventListener('click', () => {
-            renderFilterOptions();
-            modalFilter.classList.remove('hidden');
-            modalFilter.classList.add('flex');
-            setTimeout(() => {
-                modalFilter.classList.remove('opacity-0');
-                document.getElementById('modal-filter-content').classList.remove('scale-95');
-            }, 10);
-        });
-
-        const closeModal = () => {
-            modalFilter.classList.add('opacity-0');
-            document.getElementById('modal-filter-content').classList.add('scale-95');
-            setTimeout(() => {
-                modalFilter.classList.add('hidden');
-                modalFilter.classList.remove('flex');
-            }, 200);
-        };
-
-        btnCloseFilter.addEventListener('click', closeModal);
-
-        btnClearFilter.addEventListener('click', () => {
-            window.activeFilters.clear();
-            renderFilterOptions();
-        });
-
-        btnApplyFilter.addEventListener('click', () => {
-            closeModal();
-            // 📌 เมื่อกด "ใช้ตัวกรอง" ให้สั่งวาดหน้า Watchlist ใหม่
-            if (typeof window.renderWatchlist === 'function') {
-                window.renderWatchlist();
-            }
-        });
-    }
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. ตั้งค่าตัวแปร Global เพื่อให้ระบบรู้ว่าตอนนี้อยู่หน้าแฟ้มไหน
-    window.currentActiveCategory = 'All';
-
-    // 2. ดึงข้อมูลพอร์ตโฟลิโอ (พร้อมสร้างโครงสร้างพื้นฐานถ้ายังไม่มี)
-        const getPortfolioData = () => {
-        let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
-        if (!data.categories || !data.watchlists) {
-            data.categories = ['All'];
-            data.watchlists = { 'All': data.watchlist || [] };
-        }
-        if (data.watchlist) {
-            delete data.watchlist;
-            localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-        }
-        return data;
-    };
-
-
-    // 3. ฟังก์ชันวาดปุ่มแถบเลื่อนด้านบน (All, Tech, Energy ฯลฯ)
-    window.renderCategoryPills = () => {
-        const data = getPortfolioData();
-        const container = document.getElementById('watchlist-categories');
-        if (!container) return;
-
-        // วาดปุ่มแต่ละอัน
-        container.innerHTML = data.categories.map(cat => `
-            <button class="cat-pill-btn px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
-                cat === window.currentActiveCategory 
-                ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm' // สีปุ่มตอนถูกเลือก
-                : 'bg-surface-dark text-slate-400 border border-border-dark hover:text-slate-200' // สีปุ่มตอนไม่ได้เลือก
-            }" data-cat="${cat}">
-                ${cat === window.currentActiveCategory ? '<span class="material-symbols-outlined text-[14px] align-middle mr-1">check</span>' : ''}${cat}
-            </button>
-        `).join('');
-
-        // ใส่ Event ให้กดเปลี่ยนแฟ้มได้
-        document.querySelectorAll('.cat-pill-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                window.currentActiveCategory = e.currentTarget.dataset.cat;
-                document.getElementById('current-category-title').textContent = window.currentActiveCategory;
-                window.renderCategoryPills(); // วาดปุ่มใหม่เพื่อเปลี่ยนสี
-                
-                // 📌 จุดแก้บัค: สั่งวาดหุ้นบนหน้าจอ "ทันที" แบบไม่ต้องรอ Delay 5 วิ
-                if (typeof window.renderWatchlist === 'function') {
-                    window.renderWatchlist();
-                }
-            });
-        });
-    };
-
-    // 4. ระบบจัดการแฟ้ม (เปิด/ปิด Modal, เพิ่มแฟ้ม, ลบแฟ้ม)
-    const btnManage = document.getElementById('btn-manage-categories');
-    const modalCategories = document.getElementById('modal-manage-categories');
-    const btnCloseCat = document.getElementById('btn-close-categories');
-    const inputNewCat = document.getElementById('new-category-input');
-    const btnAddCat = document.getElementById('btn-add-category');
-    const listContainer = document.getElementById('categories-list-container');
-
-    const renderManageList = () => {
-        const data = getPortfolioData();
-        listContainer.innerHTML = data.categories.map(cat => `
-            <div class="flex items-center justify-between p-3 bg-background-dark border border-border-dark rounded-xl">
-                <span class="text-sm font-bold text-slate-200">${cat}</span>
-                ${cat !== 'All' ? `
-                    <button class="btn-delete-cat text-danger hover:bg-danger/20 p-1.5 rounded-lg transition-colors flex items-center" data-cat="${cat}">
-                        <span class="material-symbols-outlined text-[18px]">delete</span>
-                    </button>
-                ` : '<span class="text-slate-500 text-[10px] uppercase font-bold px-2">Default</span>'}
-            </div>
-        `).join('');
-
-        // ลบแฟ้ม
-        document.querySelectorAll('.btn-delete-cat').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const catToDelete = e.currentTarget.dataset.cat;
-                if(confirm(`ต้องการลบแฟ้ม "${catToDelete}" ใช่หรือไม่?`)) {
-                    let data = getPortfolioData();
-                    data.categories = data.categories.filter(c => c !== catToDelete);
-                    delete data.watchlists[catToDelete];
-                    localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-                    
-                    // ถ้าลบแฟ้มที่เปิดอยู่ ให้กลับไปหน้า All
-                    if (window.currentActiveCategory === catToDelete) {
-                        window.currentActiveCategory = 'All';
-                        document.getElementById('current-category-title').textContent = 'All';
-                    }
-                    
-                    renderManageList();
-                    window.renderCategoryPills();
-                    if (typeof loadWatchlist === 'function') loadWatchlist();
-                }
-            });
-        });
-    };
-
-    if (btnManage) {
-        // กดไอคอน Tune เพื่อเปิดหน้าต่างจัดการแฟ้ม
-        btnManage.addEventListener('click', () => {
-            renderManageList();
-            modalCategories.classList.remove('hidden');
-            modalCategories.classList.add('flex');
-            setTimeout(() => modalCategories.classList.remove('opacity-0'), 10);
-        });
-
-        // ปิดหน้าต่างจัดการแฟ้ม
-        btnCloseCat.addEventListener('click', () => {
-            modalCategories.classList.add('opacity-0');
-            setTimeout(() => {
-                modalCategories.classList.add('hidden');
-                modalCategories.classList.remove('flex');
-            }, 200);
-        });
-
-        // พิมพ์ชื่อแล้วกดเพิ่มแฟ้ม
-        btnAddCat.addEventListener('click', () => {
-            const newCat = inputNewCat.value.trim();
-            if (!newCat) return;
-
-            let data = getPortfolioData();
-            
-            // เช็คชื่อซ้ำ
-            if (data.categories.includes(newCat)) {
-                alert('ชื่อแฟ้มนี้มีอยู่แล้ว!');
-                return;
-            }
-
-            // บันทึกแฟ้มใหม่
-            data.categories.push(newCat);
-            data.watchlists[newCat] = []; // สร้างอาร์เรย์ว่างรับข้อมูลหุ้น
-            localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-            
-            inputNewCat.value = ''; // เคลียร์ช่องพิมพ์
-            renderManageList(); // อัปเดตรายการในหน้าต่าง
-            window.renderCategoryPills(); // อัปเดตปุ่มด้านบน
-        });
-    }
-
-    // สั่งรันสร้างปุ่มครั้งแรกเมื่อเปิดหน้าเว็บ
-    window.renderCategoryPills();
-});
-</script>
-    <div id="modal-filter-scanner" class="fixed inset-0 z-[100] hidden items-end sm:items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0 pb-0 sm:pb-10">
-        <div class="bg-surface-dark border border-[#fbbf24]/30 w-full sm:w-[90%] max-w-md sm:rounded-2xl rounded-t-3xl flex flex-col shadow-[0_-10px_40px_rgba(251,191,36,0.1)] transform translate-y-full sm:translate-y-0 sm:scale-95 transition-transform duration-300" id="modal-filter-content">
-            
-            <div class="flex items-center justify-between p-5 border-b border-border-dark shrink-0">
-                <div class="flex items-center gap-3">
-                    <div class="size-8 rounded-lg bg-[#fbbf24]/10 border border-[#fbbf24]/30 flex items-center justify-center">
-                        <span class="material-symbols-outlined text-[#fbbf24] text-[18px]">tune</span>
-                    </div>
-                    <div>
-                        <h3 class="text-white font-bold text-base leading-none">KODA Scanner</h3>
-                        <p class="text-slate-400 text-[10px] mt-1">คัดกรองหุ้นตามปัจจัยพื้นฐานและเทคนิค</p>
-                    </div>
-                </div>
-                <button id="btn-close-filter" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1.5 active:scale-90 transition-all"><span class="material-symbols-outlined text-[18px]">close</span></button>
-            </div>
-            
-            <div class="p-5 overflow-y-auto max-h-[60vh] no-scrollbar flex flex-col gap-5" id="filter-options-container">
-                </div>
-
-            <div class="p-5 border-t border-border-dark flex gap-3 bg-background-dark/50 sm:rounded-b-2xl rounded-none">
-                <button id="btn-clear-filters" class="w-1/3 py-2.5 rounded-xl font-bold text-slate-400 bg-slate-800 hover:bg-slate-700 hover:text-white transition-colors text-sm">ล้างค่า</button>
-                <button id="btn-apply-filters" class="w-2/3 py-2.5 rounded-xl font-bold text-background-dark bg-gradient-to-r from-[#fbbf24] to-yellow-500 hover:opacity-90 transition-all text-sm shadow-lg shadow-yellow-500/20">ดูผลลัพธ์ (<span id="filter-count">0</span>)</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            
-            // ==========================================
-            // 📌 โครงสร้างข้อมูล Filter (แบ่งเป็นหมวดหมู่)
-            // ==========================================
-                        const SCANNER_CATEGORIES = [
-                {
-                    title: '📊 สัญญาณเทคนิค (Technical)',
-                    items: [
-                        { id: 'rsi_overbought', label: 'RSI > 70 (Overbought)', icon: 'show_chart' },
-                        { id: 'rsi_oversold', label: 'RSI < 35 (Oversold)', icon: 'trending_down' },
-                        { id: 'vol_spike', label: 'Volume Spike > 200%', icon: 'leaderboard' }
-                    ]
-                },
-                {
-                    title: '🏢 ปัจจัยพื้นฐาน & ราคา (Fundamental)',
-                    items: [
-                        { id: 'ath_drop_30', label: 'ราคาลดลงจาก ATH > 30%', icon: 'waterfall_chart' },
-                        { id: 'low_up_30', label: 'ราคาเพิ่มขึ้นจาก 52W Low > 30%', icon: 'rocket_launch' }, // 📌 เพิ่มตัวกรองนี้เข้ามา
-                        { id: 'pe_below_15', label: 'P/E < 15 (Value Stock)', icon: 'account_balance' }
-                    ]
-                }
-            ];
-
-            window.activeFilters = new Set(); 
-
-            const btnFilter = document.getElementById('btn-filter-scanner');
-            const modalFilter = document.getElementById('modal-filter-scanner');
-            const btnCloseFilter = document.getElementById('btn-close-filter');
-            const btnClearFilter = document.getElementById('btn-clear-filters');
-            const btnApplyFilter = document.getElementById('btn-apply-filters');
-            const optionsContainer = document.getElementById('filter-options-container');
-            const filterCount = document.getElementById('filter-count');
-
-            // 📌 ฟังก์ชันวาด UI แบบแบ่งหมวดหมู่
-            const renderFilterOptions = () => {
-                if (!optionsContainer) return;
-                
-                optionsContainer.innerHTML = SCANNER_CATEGORIES.map(cat => `
-                    <div>
-                        <h4 class="text-slate-400 text-xs font-bold mb-3 uppercase tracking-wider">${cat.title}</h4>
-                        <div class="flex flex-wrap gap-2">
-                            ${cat.items.map(feat => {
-                                const isActive = window.activeFilters.has(feat.id);
-                                return `
-                                <button data-id="${feat.id}" class="filter-option-btn flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all duration-200 active:scale-95 ${
-                                    isActive 
-                                    ? 'border-[#fbbf24] bg-[#fbbf24]/10 text-[#fbbf24] shadow-[0_0_10px_rgba(251,191,36,0.15)]' 
-                                    : 'border-border-dark bg-background-dark text-slate-300 hover:border-slate-500'
-                                }">
-                                    <span class="material-symbols-outlined text-[14px] ${isActive ? 'text-[#fbbf24]' : 'text-slate-500'}">${feat.icon}</span>
-                                    <span class="text-xs font-semibold">${feat.label}</span>
-                                </button>`;
-                            }).join('')}
-                        </div>
-                    </div>
-                `).join('');
-
-                filterCount.textContent = window.activeFilters.size;
-
-                document.querySelectorAll('.filter-option-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const id = e.currentTarget.dataset.id;
-                        if (window.activeFilters.has(id)) window.activeFilters.delete(id);
-                        else window.activeFilters.add(id);
-                        renderFilterOptions(); 
-                    });
-                });
-            };
-
-            if (btnFilter) {
-                btnFilter.addEventListener('click', () => {
-                    renderFilterOptions();
-                    modalFilter.classList.remove('hidden');
-                    modalFilter.classList.add('flex');
-                    setTimeout(() => {
-                        modalFilter.classList.remove('opacity-0');
-                        const content = document.getElementById('modal-filter-content');
-                        content.classList.remove('translate-y-full', 'sm:scale-95');
-                    }, 10);
-                });
-
-                const closeModal = () => {
-                    modalFilter.classList.add('opacity-0');
-                    const content = document.getElementById('modal-filter-content');
-                    content.classList.add('translate-y-full', 'sm:scale-95');
-                    setTimeout(() => {
-                        modalFilter.classList.add('hidden');
-                        modalFilter.classList.remove('flex');
-                    }, 300);
-                };
-
-                btnCloseFilter.addEventListener('click', closeModal);
-
-                btnClearFilter.addEventListener('click', () => {
-                    window.activeFilters.clear();
-                    renderFilterOptions();
-                });
-
-                                btnApplyFilter.addEventListener('click', async () => {
-                    // 1. ปิดหน้าต่างลงไปก่อน และเปลี่ยนปุ่มเป็นสถานะกำลังโหลด
-                    closeModal();
-                    
-                    // สมมติฐานว่า List หุ้นของคุณใช้ class 'watchlist-item' (อิงจาก drag-drop)
-                    const items = document.querySelectorAll('.watchlist-item'); 
-                    if (!items || items.length === 0) return;
-
-                    // 2. ถ้ายกเลิกกรอง ให้โชว์หุ้นทุกตัวตามปกติ
-                    if (window.activeFilters.size === 0) {
-                        items.forEach(item => item.style.display = '');
-                        if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
-                        return;
-                    }
-
-                    // 3. แสดงแถบ Loading เล็กๆ แจ้งผู้ใช้ว่ากำลังสแกน
-                    const container = document.getElementById('watchlist-container');
-                    const loadingHtml = `<div id="scanner-loading" class="text-center py-4 text-primary text-xs font-bold animate-pulse flex items-center justify-center gap-2"><span class="material-symbols-outlined animate-spin">sync</span> KODA Scanner กำลังวิเคราะห์ข้อมูล...</div>`;
-                    container.insertAdjacentHTML('afterbegin', loadingHtml);
-
-                    const FINNHUB_KEY = window.ENV_KEYS?.FINNHUB_ARRAY ? window.ENV_KEYS.FINNHUB_ARRAY[0] : (window.ENV_KEYS?.FINNHUB || '');
-
-                    // 4. วนลูปเช็คหุ้นทีละตัวแบบ Real-time
-                    for (let item of items) {
-                        const sym = item.getAttribute('data-symbol');
-                        if (!sym) continue;
-
-                        let pass = true;
-                        let cleanSym = sym.split(':')[1] || sym.split('.')[0];
-                        
-                        try {
-                            // ดึงราคาล่าสุดจาก Finnhub
-                            const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${cleanSym}&token=${FINNHUB_KEY}`).then(r=>r.json());
-                            const currentPrice = quote.c;
-
-                            // 📊 ตรวจสอบ Technicals (RSI / Volume)
-                            if (window.activeFilters.has('rsi_overbought') || window.activeFilters.has('rsi_oversold') || window.activeFilters.has('vol_spike')) {
-                                // โหลดกราฟย้อนหลัง 6 เดือนเพื่อความแม่นยำของ RSI
-                                const chartRes = await fetch(`/api/price?symbol=${sym}&mode=chart&range=6mo&interval=1d`);
-                                const chartData = await chartRes.json();
-                                
-                                if (chartData.success && chartData.closes && chartData.closes.length > 0) {
-                                    // โยงไปหาสูตรคำนวณที่เขียนไว้ใน market-plus.js
-                                    const rsi = window.KodaMarketPlus.calculateExactRSI(chartData.closes);
-                                    
-                                    if (window.activeFilters.has('rsi_overbought') && rsi <= 70) pass = false;
-                                    if (window.activeFilters.has('rsi_oversold') && rsi >= 35) pass = false;
-                                    
-                                    if (pass && window.activeFilters.has('vol_spike') && chartData.volumes.length >= 21) {
-                                        const lastVol = chartData.volumes[chartData.volumes.length - 1];
-                                        const avgVol = chartData.volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
-                                        if (lastVol < avgVol * 2) pass = false;
-                                    }
-                                } else {
-                                    pass = false; // ถ้าดึงกราฟไม่ได้ ให้ตกไปเลย
-                                }
-                            }
-
-                            // 🏢 ตรวจสอบ Fundamentals
-                            if (pass && (window.activeFilters.has('ath_drop_30') || window.activeFilters.has('low_up_30') || window.activeFilters.has('pe_below_15'))) {
-                                const metricRes = await fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${FINNHUB_KEY}`);
-                                const metricData = await metricRes.json();
-                                const m = metricData.metric || {};
-
-                                if (window.activeFilters.has('ath_drop_30')) {
-                                    const high52 = m['52WeekHigh'] || currentPrice;
-                                    if (((high52 - currentPrice) / high52) * 100 <= 30) pass = false;
-                                }
-                                if (pass && window.activeFilters.has('low_up_30')) {
-                                    const low52 = m['52WeekLow'] || currentPrice;
-                                    if (((currentPrice - low52) / low52) * 100 <= 30) pass = false;
-                                }
-                                if (pass && window.activeFilters.has('pe_below_15')) {
-                                    const pe = m['peExclExtraTTM'] || 999;
-                                    if (pe >= 15 || pe <= 0) pass = false; // กรอง PE ติดลบออกด้วย
-                                }
-                            }
-
-                        } catch (e) {
-                            console.error('Scanner error for', sym, e);
-                            pass = false; // เกิด Error API ให้ข้ามไป
-                        }
-
-                        // ซ่อนหุ้นที่ไม่ตรงเงื่อนไข
-                        item.style.display = pass ? '' : 'none';
-                    }
-
-                    // เอาแถบ Loading ออกเมื่อสแกนเสร็จ
-                    const loadingEl = document.getElementById('scanner-loading');
-                    if (loadingEl) loadingEl.remove();
-                });
-            }
-        });
-    </script>
 </body>
 </html>
