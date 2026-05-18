@@ -1,5 +1,27 @@
 document.addEventListener('DOMContentLoaded', () => {
     
+    // 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
+    window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
+        if (startValue === endValue) {
+            element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
+            return;
+        }
+        const startTime = performance.now();
+        const step = (now) => {
+            const progress = Math.min((now - startTime) / duration, 1);
+            const easeProgress = progress * (2 - progress); // Ease Out
+            const currentValue = startValue + (endValue - startValue) * easeProgress;
+            
+            element.textContent = window.formatKodaMoney 
+                ? window.formatKodaMoney(currentValue) 
+                : '$' + currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            
+            if (progress < 1) window.requestAnimationFrame(step);
+            else element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+        window.requestAnimationFrame(step);
+    };
+    
     const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || ''; 
 
     const SECTOR_ETFS = [
@@ -332,14 +354,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
 
-        // 📌 1. เริ่มต้นด้วยหุ้นทั้งหมดในแฟ้ม
         let displayList = [...currentList];
 
-        // 📌 2. [KODA Scanner] กรองหุ้นออกก่อน (ถ้ามีการเลือก Filter ไว้)
         if (window.activeFilters && window.activeFilters.size > 0) {
             displayList = displayList.filter(s => {
                 let isPass = true;
-                // Simulator Data (ใช้ค่าจำลองเพื่อทดสอบปุ่มได้ทันที)
                 const charCodeSum = s.symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
                 const mockRSI = (charCodeSum * 7) % 100;
                 const mockDropATH = (charCodeSum * 3) % 60;
@@ -367,20 +386,32 @@ document.addEventListener('DOMContentLoaded', () => {
             return pct;
         };
 
-        // 📌 3. นำหุ้นที่ผ่านการกรองแล้วมาจัดเรียงตามโหมด (+ / - / Default)
         if (watchlistSortMode === 1) {
             displayList.sort((a, b) => getActivePct(b) - getActivePct(a)); 
         } else if (watchlistSortMode === 2) {
             displayList.sort((a, b) => getActivePct(a) - getActivePct(b));
         }
 
-        // 📌 4. วาด UI ลงหน้าจอ
+        // 🚀 เตรียม Cache จำราคารอบที่แล้ว เพื่อเอามาเช็คการกระพริบและการวิ่งของตัวเลข
+        window.kodaTickCache = window.kodaTickCache || {};
+
         container.innerHTML = displayList.map(s => {
             const mainPrice = s.regularPrice || s.currentPrice || 0;
             const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
             const c = formatPercent(pct);
+
+            // 🚀 เช็คราคา Tick-by-Tick
+            const oldPrice = window.kodaTickCache[s.symbol] !== undefined ? window.kodaTickCache[s.symbol] : mainPrice;
+            let animateData = '';
+            let flashClass = '';
             
-            // 🚀 📌 ลอจิกแสดงผลราคานอกเวลาทำการ (Pre/Post Market)
+            // ถ้าราคาเปลี่ยน ให้เตรียมแอนิเมชันและสีกรอบกระพริบ
+            if (mainPrice !== oldPrice) {
+                animateData = `data-animate-from="${oldPrice}" data-animate-to="${mainPrice}"`;
+                flashClass = mainPrice > oldPrice ? 'flash-up-border' : 'flash-down-border';
+            }
+            window.kodaTickCache[s.symbol] = mainPrice; // จำราคาปัจจุบันไว้ใช้รอบหน้า
+            
             let extHtml = '';
             if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPercent !== null && s.extPercent !== undefined) {
                 const isExtPos = s.extPercent >= 0;
@@ -410,17 +441,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="flex flex-col items-end justify-center">
                         <div class="flex flex-row items-center gap-1.5">
-                            <p class="text-slate-100 font-bold text-sm leading-tight">${formatCurrency(mainPrice)}</p>
+                            <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
+                                ${window.formatKodaMoney ? window.formatKodaMoney(oldPrice) : formatCurrency(oldPrice)}
+                            </p>
                             <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
                                 <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
                             </div>
                         </div>
-                        ${extHtml} </div>
+                        ${extHtml} 
+                    </div>
                 </div>
             `;
 
             if (isEditMode) {
-                return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 flex items-center justify-between watchlist-item" data-symbol="${s.symbol}">
+                // โหมดแก้ไขเพิ่มคลาส flashClass เข้าไปด้วย
+                return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 flex items-center justify-between watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
                     <div class="flex items-center gap-3 flex-1">
                         <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger" data-symbol="${s.symbol}"><span class="material-symbols-outlined text-[14px]">remove</span></button>
                         ${itemContent}
@@ -428,35 +463,48 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="material-symbols-outlined text-slate-600 cursor-grab drag-handle">drag_indicator</span>
                 </div>`;
             } else {
-                return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 watchlist-item" data-symbol="${s.symbol}">
+                // โหมดปกติเพิ่มคลาส flashClass
+                return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
                     <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">${itemContent}</a>
                 </div>`;
             }
         }).join('');
 
-    // 🔴 📌 แทรกโค้ดชุดนี้เพิ่มเข้าไป เพื่อให้ปุ่มลบทำงานได้!
-    document.querySelectorAll('.btn-delete-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            symbolToDelete = e.currentTarget.dataset.symbol;
-            const txtSymbol = document.getElementById('delete-symbol-text');
-            if (txtSymbol) txtSymbol.textContent = symbolToDelete;
-                
-            const modalDel = document.getElementById('modal-delete-watchlist');
-            const contentDel = document.getElementById('modal-delete-content');
-            if (modalDel && contentDel) {
-                modalDel.classList.remove('hidden');
-                modalDel.classList.add('flex');
-                setTimeout(() => {
-                    modalDel.classList.remove('opacity-0');
-                    contentDel.classList.remove('scale-95');
-                }, 10);
+        // 🔴 ปลุกให้ปุ่มลบทำงาน
+        document.querySelectorAll('.btn-delete-item').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                symbolToDelete = e.currentTarget.dataset.symbol;
+                const txtSymbol = document.getElementById('delete-symbol-text');
+                if (txtSymbol) txtSymbol.textContent = symbolToDelete;
+                    
+                const modalDel = document.getElementById('modal-delete-watchlist');
+                const contentDel = document.getElementById('modal-delete-content');
+                if (modalDel && contentDel) {
+                    modalDel.classList.remove('hidden');
+                    modalDel.classList.add('flex');
+                    setTimeout(() => {
+                        modalDel.classList.remove('opacity-0');
+                        contentDel.classList.remove('scale-95');
+                    }, 10);
+                }
+            });
+        });
+
+        // 🚀 สั่งรันแอนิเมชันตัวเลขวิ่งทันที หลังจากที่วาด HTML ลงจอเสร็จแล้ว
+        container.querySelectorAll('.rolling-price').forEach(el => {
+            const fromAttr = el.getAttribute('data-animate-from');
+            const toAttr = el.getAttribute('data-animate-to');
+            if (fromAttr && toAttr) {
+                const from = parseFloat(fromAttr);
+                const to = parseFloat(toAttr);
+                if (!isNaN(from) && !isNaN(to) && from !== to) {
+                    window.animateKodaRollingNumber(el, from, to, 500);
+                }
             }
         });
-    });
-    // 🔴 📌 จบส่วนที่ต้องแทรก
 
-    }; // <--- นี่คือปีกกาปิดของฟังก์ชัน renderWatchlist
+    }; // <--- ปิดฟังก์ชัน renderWatchlist
     
     window.renderWatchlist = renderWatchlist; 
 
