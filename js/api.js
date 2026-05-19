@@ -1,24 +1,35 @@
      // 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
     window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
-        if (startValue === endValue) {
-            element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
-            return;
-        }
-        const startTime = performance.now();
-        const step = (now) => {
-            const progress = Math.min((now - startTime) / duration, 1);
-            const easeProgress = progress * (2 - progress); // Ease Out
-            const currentValue = startValue + (endValue - startValue) * easeProgress;
-            
+    if (startValue === endValue) {
+        element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
+        return;
+    }
+    
+    let startTime = null; // ย้ายมาจับเวลาในเฟรมแรก
+    const isTHB = localStorage.getItem('koda_currency') === 'THB';
+    const symbolPrefix = isTHB ? '฿' : '$';
+    const rate = isTHB ? (window.kodaTHBRate || 34.50) : 1;
+
+    const step = (now) => {
+        if (!startTime) startTime = now;
+        const progress = Math.min((now - startTime) / duration, 1);
+        const easeProgress = progress * (2 - progress); // Ease Out
+        const currentValue = startValue + (endValue - startValue) * easeProgress;
+
+        if (progress < 1) {
+            // ประหยัดพลังงานเครื่อง: ใช้แค่ String ธรรมดาตอนตัวเลขกำลังวิ่ง
+            element.textContent = symbolPrefix + (currentValue * rate).toFixed(2);
+            window.requestAnimationFrame(step);
+        } else {
+            // วิ่งเสร็จแล้ว: ค่อย Format จัดเต็มเพื่อความสวยงาม
             element.textContent = window.formatKodaMoney 
-                ? window.formatKodaMoney(currentValue) 
-                : '$' + currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            
-            if (progress < 1) window.requestAnimationFrame(step);
-            else element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        };
-        window.requestAnimationFrame(step);
+                ? window.formatKodaMoney(endValue) 
+                : symbolPrefix + (endValue * rate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
     };
+    window.requestAnimationFrame(step);
+};
+
     
     const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || ''; 
 
