@@ -316,7 +316,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // ==========================================
-    // 📌 ระบบ Backup & Restore Data (รองรับมือถือ 100%)
+    // 📌 ระบบ Backup & Restore Data (รองรับ V2: กราฟพอร์ต)
     // ==========================================
     const btnExport = document.getElementById('btn-export-data');
     const inputImport = document.getElementById('input-import-data');
@@ -349,30 +349,37 @@ document.addEventListener('DOMContentLoaded', () => {
             URL.revokeObjectURL(url);
             showSuccess();
         } catch (e) {
-            // ถ้าพังทุกทางจริงๆ จะใช้วิธี Copy ลง Clipboard ให้แทน
             navigator.clipboard.writeText(data);
-            alert("อุปกรณ์ของคุณบล็อกการเซฟไฟล์ ระบบได้ 'คัดลอก' (Copy) ข้อมูลพอร์ตไว้แล้ว คุณสามารถนำไปวาง (Paste) ในแอปสมุดโน้ตได้เลยครับ!");
+            alert("อุปกรณ์บล็อกการดาวน์โหลด ระบบได้ 'คัดลอก' ข้อมูลพอร์ตไว้แล้ว นำไปวาง (Paste) ในแอปสมุดโน้ตได้เลยครับ");
             showSuccess();
         }
     };
 
-    // ฟังก์ชัน Export (กดปุ่ม)
+    // 🚀 1. ฟังก์ชัน Export (มัดรวมพอร์ต + กราฟ)
     if (btnExport) {
         btnExport.addEventListener('click', async () => {
-            const data = localStorage.getItem('koda_portfolio_data');
+            const portData = localStorage.getItem('koda_portfolio_data') || '{}';
+            const equityData = localStorage.getItem('koda_equity_history') || '[]';
             
-            // เช็คว่าพอร์ตว่างไหม
-            if (!data || data === '{}' || (JSON.parse(data).holdings?.length === 0 && JSON.parse(data).watchlist?.length === 0)) {
+            const parsedPort = JSON.parse(portData);
+            if (!parsedPort || (parsedPort.holdings?.length === 0 && (!parsedPort.watchlists || Object.keys(parsedPort.watchlists).length === 0))) {
                 alert("Portfolio is empty. Nothing to export.");
                 return;
             }
             
+            // 📌 สร้าง Bundle มัดรวมข้อมูลเป็น V2
+            const backupBundle = {
+                version: "2.0",
+                portfolio: parsedPort,
+                equityHistory: JSON.parse(equityData) // เซฟเส้นกราฟย้อนหลังไปด้วย!
+            };
+            
+            const dataString = JSON.stringify(backupBundle);
             const dateStr = new Date().toISOString().split('T')[0];
-            const fileName = `koda_backup_${dateStr}.json`;
-            const file = new File([data], fileName, { type: 'application/json' });
+            const fileName = `koda_backup_v2_${dateStr}.json`;
+            const file = new File([dataString], fileName, { type: 'application/json' });
 
             try {
-                // 📱 ตรวจสอบว่าเป็นมือถือ และรองรับระบบ Share ไฟล์ไหม
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         files: [file],
@@ -381,18 +388,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     showSuccess();
                 } else {
-                    // 💻 ถ้าไม่ใช่ระบบมือถือ ให้รันคำสั่งดาวน์โหลดปกติ
-                    downloadForDesktop(data, fileName);
+                    downloadForDesktop(dataString, fileName);
                 }
             } catch (err) {
-                // ถ้าผู้ใช้กดยกเลิกหน้าต่างแชร์ หรือมือถือเอ๋อ ให้สลับไปใช้วิธีโหลดปกติ
-                console.warn("Share failed or cancelled:", err);
-                downloadForDesktop(data, fileName);
+                downloadForDesktop(dataString, fileName);
             }
         });
     }
 
-    // ฟังก์ชัน Import (โหลดไฟล์เข้าแอป)
+    // 🚀 2. ฟังก์ชัน Import (แยกระบบเก่า/ใหม่ อัตโนมัติ)
     if (inputImport) {
         inputImport.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -403,14 +407,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const importedData = JSON.parse(event.target.result);
                     
-                    if (importedData.holdings !== undefined || importedData.watchlist !== undefined) {
-                        if (confirm("Warning: Importing data will overwrite your current Portfolio and Watchlist. Proceed?")) {
+                    if (confirm("Warning: กู้คืนข้อมูลนี้จะทับข้อมูลปัจจุบันของคุณทั้งหมด ยืนยันหรือไม่?")) {
+                        
+                        // ตรวจสอบว่าเป็นไฟล์ V2 ที่มีกราฟด้วยหรือไม่
+                        if (importedData.version === "2.0" && importedData.portfolio) {
+                            // 🌟 กู้คืน V2: ได้ครบทั้งหุ้นและกราฟ
+                            localStorage.setItem('koda_portfolio_data', JSON.stringify(importedData.portfolio));
+                            if (importedData.equityHistory) {
+                                localStorage.setItem('koda_equity_history', JSON.stringify(importedData.equityHistory));
+                            }
+                        } else if (importedData.holdings !== undefined || importedData.watchlists !== undefined) {
+                            // 🌟 กู้คืน V1 (ไฟล์สำรองเก่า): ได้แค่พอร์ตอย่างเดียว
                             localStorage.setItem('koda_portfolio_data', JSON.stringify(importedData));
-                            alert('Data restored successfully! The app will now reload.');
-                            window.location.reload();
+                        } else {
+                            alert('ไฟล์ JSON ไม่ถูกต้อง ไม่ใช่ของแอพ KODA ครับ');
+                            return;
                         }
-                    } else {
-                        alert('Invalid file format. Please select a valid KODA backup file.');
+                        
+                        alert('กู้คืนข้อมูลสำเร็จ! แอปจะทำการรีเฟรช');
+                        window.location.reload();
                     }
                 } catch (error) {
                     alert('Error reading the JSON file. It might be corrupted.');
