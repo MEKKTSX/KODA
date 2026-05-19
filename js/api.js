@@ -1,4 +1,4 @@
-     // 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
+// 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
     window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
     if (startValue === endValue) {
         element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
@@ -419,8 +419,10 @@
                 animateData = `data-animate-from="${oldPrice}" data-animate-to="${mainPrice}"`;
                 flashClass = mainPrice > oldPrice ? 'flash-up-border' : 'flash-down-border';
             }
+                        // ... (โค้ดก่อนหน้า) ...
             window.kodaTickCache[s.symbol] = mainPrice; // จำราคาปัจจุบันไว้ใช้รอบหน้า
             
+            // 🚀 อัปเกรด: ระบบ Rolling Number สำหรับราคานอกเวลาทำการ (Pre/Post Market)
             let extHtml = '';
             if (s.marketState && s.marketState !== 'REGULAR' && s.extPrice !== null && s.extPercent !== null && s.extPercent !== undefined) {
                 const isExtPos = s.extPercent >= 0;
@@ -428,15 +430,30 @@
                 const extSign = isExtPos ? '+' : '';
                 const stateIcon = s.marketState === 'PRE' ? '☀️' : '🌙'; 
                 
+                // 1. เช็คราคาเก่าของ ExtPrice
+                const extCacheKey = s.symbol + '_ext';
+                const oldExtPrice = window.kodaTickCache[extCacheKey] !== undefined ? window.kodaTickCache[extCacheKey] : s.extPrice;
+                let animateExtData = '';
+                
+                // 2. ถ้า ExtPrice เปลี่ยน ให้สั่งรันแอนิเมชัน
+                if (s.extPrice !== oldExtPrice) {
+                    animateExtData = `data-animate-from="${oldExtPrice}" data-animate-to="${s.extPrice}"`;
+                }
+                window.kodaTickCache[extCacheKey] = s.extPrice; // จำค่า Ext ไว้รอบหน้า
+
                 extHtml = `
                     <div class="flex items-center gap-1 mt-0.5 justify-end">
-                        <span class="text-[9px] text-slate-400">${stateIcon} ${formatCurrency(s.extPrice)}</span>
+                        <span class="text-[9px] text-slate-400">${stateIcon} </span>
+                        <span class="text-[9px] text-slate-400 rolling-price-ext" ${animateExtData}>
+                            ${window.formatKodaMoney ? window.formatKodaMoney(oldExtPrice) : formatCurrency(oldExtPrice)}
+                        </span>
                         <span class="text-[9px] font-bold ${extColor}">(${extSign}${s.extPercent.toFixed(2)}%)</span>
                     </div>
                 `;
             }
 
             const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
+            // ... (โค้ดต่อจากนี้เหมือนเดิม) ...
             let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
 
             const itemContent = `
@@ -532,8 +549,23 @@
             });
         });
 
-        // 🚀 สั่งรันแอนิเมชันตัวเลขวิ่งทันที หลังจากที่วาด HTML ลงจอเสร็จแล้ว
+                // ... (โค้ดปุ่ม btn-delete-item) ...
+
+        // 🚀 สั่งรันแอนิเมชันตัวเลขวิ่งทันที สำหรับ "ราคาหลัก"
         container.querySelectorAll('.rolling-price').forEach(el => {
+            const fromAttr = el.getAttribute('data-animate-from');
+            const toAttr = el.getAttribute('data-animate-to');
+            if (fromAttr && toAttr) {
+                const from = parseFloat(fromAttr);
+                const to = parseFloat(toAttr);
+                if (!isNaN(from) && !isNaN(to) && from !== to) {
+                    window.animateKodaRollingNumber(el, from, to, 800);
+                }
+            }
+        });
+
+        // 🚀 [NEW] สั่งรันแอนิเมชันตัวเลขวิ่งทันที สำหรับ "ราคานอกเวลาทำการ (Pre/Post)"
+        container.querySelectorAll('.rolling-price-ext').forEach(el => {
             const fromAttr = el.getAttribute('data-animate-from');
             const toAttr = el.getAttribute('data-animate-to');
             if (fromAttr && toAttr) {
@@ -816,4 +848,4 @@
 
     // 🚀 เปลี่ยนเป็นอัปเดตทุก 5 วินาที
     setInterval(fetchRealPrices, 5000); 
-    setInterval(fetchMarketNews, 300000); 
+    setInterval(fetchMarketNews, 300000);
