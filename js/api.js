@@ -1,6 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
+     // 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
     window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
         if (startValue === endValue) {
             element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
@@ -808,4 +806,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // 🚀 เปลี่ยนเป็นอัปเดตทุก 5 วินาที
     setInterval(fetchRealPrices, 5000); 
     setInterval(fetchMarketNews, 300000); 
-});
