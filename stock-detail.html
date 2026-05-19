@@ -317,6 +317,14 @@
             document.body.appendChild(s);
         });
     });
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+      for(let registration of registrations) {
+        registration.unregister(); // 🚀 สั่งฆ่า SW ตัวเก่าที่ค้างอยู่ในเครื่องทิ้งซะ
+        console.log('Service Worker Unregistered (Cache Cleared)');
+      }
+    });
+  }
 </script>
 </body>
 </html>
