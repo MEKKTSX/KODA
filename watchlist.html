@@ -261,9 +261,10 @@
     <script src="js/nav.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
+        // ✅ เรียงลำดับ api.js ไว้ตัวแรกสุดเสมอ!
         const scripts = [
-            "js/api.js", "js/drag-drop.js", "js/search.js", 
-            "js/markets.js", "js/ai-helper.js", "js/market-plus.js", "js/ai-pro.js"
+            "js/api.js", "js/markets.js", "js/drag-drop.js", "js/search.js", 
+            "js/ai-helper.js", "js/market-plus.js", "js/ai-pro.js"
         ];
         scripts.forEach(src => {
             const s = document.createElement('script');
@@ -272,6 +273,7 @@
         });
     });
 </script>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // ระบบเปลี่ยนแท็บใหม่
@@ -366,6 +368,12 @@
         registration.unregister(); // 🚀 สั่งฆ่า SW ตัวเก่าที่ค้างอยู่ในเครื่องทิ้งซะ
         console.log('Service Worker Unregistered (Cache Cleared)');
       }
+    });
+      setTimeout(() => {
+            if (typeof window.renderWatchlist === 'function') {
+                window.renderWatchlist();
+            }
+        }, 800); 
     });
   }
 </script>
