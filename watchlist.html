@@ -361,8 +361,11 @@
     </script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(() => {
-      console.log('Service Worker Registered');
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+      for(let registration of registrations) {
+        registration.unregister(); // 🚀 สั่งฆ่า SW ตัวเก่าที่ค้างอยู่ในเครื่องทิ้งซะ
+        console.log('Service Worker Unregistered (Cache Cleared)');
+      }
     });
   }
 </script>
