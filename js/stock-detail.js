@@ -1,26 +1,34 @@
    
     // 🚀 ฟังก์ชัน Rolling Number สำหรับราคาหลักหน้า Detail (ไม่เอากรอบสี)
     const animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
-        if (startValue === endValue) {
-            element.textContent = endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            return;
-        }
-        const startTime = performance.now();
-        const step = (now) => {
-            const progress = Math.min((now - startTime) / duration, 1);
-            const easeProgress = progress * (2 - progress); // Ease Out
-            const currentValue = startValue + (endValue - startValue) * easeProgress;
-            
-            element.textContent = currentValue.toLocaleString('en-US', { 
+    if (startValue === endValue) {
+        element.textContent = endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return;
+    }
+    
+    let startTime = null; // ย้ายมาจับเวลาในเฟรมแรก
+    
+    const step = (now) => {
+        if (!startTime) startTime = now;
+        const progress = Math.min((now - startTime) / duration, 1);
+        const easeProgress = progress * (2 - progress); // Ease Out
+        const currentValue = startValue + (endValue - startValue) * easeProgress;
+
+        if (progress < 1) {
+            // ประหยัดพลังงานเครื่องระหว่างวิ่ง
+            element.textContent = currentValue.toFixed(2);
+            window.requestAnimationFrame(step);
+        } else {
+            // วิ่งจบแล้วใช้ toLocaleString จัดรูปแบบ
+            element.textContent = endValue.toLocaleString('en-US', { 
                 minimumFractionDigits: 2, 
                 maximumFractionDigits: 2 
             });
-            
-            if (progress < 1) window.requestAnimationFrame(step);
-            else element.textContent = endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        };
-        window.requestAnimationFrame(step);
+        }
     };
+    window.requestAnimationFrame(step);
+};
+
     
     // 📌 1. ดึง Keys ปลอดภัย
     const finnhubKeys = (window.ENV_KEYS?.FINNHUB_ARRAY && window.ENV_KEYS.FINNHUB_ARRAY.length > 0) 
