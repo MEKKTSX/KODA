@@ -1,5 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
-    
+   
     // 🚀 ฟังก์ชัน Rolling Number สำหรับราคาหลักหน้า Detail (ไม่เอากรอบสี)
     const animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
         if (startValue === endValue) {
@@ -1590,5 +1589,3 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-
-});
