@@ -146,8 +146,10 @@
     <main class="flex-1 overflow-y-auto pb-28 relative">
         
         <section id="section-watchlists" class="tab-main-content block px-4 pt-4">
+            
             <div class="flex items-center gap-2 mb-4">
-                <div class="flex-1 flex overflow-x-auto no-scrollbar gap-2" id="watchlist-categories"></div>
+                <div class="flex-1 flex overflow-x-auto no-scrollbar gap-2" id="watchlist-categories">
+                    </div>
                 <button id="btn-manage-categories" class="size-8 shrink-0 bg-surface-dark border border-border-dark text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-colors shadow-sm">
                     <span class="material-symbols-outlined text-[16px]">tune</span>
                 </button>
@@ -167,11 +169,13 @@
                                 <span class="text-[#fbbf24] text-[10px] font-bold">พื้นฐาน</span>
                             </div>
                         </button>
+
                     </div>
                     <button id="btn-edit-watchlist" class="text-[10px] font-bold text-primary uppercase tracking-wider px-2 py-1 rounded hover:bg-primary/10 transition-colors">Edit</button>
                 </div>
                 <div class="space-y-1 max-h-[60vh] overflow-y-auto no-scrollbar" id="watchlist-container"></div>
             </div>
+            
         </section>
         
         <section id="section-earnings" class="tab-main-content hidden pb-8 px-2 pt-4">
@@ -180,7 +184,9 @@
                 <span id="earnings-week-display" class="text-white font-bold text-[13px] tracking-wide">LOADING...</span>
                 <button id="btn-next-week" class="p-2 text-slate-400 hover:text-white transition-colors active:scale-95"><span class="material-symbols-outlined text-xl">chevron_right</span></button>
             </div>
-            <div id="earnings-calendar-grid" class="grid grid-cols-5 gap-[4px]"></div>
+
+            <div id="earnings-calendar-grid" class="grid grid-cols-5 gap-[4px]">
+                </div>
         </section>
 
         <section id="section-overview" class="tab-main-content hidden pb-8">
@@ -287,6 +293,7 @@
                     b.classList.remove('bg-primary', 'text-white', 'shadow-md');
                     b.classList.add('text-slate-400', 'bg-transparent');
                 });
+                
                 tabContents.forEach(c => {
                     c.classList.add('hidden');
                     c.classList.remove('block');
@@ -357,7 +364,7 @@
     navigator.serviceWorker.getRegistrations().then(function(registrations) {
       for(let registration of registrations) {
         registration.unregister();
-        print('Service Worker Unregistered');
+        console.log('Service Worker Unregistered (Cache Cleared)');
       }
     });
   }
@@ -398,9 +405,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderFilterOptions = () => {
         if (!optionsContainer) return;
+        
         const iconMap = {
-            'rsi_overbought': 'trending_up', 'rsi_oversold': 'trending_down',
-            'ath_drop_30': 'monitoring', 'vol_spike': 'bolt', 'pe_below_15': 'universal_currency_alt'
+            'rsi_overbought': 'trending_up',
+            'rsi_oversold': 'trending_down',
+            'ath_drop_30': 'monitoring',
+            'vol_spike': 'bolt',
+            'pe_below_15': 'universal_currency_alt'
         };
 
         optionsContainer.innerHTML = SCANNER_FEATURES.map(feat => {
@@ -409,16 +420,22 @@ document.addEventListener('DOMContentLoaded', () => {
             
             return `
             <button data-id="${feat.id}" class="filter-option-btn w-full flex items-center justify-between p-4 rounded-xl border text-left active:scale-[0.98] select-none ${
-                isActive ? 'scanner-glow-active border-[#fbbf24]' : 'border-border-dark bg-background-dark/40 hover:bg-slate-800/60 hover:border-slate-700'
+                isActive 
+                ? 'scanner-glow-active border-[#fbbf24]' 
+                : 'border-border-dark bg-background-dark/40 hover:bg-slate-800/60 hover:border-slate-700'
             }">
                 <div class="flex items-center gap-3">
                     <div class="size-8 rounded-lg flex items-center justify-center transition-colors ${isActive ? 'bg-[#fbbf24]/10' : 'bg-surface-dark border border-border-dark/50'}">
-                        <span class="material-symbols-outlined text-[18px] ${isActive ? 'text-[#fbbf24]' : 'text-slate-500'}">${currentIcon}</span>
+                        <span class="material-symbols-outlined text-[18px] ${isActive ? 'text-[#fbbf24]' : 'text-slate-500'}">
+                            ${currentIcon}
+                        </span>
                     </div>
                     <span class="text-sm font-semibold tracking-wide ${isActive ? 'text-[#fbbf24]' : 'text-slate-200'}">${feat.label}</span>
                 </div>
                 <div class="flex items-center justify-center size-5 rounded-full border text-transparent transition-all ${
-                    isActive ? 'filter-checkbox-checked text-background-dark' : 'border-slate-700 bg-background-dark'
+                    isActive 
+                    ? 'filter-checkbox-checked text-background-dark' 
+                    : 'border-slate-700 bg-background-dark'
                 }">
                     <span class="material-symbols-outlined text-[12px] font-black">check</span>
                 </div>
@@ -431,8 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.filter-option-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
-                if (window.activeFilters.has(id)) { window.activeFilters.delete(id); } 
-                else { window.activeFilters.add(id); }
+                if (window.activeFilters.has(id)) {
+                    window.activeFilters.delete(id);
+                } else {
+                    window.activeFilters.add(id);
+                }
                 renderFilterOptions();
             });
         });
@@ -453,6 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderFilterOptions();
             modalFilter.classList.remove('hidden');
             modalFilter.classList.add('flex');
+            
             setTimeout(() => {
                 modalFilter.classList.remove('opacity-0');
                 modalContent.classList.remove('translate-y-full', 'scale-95');
@@ -460,8 +481,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         btnCloseFilter.addEventListener('click', closeFilterModal);
-        btnClearFilter.addEventListener('click', () => { window.activeFilters.clear(); renderFilterOptions(); });
-        btnApplyFilter.addEventListener('click', () => { closeFilterModal(); if (typeof window.renderWatchlist === 'function') window.renderWatchlist(); });
+        btnClearFilter.addEventListener('click', () => {
+            window.activeFilters.clear();
+            renderFilterOptions();
+        });
+
+        btnApplyFilter.addEventListener('click', () => {
+            closeFilterModal();
+            if (typeof window.renderWatchlist === 'function') {
+                window.renderWatchlist();
+            }
+        });
     }
 });
 
@@ -488,7 +518,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = data.categories.map(cat => `
             <button class="cat-pill-btn px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
-                cat === window.currentActiveCategory ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm' : 'bg-surface-dark text-slate-400 border border-border-dark hover:text-slate-200'
+                cat === window.currentActiveCategory 
+                ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm' 
+                : 'bg-surface-dark text-slate-400 border border-border-dark hover:text-slate-200' 
             }" data-cat="${cat}">
                 ${cat === window.currentActiveCategory ? '<span class="material-symbols-outlined text-[14px] align-middle mr-1">check</span>' : ''}${cat}
             </button>
@@ -499,7 +531,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.currentActiveCategory = e.currentTarget.dataset.cat;
                 document.getElementById('current-category-title').textContent = window.currentActiveCategory;
                 window.renderCategoryPills();
-                if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                
+                if (typeof window.renderWatchlist === 'function') {
+                    window.renderWatchlist();
+                }
             });
         });
     };
@@ -537,9 +572,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         window.currentActiveCategory = 'All';
                         document.getElementById('current-category-title').textContent = 'All';
                     }
+                    
                     renderManageList();
                     window.renderCategoryPills();
-                    if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
+                    if (typeof loadWatchlist === 'function') loadWatchlist();
                 }
             });
         });
@@ -555,20 +591,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         btnCloseCat.addEventListener('click', () => {
             modalCategories.classList.add('opacity-0');
-            setTimeout(() => { modalCategories.classList.add('hidden'); modalCategories.classList.remove('flex'); }, 200);
+            setTimeout(() => {
+                modalCategories.classList.add('hidden');
+                modalCategories.classList.remove('flex');
+            }, 200);
         });
 
         btnAddCat.addEventListener('click', () => {
             const newCat = inputNewCat.value.trim();
             if (!newCat) return;
+
             let data = getPortfolioData();
-            if (data.categories.includes(newCat)) { alert('ชื่อแฟ้มนี้มีอยู่แล้ว!'); return; }
+            if (data.categories.includes(newCat)) {
+                alert('ชื่อแฟ้มนี้มีอยู่แล้ว!');
+                return;
+            }
+
             data.categories.push(newCat);
-            data.watchlists[newCat] = [];
+            data.watchlists[newCat] = []; 
             localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
-            inputNewCat.value = '';
-            renderManageList();
-            window.renderCategoryPills();
+            
+            inputNewCat.value = ''; 
+            renderManageList(); 
+            window.renderCategoryPills(); 
         });
     }
     window.renderCategoryPills();
@@ -576,6 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
     <div id="modal-filter-scanner" class="fixed inset-0 z-[100] hidden items-end sm:items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0 pb-0 sm:pb-10">
         <div class="bg-surface-dark border border-[#fbbf24]/30 w-full sm:w-[90%] max-w-md sm:rounded-2xl rounded-t-3xl flex flex-col shadow-[0_-10px_40px_rgba(251,191,36,0.1)] transform translate-y-full sm:translate-y-0 sm:scale-95 transition-transform duration-300" id="modal-filter-content">
+            
             <div class="flex items-center justify-between p-5 border-b border-border-dark shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="size-8 rounded-lg bg-[#fbbf24]/10 border border-[#fbbf24]/30 flex items-center justify-center">
@@ -588,7 +634,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <button id="btn-close-filter" class="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1.5 active:scale-90 transition-all"><span class="material-symbols-outlined text-[18px]">close</span></button>
             </div>
-            <div class="p-5 overflow-y-auto max-h-[60vh] no-scrollbar flex flex-col gap-5" id="filter-options-container"></div>
+            
+            <div class="p-5 overflow-y-auto max-h-[60vh] no-scrollbar flex flex-col gap-5" id="filter-options-container">
+                </div>
+
             <div class="p-5 border-t border-border-dark flex gap-3 bg-background-dark/50 sm:rounded-b-2xl rounded-none">
                 <button id="btn-clear-filters" class="w-1/3 py-2.5 rounded-xl font-bold text-slate-400 bg-slate-800 hover:bg-slate-700 hover:text-white transition-colors text-sm">ล้างค่า</button>
                 <button id="btn-apply-filters" class="w-2/3 py-2.5 rounded-xl font-bold text-background-dark bg-gradient-to-r from-[#fbbf24] to-yellow-500 hover:opacity-90 transition-all text-sm shadow-lg shadow-yellow-500/20">ดูผลลัพธ์ (<span id="filter-count">0</span>)</button>
