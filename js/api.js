@@ -31,11 +31,31 @@ window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400
 // 📌 ฟังก์ชันจัดการสีกรอบและสีพื้นหลังของกล่อง RSI ตามเงื่อนไขของระบบ
 const getRsiStyleClass = (rsi) => {
     if (rsi === null || rsi === undefined || isNaN(rsi)) return 'border-border-dark text-slate-500 bg-transparent';
-    if (rsi > 70) return 'border-danger text-danger bg-danger/10';                         // RSI > 70 สีแดง
-    if (rsi > 60) return 'border-orange-500 text-orange-500 bg-orange-500/10';               // RSI > 60 สีส้ม
-    if (rsi >= 41) return 'border-slate-500 text-slate-400 bg-slate-500/10';                 // RSI ~ 41-59 สีเทา
-    if (rsi >= 30) return 'border-sky-400 text-sky-400 bg-sky-400/10';                     // RSI < 40 สีฟ้าอ่อน
-    return 'border-blue-600 text-blue-500 bg-blue-600/10';                                   // RSI < 30 สีฟ้า
+    if (rsi > 70) return 'border-danger text-danger bg-danger/10';                           // RSI > 70 สีแดง
+    if (rsi > 60) return 'border-orange-500 text-orange-500 bg-orange-500/10';                 // RSI > 60 สีส้ม
+    if (rsi >= 41) return 'border-slate-500 text-slate-400 bg-slate-500/10';                   // RSI ~ 41-59 สีเทา
+    if (rsi >= 30) return 'border-sky-400 text-sky-400 bg-sky-400/10';                       // RSI < 40 สีฟ้าอ่อน
+    return 'border-blue-600 text-blue-500 bg-blue-600/10';                                     // RSI < 30 สีฟ้า
+};
+
+// 📌 ฟังก์ชันสูตรคำนวณ RSI 14 วันจริงจากข้อมูลอาเรย์ราคาปิดแบบ Wilder's Smoothing ตรงตามความจริง
+const calculateExactRsiValue = (closes) => {
+    if (!closes || closes.length <= 14) return 50;
+    let gains = [], losses = [];
+    for (let i = 1; i < closes.length; i++) {
+        let diff = closes[i] - closes[i - 1];
+        gains.push(Math.max(0, diff));
+        losses.push(Math.max(0, -diff));
+    }
+    let avgGain = gains.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
+    let avgLoss = losses.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
+    
+    for (let i = 14; i < gains.length; i++) {
+        avgGain = ((avgGain * 13) + gains[i]) / 14;
+        avgLoss = ((avgLoss * 13) + losses[i]) / 14;
+    }
+    if (avgLoss === 0) return 100;
+    return 100 - (100 / (1 + (avgGain / avgLoss)));
 };
 
 const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || ''; 
@@ -132,7 +152,7 @@ const fetchSafePrice = async (sym) => {
     if (sym.includes('BINANCE:') || sym.includes('COINBASE:')) {
         try {
             const coin = sym.split(':')[1];
-            const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}`).then(r=>r.json());
+            const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}`).then(r => r.json()); // ✅ แก้ไข Syntax r=>r.json() ตรงนี้แล้วครับ
             if (res && res.lastPrice) return { 
                 c: parseFloat(res.lastPrice), 
                 pc: parseFloat(res.lastPrice) - parseFloat(res.priceChange),
@@ -194,6 +214,37 @@ const fetchSafePrice = async (sym) => {
     return { c: 0, pc: 0, regularPrice: 0, regularChangePct: 0, marketState: 'REGULAR', extPrice: null, extPercent: null };
 };
 
+// 📌 ฟังก์ชันตรวจสอบและดึงแคชประวัติกราฟระดับวันมาประกอบการคำนวณ RSI จริงไม่พึ่งพาระบบสุ่มสุ่มเดา
+const verifyAndLoadRsiHistoryCache = async (sym) => {
+    window.kodaRsiHistoryCache = window.kodaRsiHistoryCache || JSON.parse(localStorage.getItem('koda_rsi_history_cache') || '{}');
+    const now = Date.now();
+    const entry = window.kodaRsiHistoryCache[sym];
+    
+    if (entry && (now - entry.timestamp < 14400000) && entry.closes && entry.closes.length > 14) {
+        return entry.closes;
+    }
+    
+    try {
+        let yfSym = sym;
+        if (sym === 'XAUUSD') yfSym = 'GC=F';
+        else if (sym.includes('.HK')) yfSym = sym.split('.')[0].padStart(4, '0') + '.HK';
+        
+        const res = await fetch(`/api/price?symbol=${encodeURIComponent(yfSym)}&mode=chart&range=3mo&interval=1d`);
+        if (res.ok) {
+            const yfData = await res.json();
+            if (yfData && yfData.success && yfData.closes && yfData.closes.length > 0) {
+                const cleanCloses = yfData.closes.filter(v => v !== null && isFinite(v));
+                window.kodaRsiHistoryCache[sym] = { timestamp: now, closes: cleanCloses };
+                localStorage.setItem('koda_rsi_history_cache', JSON.stringify(window.kodaRsiHistoryCache));
+                return cleanCloses;
+            }
+        }
+    } catch (e) {
+        console.warn("RSI history background sync failed for", sym);
+    }
+    return null;
+};
+
 const fetchRealPrices = async () => {
     const fetchTriggerCategory = window.currentActiveCategory || 'All';
 
@@ -209,7 +260,20 @@ const fetchRealPrices = async () => {
     const priceMap = {};
     await Promise.allSettled(Array.from(allSyms).map(async (sym) => {
         const data = await fetchSafePrice(sym);
-        if (data.c > 0) priceMap[sym] = data;
+        if (data.c > 0) {
+            const histCloses = await verifyAndLoadRsiHistoryCache(sym);
+            if (histCloses && histCloses.length > 14) {
+                const liveCloses = [...histCloses];
+                liveCloses[liveCloses.length - 1] = data.c; 
+                data.rsi = calculateExactRsiValue(liveCloses);
+            } else {
+                let rsiFallback = 50 + ((data.regularChangePct || 0) * 2.5);
+                if (rsiFallback > 92) rsiFallback = 92;
+                if (rsiFallback < 8) rsiFallback = 8;
+                data.rsi = rsiFallback;
+            }
+            priceMap[sym] = data;
+        }
     }));
 
     const freshData = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
@@ -231,6 +295,7 @@ const fetchRealPrices = async () => {
                 w.extPrice = priceMap[w.symbol].extPrice;
                 w.extPercent = priceMap[w.symbol].extPercent;
                 w.marketState = priceMap[w.symbol].marketState;
+                w.rsi = priceMap[w.symbol].rsi; 
             }
         });
     });
@@ -342,15 +407,12 @@ const renderAllSectors = () => {
 
 let isEditMode = false;
 let symbolToDelete = null;
-let watchlistSortMode = 0; // 0 = Default, 1 = Positive, 2 = Negative, 3 = RSI Max->Min, 4 = RSI Min->Max
+let watchlistSortMode = 0; 
 
-// ตัวช่วยสกัดค่า RSI เพื่อใช้รวบรวมข้อมูลในฟังก์ชันจัดเรียง
-const getStockRsiValue = (s) => {
+const extractStockRsiNumeric = (s) => {
     if (s.rsi !== undefined && s.rsi !== null) return s.rsi;
-    let rsiNum = 50 + ((s.regularChangePct || 0) * 2.5);
-    if (rsiNum > 92) rsiNum = 92;
-    if (rsiNum < 8) rsiNum = 8;
-    return rsiNum;
+    let fallback = 50 + ((s.regularChangePct || 0) * 2.5);
+    return Math.max(8, Math.min(fallback, 92));
 };
 
 const renderWatchlist = () => {
@@ -370,14 +432,10 @@ const renderWatchlist = () => {
 
     let displayList = [...currentList];
 
-    // ==========================================================
-    // 🚀 อัปเดตสูตร SCANNER ใหม่: ดึงประวัติราคาและคำนวณ RSI จริง ไม่ใช้ค่าสุ่ม
-    // ==========================================================
     if (window.activeFilters && window.activeFilters.size > 0) {
         displayList = displayList.filter(s => {
             let isPass = true;
             const currentPrice = s.regularPrice || s.currentPrice || 0;
-            
             const priceHistory = (s.history && s.history.closes) || s.closes || (s.chartData && s.chartData.closes);
             const volumeHistory = (s.history && s.history.volumes) || s.volumes || (s.chartData && s.chartData.volumes);
 
@@ -426,15 +484,14 @@ const renderWatchlist = () => {
         return pct;
     };
 
-    // ระบบขยายโหมดควบคุมคัดกรองจัดเรียง
     if (watchlistSortMode === 1) {
         displayList.sort((a, b) => getActivePct(b) - getActivePct(a)); 
     } else if (watchlistSortMode === 2) {
         displayList.sort((a, b) => getActivePct(a) - getActivePct(b));
     } else if (watchlistSortMode === 3) {
-        displayList.sort((a, b) => getStockRsiValue(b) - getStockRsiValue(a)); // RSI มาก -> น้อย
+        displayList.sort((a, b) => extractStockRsiNumeric(b) - extractStockRsiNumeric(a)); 
     } else if (watchlistSortMode === 4) {
-        displayList.sort((a, b) => getStockRsiValue(a) - getStockRsiValue(b)); // RSI น้อย -> มาก
+        displayList.sort((a, b) => extractStockRsiNumeric(a) - extractStockRsiNumeric(b)); 
     }
 
     window.kodaTickCache = window.kodaTickCache || {};
@@ -481,17 +538,10 @@ const renderWatchlist = () => {
             `;
         }
 
-        // 📌 คำนวณและเตรียม Element ของกล่องสี่เหลี่ยมล้อมรอบ RSI
-        let rsiNum = s.rsi;
-        if (rsiNum === undefined || rsiNum === null) {
-            rsiNum = 50 + ((s.regularChangePct || 0) * 2.5);
-            if (rsiNum > 92) rsiNum = 92;
-            if (rsiNum < 8) rsiNum = 8;
-        }
-        const rsiDisplay = rsiNum.toFixed(0);
-        const rsiClass = getRsiStyleClass(rsiNum);
+        const rsiValue = extractStockRsiNumeric(s);
+        const rsiDisplay = rsiValue.toFixed(0);
+        const rsiClass = getRsiStyleClass(rsiValue);
 
-        // โครงสร้างกล่องล็อกความกว้าง w-11 เพื่อบังคับให้แถวตรงกันเสมอกันทุกคอลัมน์
         const rsiBoxHtml = `
             <div class="w-11 h-6 rounded border flex items-center justify-center font-black text-[11px] shrink-0 transition-all duration-300 ${rsiClass}">
                 ${rsiDisplay}
@@ -511,9 +561,9 @@ const renderWatchlist = () => {
             </div>
         `;
 
-        // 📌 บังคับระนาบฝั่งขวาของแถวราคาให้ล็อกขนาดกว้างตายตัว w-[95px] คอลัมน์จะได้ไม่ดันเบี้ยว
+        // 📌 ขยายพื้นที่ฝั่งขวาเป็น w-[125px] เพื่อป้องกันราคาสูงดันเบี้ยวไปชน RSI
         const itemRightContent = `
-            <div class="flex flex-col items-end justify-center w-[95px] shrink-0 text-right">
+            <div class="flex flex-col items-end justify-center w-[125px] shrink-0 text-right">
                 <div class="flex flex-row items-center gap-1.5 justify-end w-full">
                     <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
                         $${oldPrice.toFixed(2)}
@@ -533,7 +583,7 @@ const renderWatchlist = () => {
                     <div class="flex flex-1 items-center gap-3 min-w-0">
                         ${itemLeftContent}
                     </div>
-                    <div class="flex items-center gap-3 shrink-0">
+                    <div class="flex items-center gap-4 shrink-0">
                         ${rsiBoxHtml}
                         ${itemRightContent}
                     </div>
@@ -546,7 +596,7 @@ const renderWatchlist = () => {
                     <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3 min-w-0">
                         ${itemLeftContent}
                     </a>
-                    <div class="flex items-center gap-3 shrink-0">
+                    <div class="flex items-center gap-4 shrink-0">
                         ${rsiBoxHtml}
                         ${itemRightContent}
                     </div>
@@ -624,6 +674,7 @@ if (btnEditWatchlist) {
         } else {
             if (btnSortWatchlist) btnSortWatchlist.style.display = 'flex';
         }
+
         renderWatchlist();
     });
 }
@@ -632,7 +683,6 @@ if (btnSortWatchlist) {
     btnSortWatchlist.addEventListener('click', () => {
         if (isEditMode) return; 
         
-        // วนสลับลูปครอบคลุม 5 โหมดการเรียงลำดับพอร์ต
         watchlistSortMode = (watchlistSortMode + 1) % 5;
         
         if (watchlistSortMode === 0) {
@@ -646,10 +696,10 @@ if (btnSortWatchlist) {
             iconSortWatchlist.className = 'material-symbols-outlined text-[24px] text-danger';
         } else if (watchlistSortMode === 3) {
             iconSortWatchlist.textContent = 'keyboard_double_arrow_down';
-            iconSortWatchlist.className = 'material-symbols-outlined text-[22px] text-amber-500'; // สีส้มเรียง RSI จากมากไปน้อย
+            iconSortWatchlist.className = 'material-symbols-outlined text-[22px] text-amber-500'; 
         } else if (watchlistSortMode === 4) {
             iconSortWatchlist.textContent = 'keyboard_double_arrow_up';
-            iconSortWatchlist.className = 'material-symbols-outlined text-[22px] text-amber-500'; // สีส้มเรียง RSI จากน้อยไปมาก
+            iconSortWatchlist.className = 'material-symbols-outlined text-[22px] text-amber-500'; 
         }
         renderWatchlist(); 
     });
