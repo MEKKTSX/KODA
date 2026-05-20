@@ -152,7 +152,7 @@ const fetchSafePrice = async (sym) => {
     if (sym.includes('BINANCE:') || sym.includes('COINBASE:')) {
         try {
             const coin = sym.split(':')[1];
-            const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}`).then(r => r.json()); // ✅ แก้ไข Syntax r=>r.json() ตรงนี้แล้วครับ
+            const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}`).then(r => r.json());
             if (res && res.lastPrice) return { 
                 c: parseFloat(res.lastPrice), 
                 pc: parseFloat(res.lastPrice) - parseFloat(res.priceChange),
@@ -264,7 +264,16 @@ const fetchRealPrices = async () => {
             const histCloses = await verifyAndLoadRsiHistoryCache(sym);
             if (histCloses && histCloses.length > 14) {
                 const liveCloses = [...histCloses];
-                liveCloses[liveCloses.length - 1] = data.c; 
+                
+                // 🛡️ [แก้ไขจุดที่ 1] ปลดล็อกบัคระบบดึงค่าข้ามวันในช่วงเวลาปิดทำการ (Pre/Post Market RSI Engine)
+                if (data.marketState === 'PRE') {
+                    // ช่วงก่อนตลาดเปิด แท่งข้อมูลวันใหม่ยังไม่เกิดบนกราฟ Daily (1d) ให้ใช้วิธี Push เพิ่มเข้าไปท้ายอาเรย์
+                    liveCloses.push(data.c);
+                } else {
+                    // ช่วง Regular / Post / Closed แท่งของวันปัจจุบันถูกสร้างในกราฟเรียบร้อยแล้ว ให้สลับแทนที่ตัวสุดท้าย
+                    liveCloses[liveCloses.length - 1] = data.c;
+                }
+                
                 data.rsi = calculateExactRsiValue(liveCloses);
             } else {
                 let rsiFallback = 50 + ((data.regularChangePct || 0) * 2.5);
@@ -561,9 +570,9 @@ const renderWatchlist = () => {
             </div>
         `;
 
-        // 📌 ขยายพื้นที่ฝั่งขวาเป็น w-[125px] เพื่อป้องกันราคาสูงดันเบี้ยวไปชน RSI
+        // 📌 🛡️ [แก้ไขจุดที่ 2] ล็อกพื้นที่ชุดราคาเป็น w-[145px] เพื่อรองรับหุ้นราคาสูงนอกเวลาทำการ ป้องการเกิด UI ซ้อนทับ
         const itemRightContent = `
-            <div class="flex flex-col items-end justify-center w-[125px] shrink-0 text-right">
+            <div class="flex flex-col items-end justify-center w-[145px] shrink-0 text-right">
                 <div class="flex flex-row items-center gap-1.5 justify-end w-full">
                     <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
                         $${oldPrice.toFixed(2)}
@@ -785,7 +794,7 @@ const setupFastTranslation = () => {
             if (/[\u0E00-\u0E7F]/.test(text)) return text;
             
             const cacheKey = 'koda_trans_' + text.substring(0, 40).replace(/[^a-zA-Z0-9]/g, '');
-            const cached = localStorage.getItem(cacheKey);
+            const cached = localStorage.getItem('koda_trans_');
             if (cached) return cached;
 
             try {
