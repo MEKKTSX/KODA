@@ -105,6 +105,22 @@
             0% { background-color: rgba(255, 77, 77, 0.2); border-color: rgba(255, 77, 77, 0.8); }
             100% { background-color: transparent; border-color: #232b3e; }
         }
+    
+            /* 📌 สไตล์พรีเมียมสแกนเนอร์ที่เพิ่มเข้ามาใหม่ */
+        .scanner-glow-active {
+            background: linear-gradient(90deg, rgba(251, 191, 36, 0.15) 0%, rgba(22, 28, 43, 0.8) 100%);
+            border-color: #fbbf24 !important;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.08), inset 0 0 10px rgba(251, 191, 36, 0.05);
+        }
+        .filter-checkbox-checked {
+            background-color: #fbbf24 !important;
+            border-color: #fbbf24 !important;
+            color: #0a0e17 !important;
+            box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+        }
+        .filter-option-btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
     </style>
 </head>
@@ -396,7 +412,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // ==========================================
-    // 📌 โครงสร้างข้อมูล Filter (ออกแบบให้เพิ่ม/ลดได้ง่ายในอนาคต)
+    // 📌 ระบบโครงสร้างข้อมูลและควบคุมกล่องสแกนเนอร์ (แก้ไขบัคแอนิเมชันค้าง)
     // ==========================================
     const SCANNER_FEATURES = [
         { id: 'rsi_overbought', label: 'RSI > 70 (Overbought)' },
@@ -406,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'pe_below_15', label: 'P/E < 15 (Value)' }
     ];
 
-    window.activeFilters = new Set(); // เก็บค่า ID ของตัวกรองที่ถูกเลือก
+    window.activeFilters = window.activeFilters || new Set(); 
 
     const btnFilter = document.getElementById('btn-filter-scanner');
     const modalFilter = document.getElementById('modal-filter-scanner');
@@ -414,22 +430,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClearFilter = document.getElementById('btn-clear-filters');
     const btnApplyFilter = document.getElementById('btn-apply-filters');
     const optionsContainer = document.getElementById('filter-options-container');
+    const modalContent = document.getElementById('modal-filter-content');
 
-    // 📌 ฟังก์ชันวาดปุ่มเลือกตัวกรอง
+    // 📌 ฟังก์ชันวาดปุ่มเลือกตัวกรองเวอร์ชันอัปเกรดความหรูหรา (Beautiful Glassmorphism & Gold Theme)
     const renderFilterOptions = () => {
         if (!optionsContainer) return;
+        
+        // ตารางคู่ไอคอนให้เข้ากับเนื้อหาของแต่ละ Feature
+        const iconMap = {
+            'rsi_overbought': 'trending_up',
+            'rsi_oversold': 'trending_down',
+            'ath_drop_30': 'monitoring',
+            'vol_spike': 'bolt',
+            'pe_below_15': 'universal_currency_alt'
+        };
+
         optionsContainer.innerHTML = SCANNER_FEATURES.map(feat => {
             const isActive = window.activeFilters.has(feat.id);
+            const currentIcon = iconMap[feat.id] || 'tune';
+            
             return `
-            <button data-id="${feat.id}" class="filter-option-btn flex items-center justify-between p-3 rounded-xl border transition-all ${
-                isActive ? 'border-[#fbbf24] bg-[#fbbf24]/10' : 'border-border-dark bg-background-dark hover:bg-slate-800'
+            <button data-id="${feat.id}" class="filter-option-btn w-full flex items-center justify-between p-4 rounded-xl border text-left active:scale-[0.98] select-none ${
+                isActive 
+                ? 'scanner-glow-active border-[#fbbf24]' 
+                : 'border-border-dark bg-background-dark/40 hover:bg-slate-800/60 hover:border-slate-700'
             }">
-                <span class="text-sm font-bold ${isActive ? 'text-[#fbbf24]' : 'text-slate-300'}">${feat.label}</span>
-                ${isActive ? '<span class="material-symbols-outlined text-[#fbbf24] text-[18px]">check_circle</span>' : ''}
+                <div class="flex items-center gap-3">
+                    <div class="size-8 rounded-lg flex items-center justify-center transition-colors ${isActive ? 'bg-[#fbbf24]/10' : 'bg-surface-dark border border-border-dark/50'}">
+                        <span class="material-symbols-outlined text-[18px] ${isActive ? 'text-[#fbbf24]' : 'text-slate-500'}">
+                            ${currentIcon}
+                        </span>
+                    </div>
+                    <span class="text-sm font-semibold tracking-wide ${isActive ? 'text-[#fbbf24]' : 'text-slate-200'}">${feat.label}</span>
+                </div>
+                <div class="flex items-center justify-center size-5 rounded-full border text-transparent transition-all ${
+                    isActive 
+                    ? 'filter-checkbox-checked text-background-dark' 
+                    : 'border-slate-700 bg-background-dark'
+                }">
+                    <span class="material-symbols-outlined text-[12px] font-black">check</span>
+                </div>
             </button>`;
         }).join('');
 
-        // ผูก Event ให้แต่ละปุ่ม
+        // อัปเดตตัวเลขจำนวนตัวกรองบนปุ่มให้เป็นปัจจุบัน
+        const countEl = document.getElementById('filter-count');
+        if (countEl) countEl.textContent = window.activeFilters.size;
+
+        // ผูก Event ให้แต่ละปุ่มสลับสถานะ
         document.querySelectorAll('.filter-option-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
@@ -438,41 +486,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     window.activeFilters.add(id);
                 }
-                renderFilterOptions(); // วาดใหม่เพื่ออัปเดตสี
+                renderFilterOptions(); // Re-render ทันทีเพื่อเปลี่ยนดีไซน์แบบ Real-time
             });
         });
     };
 
-    if (btnFilter) {
+    // 📌 ฟังก์ชันสั่งปิดหน้าต่างสแกนเนอร์แบบเนียน ๆ (ถอดการเบลอบล็อกหน้าจอ)
+    const closeFilterModal = () => {
+        if (!modalFilter || !modalContent) return;
+        modalFilter.classList.add('opacity-0');
+        modalContent.classList.add('translate-y-full', 'scale-95');
+        setTimeout(() => {
+            modalFilter.classList.add('hidden');
+            modalFilter.classList.remove('flex');
+        }, 300);
+    };
+
+    if (btnFilter && modalFilter && modalContent) {
+        // กดเปิดตัวกรอง
         btnFilter.addEventListener('click', () => {
             renderFilterOptions();
             modalFilter.classList.remove('hidden');
             modalFilter.classList.add('flex');
+            
+            // ใช้ setTimeout ดันเข้าคิวเพื่อให้ CSS เล่นแอนิเมชันเลื่อนขึ้นมาได้ถูกต้อง
             setTimeout(() => {
                 modalFilter.classList.remove('opacity-0');
-                document.getElementById('modal-filter-content').classList.remove('scale-95');
+                modalContent.classList.remove('translate-y-full', 'scale-95');
             }, 10);
         });
 
-        const closeModal = () => {
-            modalFilter.classList.add('opacity-0');
-            document.getElementById('modal-filter-content').classList.add('scale-95');
-            setTimeout(() => {
-                modalFilter.classList.add('hidden');
-                modalFilter.classList.remove('flex');
-            }, 200);
-        };
+        // กดปุ่มปิด หรือกากบาท
+        btnCloseFilter.addEventListener('click', closeFilterModal);
 
-        btnCloseFilter.addEventListener('click', closeModal);
-
+        // กดล้างค่าทั้งหมด
         btnClearFilter.addEventListener('click', () => {
             window.activeFilters.clear();
             renderFilterOptions();
         });
 
+        // กดปุ่ม "ดูผลลัพธ์"
         btnApplyFilter.addEventListener('click', () => {
-            closeModal();
-            // 📌 เมื่อกด "ใช้ตัวกรอง" ให้สั่งวาดหน้า Watchlist ใหม่
+            closeFilterModal();
+            // สั่งวาดข้อมูลและกรองหุ้นในหน้า Watchlist ใหม่ทันที
             if (typeof window.renderWatchlist === 'function') {
                 window.renderWatchlist();
             }
