@@ -48,12 +48,22 @@
 
 ```text
 KODA/
-├── api/                  # Serverless API Proxy (แก้ปัญหา CORS & Cache-Busting)
-├── js/
-│   ├── api.js            # ระบบคอร์หลัก, คำนวณคณิตศาสตร์ และ Real-time Fetcher
-│   ├── portfolio-calc.js # ตัวคำนวณสเตทพอร์ตโฟลิโอ และเรนเดอร์ Equity Chart
-│   ├── analytics.js      # ขุมพลัง KODA Lab และเครื่องมือคำนวณ DCA / Simulator
-│   ├── ai-helper.js      # ตัวกลางจัดการระบบคิวแอนิเมชัน แปลภาษา และแมตช์ภาพข่าว
-│   └── nav.js            # ระบบควบคุมแถบนำทางแบบคงสเตท
-├── *.html                # หน้ากาก UI ยืดหยุ่นระดับกระเบื้องแก้ว (Glassmorphism)
-└── manifest.json         # ไฟล์โครงสร้างคุณสมบัติ Progressive Web App
+├── api/                  # 🌐 Serverless Edge Functions (Vercel Backend)
+│   ├── chart.js          # ระบบดึงและจัดการข้อมูลกราฟหลัก
+│   ├── keys.js           # สคริปต์ความปลอดภัยสำหรับแยกแยะสิทธิ์ API Keys
+│   ├── price.py          # ขุมพลังคำนวณราคา & โครงสร้างข้อมูลทางเทคนิค (Python)
+│   └── yahoo.js          # ตัวกลางยิงตรงไปดึงข้อมูลสดจาก Yahoo Finance
+├── js/                   # ⚡ Modular Frontend Logic
+│   ├── api.js            # ระบบจัดการสเตทพอร์ตโฟลิโอ, ตารางคำนวณ และ Real-time Loop
+│   ├── stock-detail.js   # ลอจิกควบคุมหน้าข้อมูลหุ้นรายตัว และระบบ Rolling Number
+│   ├── portfolio-calc.js # ตัวประมวลผลข้อมูล holdings และคำนวณมูลค่าพอร์ตรวม + เงินสด
+│   ├── analytics.js      # ระบบวิเคราะห์ขั้นสูง, DCA Engine และตัวคำนวณ KODA Lab
+│   ├── ai-helper.js      # ตัวจัดการคิวประมวลผลคำแปล และจับคู่ภาพประกอบข่าวเชิงวิเคราะห์
+│   ├── market-plus.js    # โมดูลคณิตศาสตร์สำหรับคำนวณดัชนีชี้วัดทางเทคนิค (RSI ฯลฯ)
+│   ├── markets.js        # ตัวควบคุมหน้า Market Overview และ Fear & Greed Index
+│   └── nav.js            # ระบบจัดการแถบเมนูด้านล่างแบบข้ามหน้าจอ (Dynamic Navigation)
+├── *.html                # 📱 หน้าตา UI ดีไซน์ Glassmorphism รองรับ Container Queries
+├── sw.js                 # ระบบจัดการ Service Worker (ควบคุมสถานะ Cache)
+├── vercel.json           # ไฟล์ตั้งค่าระบบ Routing และ Serverless Environment บน Vercel
+├── manifest.json         # โครงสร้างคอนฟิกสำหรับฟีเจอร์ Progressive Web App (PWA)
+└── requirements.txt      # รายการไลบรารีของ Python ที่ใช้บนสภาพแวดล้อมระบบ Edge
