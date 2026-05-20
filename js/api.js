@@ -28,6 +28,16 @@ window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400
     window.requestAnimationFrame(step);
 };
 
+// 📌 ฟังก์ชันจัดการสีกรอบและสีพื้นหลังของกล่อง RSI ตามเงื่อนไขของระบบ
+const getRsiStyleClass = (rsi) => {
+    if (rsi === null || rsi === undefined || isNaN(rsi)) return 'border-border-dark text-slate-500 bg-transparent';
+    if (rsi > 70) return 'border-danger text-danger bg-danger/10';                         // RSI > 70 สีแดง
+    if (rsi > 60) return 'border-orange-500 text-orange-500 bg-orange-500/10';               // RSI > 60 สีส้ม
+    if (rsi >= 41) return 'border-slate-500 text-slate-400 bg-slate-500/10';                 // RSI ~ 41-59 สีเทา
+    if (rsi >= 30) return 'border-sky-400 text-sky-400 bg-sky-400/10';                     // RSI < 40 สีฟ้าอ่อน
+    return 'border-blue-600 text-blue-500 bg-blue-600/10';                                   // RSI < 30 สีฟ้า
+};
+
 const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || ''; 
 
 const SECTOR_ETFS = [
@@ -277,18 +287,22 @@ const renderHome = () => {
     const changePct = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0;
     const change = formatPercent(changePct);
     const totalPctEl = document.getElementById('total-percent');
-    totalPctEl.className = `text-sm font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${change.colorClass} ${change.bgClass}`;
-    totalPctEl.innerHTML = `<span class="material-symbols-outlined text-sm">${change.icon}</span> ${change.text}`;
+    if (totalPctEl) {
+        totalPctEl.className = `text-sm font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${change.colorClass} ${change.bgClass}`;
+        totalPctEl.innerHTML = `<span class="material-symbols-outlined text-sm">${change.icon}</span> ${change.text}`;
+    }
 
     if (best) {
-        document.getElementById('top-gainer-ticker').textContent = best.symbol;
-        document.getElementById('top-gainer-percent').textContent = formatPercent(best.change).text;
-        document.getElementById('top-gainer-percent').className = 'text-success text-sm font-medium';
+        const tgTicker = document.getElementById('top-gainer-ticker');
+        const tgPct = document.getElementById('top-gainer-percent');
+        if(tgTicker) tgTicker.textContent = best.symbol;
+        if(tgPct) { tgPct.textContent = formatPercent(best.change).text; tgPct.className = 'text-success text-sm font-medium'; }
     }
     if (worst) {
-        document.getElementById('top-loser-ticker').textContent = worst.symbol;
-        document.getElementById('top-loser-percent').textContent = formatPercent(worst.change).text;
-        document.getElementById('top-loser-percent').className = 'text-danger text-sm font-medium';
+        const tlTicker = document.getElementById('top-loser-ticker');
+        const tlPct = document.getElementById('top-loser-percent');
+        if(tlTicker) tlTicker.textContent = worst.symbol;
+        if(tlPct) { tlPct.textContent = formatPercent(worst.change).text; tlPct.className = 'text-danger text-sm font-medium'; }
     }
 
     const sectorContainer = document.getElementById('sector-container');
@@ -328,9 +342,17 @@ const renderAllSectors = () => {
 
 let isEditMode = false;
 let symbolToDelete = null;
-let watchlistSortMode = 0; // 0 = Default, 1 = Positive, 2 = Negative
+let watchlistSortMode = 0; // 0 = Default, 1 = Positive, 2 = Negative, 3 = RSI Max->Min, 4 = RSI Min->Max
 
-// 📌 ฟังก์ชันหลักสแกนและจัดเรียงหน้า Watchlist (ล็อกราคาเป็นหน่วย USD ตายตัว)
+// ตัวช่วยสกัดค่า RSI เพื่อใช้รวบรวมข้อมูลในฟังก์ชันจัดเรียง
+const getStockRsiValue = (s) => {
+    if (s.rsi !== undefined && s.rsi !== null) return s.rsi;
+    let rsiNum = 50 + ((s.regularChangePct || 0) * 2.5);
+    if (rsiNum > 92) rsiNum = 92;
+    if (rsiNum < 8) rsiNum = 8;
+    return rsiNum;
+};
+
 const renderWatchlist = () => {
     const container = document.getElementById('watchlist-container');
     if (!container) return;
@@ -348,75 +370,53 @@ const renderWatchlist = () => {
 
     let displayList = [...currentList];
 
-            // ==========================================================
-        // 🚀 อัปเดตสูตร SCANNER ใหม่: ดึงประวัติราคาและคำนวณ RSI จริง ไม่ใช้ค่าสุ่ม
-        // ==========================================================
-        if (window.activeFilters && window.activeFilters.size > 0) {
-            displayList = displayList.filter(s => {
-                let isPass = true;
-                const currentPrice = s.regularPrice || s.currentPrice || 0;
-                
-                // ค้นหาอาร์เรย์ราคาปิดจริง (ตรวจเช็คโครงสร้าง Object ของตัวแอป KODA)
-                // โดยปกติระบบกราฟจะเก็บไว้ใน s.history.closes หรือ s.closes หรือดึงผ่านแคช
-                const priceHistory = (s.history && s.history.closes) || s.closes || (s.chartData && s.chartData.closes);
-                const volumeHistory = (s.history && s.history.volumes) || s.volumes || (s.chartData && s.chartData.volumes);
+    // ==========================================================
+    // 🚀 อัปเดตสูตร SCANNER ใหม่: ดึงประวัติราคาและคำนวณ RSI จริง ไม่ใช้ค่าสุ่ม
+    // ==========================================================
+    if (window.activeFilters && window.activeFilters.size > 0) {
+        displayList = displayList.filter(s => {
+            let isPass = true;
+            const currentPrice = s.regularPrice || s.currentPrice || 0;
+            
+            const priceHistory = (s.history && s.history.closes) || s.closes || (s.chartData && s.chartData.closes);
+            const volumeHistory = (s.history && s.history.volumes) || s.volumes || (s.chartData && s.chartData.volumes);
 
-                // 1. ตรวจสอบเงื่อนไขทางเทคนิคอล (RSI)
-                if (window.KodaMarketPlus && priceHistory && priceHistory.length >= 15) {
-                    // คำนวณค่า RSI 14 วันจากประวัติราคาปิดจริงระดับวัน
-                    const realRSI = window.KodaMarketPlus.calculateExactRSI(priceHistory, 14);
-                    
-                    if (window.activeFilters.has('rsi_overbought') && realRSI <= 70) {
-                        isPass = false;
-                    }
-                    if (window.activeFilters.has('rsi_oversold') && realRSI >= 35) {
-                        isPass = false;
-                    }
-                } else {
-                    // ⚠️ ระบบความปลอดภัยสำรอง (Fallback): หากยังโหลดชุดกราฟ History ไม่เสร็จ
-                    // ประเมินจากความแรงประจำวัน (Daily Change Pct) ที่เกิดขึ้นจริงของตลาดสหรัฐฯ
-                    const dailyMove = s.regularChangePct || 0;
-                    if (window.activeFilters.has('rsi_overbought') && dailyMove < 4.5) isPass = false;
-                    if (window.activeFilters.has('rsi_oversold') && dailyMove > -4.5) isPass = false;
+            if (window.KodaMarketPlus && priceHistory && priceHistory.length >= 15) {
+                const realRSI = window.KodaMarketPlus.calculateExactRSI(priceHistory, 14);
+                if (window.activeFilters.has('rsi_overbought') && realRSI <= 70) isPass = false;
+                if (window.activeFilters.has('rsi_oversold') && realRSI >= 35) isPass = false;
+            } else {
+                const dailyMove = s.regularChangePct || 0;
+                if (window.activeFilters.has('rsi_overbought') && dailyMove < 4.5) isPass = false;
+                if (window.activeFilters.has('rsi_oversold') && dailyMove > -4.5) isPass = false;
+            }
+
+            if (volumeHistory && volumeHistory.length >= 21) {
+                const lastVol = volumeHistory[volumeHistory.length - 1];
+                const avgVol = volumeHistory.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+                if (window.activeFilters.has('vol_spike') && lastVol < (avgVol * 2)) isPass = false;
+            } else if (window.activeFilters.has('vol_spike')) {
+                if (Math.abs(s.regularChangePct || 0) < 5) isPass = false;
+            }
+
+            if (s.metrics) {
+                if (window.activeFilters.has('ath_drop_30')) {
+                    const high52 = s.metrics['52WeekHigh'] || currentPrice;
+                    const dropPct = high52 > 0 ? ((high52 - currentPrice) / high52) * 100 : 0;
+                    if (dropPct <= 30) isPass = false;
                 }
-
-                // 2. ตรวจสอบเงื่อนไข Volume Spike > 200%
-                if (volumeHistory && volumeHistory.length >= 21) {
-                    const lastVol = volumeHistory[volumeHistory.length - 1];
-                    const avgVol = volumeHistory.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
-                    
-                    if (window.activeFilters.has('vol_spike') && lastVol < (avgVol * 2)) {
-                        isPass = false;
-                    }
-                } else if (window.activeFilters.has('vol_spike')) {
-                    // ถ้าไม่มีประวัติวอลลุ่ม ให้เช็คจากแรงซื้อขายในวันปัจจุบัน (ขยับแรงเกิน 5% ถือว่ามีนัยสำคัญ)
-                    if (Math.abs(s.regularChangePct || 0) < 5) isPass = false;
+                if (window.activeFilters.has('pe_below_15')) {
+                    const pe = s.metrics['peExclExtraTTM'] || s.metrics['pe'] || 0;
+                    if (pe >= 15 || pe <= 0) isPass = false;
                 }
-
-                // 3. ตรวจสอบเงื่อนไขด้านปัจจัยพื้นฐาน (Fundamental Metrics)
-                if (s.metrics) {
-                    if (window.activeFilters.has('ath_drop_30')) {
-                        const high52 = s.metrics['52WeekHigh'] || currentPrice;
-                        const dropPct = high52 > 0 ? ((high52 - currentPrice) / high52) * 100 : 0;
-                        if (dropPct <= 30) isPass = false;
-                    }
-                    if (window.activeFilters.has('pe_below_15')) {
-                        const pe = s.metrics['peExclExtraTTM'] || s.metrics['pe'] || 0;
-                        if (pe >= 15 || pe <= 0) isPass = false;
-                    }
-                } else {
-                    // ถ้าข้อมูล Fundamental จาก Yahoo Finance/Finnhub ยังมาไม่ถึง 
-                    // ให้ล็อกผลหุ้นเติบโต P/E สูงอย่าง AAPL, NVDA, MRVL ออกไปก่อนหากเลือกโหมด Value
-                    if (window.activeFilters.has('pe_below_15') && (s.symbol === 'MRVL' || s.symbol === 'NVDA' || s.symbol === 'ALAB')) {
-                        isPass = false;
-                    }
+            } else {
+                if (window.activeFilters.has('pe_below_15') && (s.symbol === 'MRVL' || s.symbol === 'NVDA' || s.symbol === 'ALAB')) {
+                    isPass = false;
                 }
-
-                return isPass;
-            });
-        }
-        // ==========================================================
-
+            }
+            return isPass;
+        });
+    }
 
     const getActivePct = (s) => {
         const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
@@ -426,10 +426,15 @@ const renderWatchlist = () => {
         return pct;
     };
 
+    // ระบบขยายโหมดควบคุมคัดกรองจัดเรียง
     if (watchlistSortMode === 1) {
         displayList.sort((a, b) => getActivePct(b) - getActivePct(a)); 
     } else if (watchlistSortMode === 2) {
         displayList.sort((a, b) => getActivePct(a) - getActivePct(b));
+    } else if (watchlistSortMode === 3) {
+        displayList.sort((a, b) => getStockRsiValue(b) - getStockRsiValue(a)); // RSI มาก -> น้อย
+    } else if (watchlistSortMode === 4) {
+        displayList.sort((a, b) => getStockRsiValue(a) - getStockRsiValue(b)); // RSI น้อย -> มาก
     }
 
     window.kodaTickCache = window.kodaTickCache || {};
@@ -465,7 +470,6 @@ const renderWatchlist = () => {
             }
             window.kodaTickCache[extCacheKey] = s.extPrice;
 
-            // 🌟 จุดปลดปัญหา: บังคับหน่วยราคานอกเวลาทำงานล็อกเป็นหน่วยดอลลาร์ USD ($)
             extHtml = `
                 <div class="flex items-center gap-1 mt-0.5 justify-end">
                     <span class="text-[9px] text-slate-400">${stateIcon} </span>
@@ -477,6 +481,23 @@ const renderWatchlist = () => {
             `;
         }
 
+        // 📌 คำนวณและเตรียม Element ของกล่องสี่เหลี่ยมล้อมรอบ RSI
+        let rsiNum = s.rsi;
+        if (rsiNum === undefined || rsiNum === null) {
+            rsiNum = 50 + ((s.regularChangePct || 0) * 2.5);
+            if (rsiNum > 92) rsiNum = 92;
+            if (rsiNum < 8) rsiNum = 8;
+        }
+        const rsiDisplay = rsiNum.toFixed(0);
+        const rsiClass = getRsiStyleClass(rsiNum);
+
+        // โครงสร้างกล่องล็อกความกว้าง w-11 เพื่อบังคับให้แถวตรงกันเสมอกันทุกคอลัมน์
+        const rsiBoxHtml = `
+            <div class="w-11 h-6 rounded border flex items-center justify-center font-black text-[11px] shrink-0 transition-all duration-300 ${rsiClass}">
+                ${rsiDisplay}
+            </div>
+        `;
+
         const logo1 = `https://assets.parqet.com/logos/symbol/${s.symbol}?format=png`;
         let fallbackLogo = `https://financialmodelingprep.com/image-stock/${s.symbol.split(':')[1] || s.symbol.split('.')[0]}.png`;
 
@@ -484,20 +505,20 @@ const renderWatchlist = () => {
             <div class="size-10 rounded-full bg-slate-800 border border-border-dark flex items-center justify-center overflow-hidden relative shrink-0">
                 <img src="${logo1}" class="w-full h-full object-cover relative z-[1] bg-surface-dark" onerror="this.onerror=null; this.src='${fallbackLogo}';">
             </div>
-            <div>
+            <div class="min-w-0 flex-1">
                 <p class="text-slate-100 font-bold text-sm leading-tight">${s.symbol}</p>
                 <p class="text-slate-500 text-[10px] truncate max-w-[100px]">${s.name || 'Asset'}</p>
             </div>
         `;
 
-        // 🌟 จุดปลดปัญหา: บังคับราคาหลักให้ล็อกหน่วยดอลลาร์ USD ($) และถอดฟังก์ชันสลับค่าเงินออก
+        // 📌 บังคับระนาบฝั่งขวาของแถวราคาให้ล็อกขนาดกว้างตายตัว w-[95px] คอลัมน์จะได้ไม่ดันเบี้ยว
         const itemRightContent = `
-            <div class="flex flex-col items-end justify-center">
-                <div class="flex flex-row items-center gap-1.5">
+            <div class="flex flex-col items-end justify-center w-[95px] shrink-0 text-right">
+                <div class="flex flex-row items-center gap-1.5 justify-end w-full">
                     <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
                         $${oldPrice.toFixed(2)}
                     </p>
-                    <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
+                    <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass} shrink-0">
                         <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
                     </div>
                 </div>
@@ -507,20 +528,28 @@ const renderWatchlist = () => {
 
         if (isEditMode) {
             return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 flex items-center justify-between watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
-                <div class="flex items-center gap-3 flex-1">
-                    <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger" data-symbol="${s.symbol}"><span class="material-symbols-outlined text-[14px]">remove</span></button>
-                    ${itemLeftContent}
-                    ${itemRightContent}
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger shrink-0" data-symbol="${s.symbol}"><span class="material-symbols-outlined text-[14px]">remove</span></button>
+                    <div class="flex flex-1 items-center gap-3 min-w-0">
+                        ${itemLeftContent}
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        ${rsiBoxHtml}
+                        ${itemRightContent}
+                    </div>
                 </div>
-                <span class="material-symbols-outlined text-slate-600 cursor-grab drag-handle">drag_indicator</span>
+                <span class="material-symbols-outlined text-slate-600 cursor-grab drag-handle ml-2 shrink-0">drag_indicator</span>
             </div>`;
         } else {
             return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
                 <div class="flex items-center justify-between gap-3">
-                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3">
+                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3 min-w-0">
                         ${itemLeftContent}
                     </a>
-                    ${itemRightContent}
+                    <div class="flex items-center gap-3 shrink-0">
+                        ${rsiBoxHtml}
+                        ${itemRightContent}
+                    </div>
                 </div>
             </div>`;
         }
@@ -595,7 +624,6 @@ if (btnEditWatchlist) {
         } else {
             if (btnSortWatchlist) btnSortWatchlist.style.display = 'flex';
         }
-
         renderWatchlist();
     });
 }
@@ -603,7 +631,9 @@ if (btnEditWatchlist) {
 if (btnSortWatchlist) {
     btnSortWatchlist.addEventListener('click', () => {
         if (isEditMode) return; 
-        watchlistSortMode = (watchlistSortMode + 1) % 3;
+        
+        // วนสลับลูปครอบคลุม 5 โหมดการเรียงลำดับพอร์ต
+        watchlistSortMode = (watchlistSortMode + 1) % 5;
         
         if (watchlistSortMode === 0) {
             iconSortWatchlist.textContent = 'sort';
@@ -614,6 +644,12 @@ if (btnSortWatchlist) {
         } else if (watchlistSortMode === 2) {
             iconSortWatchlist.textContent = 'arrow_drop_up';
             iconSortWatchlist.className = 'material-symbols-outlined text-[24px] text-danger';
+        } else if (watchlistSortMode === 3) {
+            iconSortWatchlist.textContent = 'keyboard_double_arrow_down';
+            iconSortWatchlist.className = 'material-symbols-outlined text-[22px] text-amber-500'; // สีส้มเรียง RSI จากมากไปน้อย
+        } else if (watchlistSortMode === 4) {
+            iconSortWatchlist.textContent = 'keyboard_double_arrow_up';
+            iconSortWatchlist.className = 'material-symbols-outlined text-[22px] text-amber-500'; // สีส้มเรียง RSI จากน้อยไปมาก
         }
         renderWatchlist(); 
     });
@@ -720,7 +756,6 @@ const fetchMarketNews = async () => {
         
         const res = await fetch(proxyUrl);
         const data = await res.json();
-        
         let newsData = [];
         
         if (data && data.status === 'ok' && data.items) {
@@ -787,7 +822,6 @@ const renderNews = async () => {
         else if (n.sentiment === 'BEARISH') { sCls = 'bg-danger/20 text-danger'; ico = 'trending_down'; }
         
         const hot = n.impact >= 3000 ? `<span class="text-danger text-[10px] font-bold flex items-center bg-danger/10 px-1.5 py-0.5 rounded mr-1 animate-pulse"><span class="material-symbols-outlined text-[12px] mr-0.5">local_fire_department</span> HIGH IMPACT</span>` : '';
-        
         const imgUrl = window.KodaAI && window.KodaAI.findImage ? window.KodaAI.findImage(n.headline) : 'https://images.unsplash.com/photo-1504711432869-efd597cdd042?q=80&w=400';
 
         return `<a href="${n.url}" target="_blank" class="block bg-surface-dark border border-border-dark rounded-2xl p-3 flex gap-4 active:scale-[0.98] hover:bg-slate-800 transition-all overflow-hidden mb-3">
@@ -816,13 +850,10 @@ const renderNews = async () => {
 
     document.querySelectorAll('.news-headline').forEach(async (el) => {
         const rawText = el.getAttribute('data-raw');
-        if (/[\u0E00-\u0E7F]/.test(rawText)) {
-            el.textContent = rawText; 
-        } else if (isTranslateOn && window.KodaAI && typeof window.KodaAI.translateText === 'function') {
+        if (/[\u0E00-\u0E7F]/.test(rawText)) { el.textContent = rawText; } 
+        else if (isTranslateOn && window.KodaAI && typeof window.KodaAI.translateText === 'function') {
             el.textContent = await window.KodaAI.translateText(rawText); 
-        } else {
-            el.textContent = rawText;
-        }
+        } else { el.textContent = rawText; }
     });
 };
 
