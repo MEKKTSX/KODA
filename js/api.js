@@ -569,7 +569,6 @@ const renderWatchlist = () => {
             `;
         }
 
-        // 📌 คำนวณค่า RSI จริงแบบทศนิยม พร้อมเก็บ Cache และทำ Data Attribute ส่งไปเล่น Rolling Number
         const rsiValue = extractStockRsiNumeric(s);
         const rsiClass = getRsiStyleClass(rsiValue);
         
@@ -582,7 +581,6 @@ const renderWatchlist = () => {
         }
         window.kodaTickCache[rsiCacheKey] = rsiValue;
 
-        // 🛡️ ปรับความกว้างกล่องเป็น w-14 (56px) เพื่อให้ตัวเลขทศนิยมสองตำแหน่งไม่เบียดกัน
         const rsiBoxHtml = `
             <div class="w-14 h-6 rounded border flex items-center justify-center font-black text-[11px] shrink-0 transition-all duration-300 ${rsiClass} rolling-rsi" ${animateRsiData}>
                 ${oldRsi.toFixed(2)}
@@ -602,8 +600,9 @@ const renderWatchlist = () => {
             </div>
         `;
 
+        // 📌 ปรับขนาดความกว้างบล็อกราคาขวาลงเหลือ w-[135px] เพื่อคืนพื้นที่ว่างให้คอลัมน์กลาง
         const itemRightContent = `
-            <div class="flex flex-col items-end justify-center w-[145px] shrink-0 text-right">
+            <div class="flex flex-col items-end justify-center w-[135px] shrink-0 text-right">
                 <div class="flex flex-row items-center gap-1.5 justify-end w-full">
                     <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
                         $${oldPrice.toFixed(2)}
@@ -616,31 +615,32 @@ const renderWatchlist = () => {
             </div>
         `;
 
+        // 📌 [แก้ไขโครงสร้าง] แยกออกเป็น 3 คอลัมน์อิสระ (Left Fluid | Middle Fixed Center | Right Fixed)
         if (isEditMode) {
             return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 flex items-center justify-between watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
-                <div class="flex items-center gap-3 flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-1 min-w-0">
                     <button class="btn-delete-item flex items-center justify-center size-6 rounded-full bg-danger/20 text-danger shrink-0" data-symbol="${s.symbol}"><span class="material-symbols-outlined text-[14px]">remove</span></button>
-                    <div class="flex flex-1 items-center gap-3 min-w-0">
+                    <div class="flex items-center gap-3 min-w-0 flex-1">
                         ${itemLeftContent}
                     </div>
-                    <div class="flex items-center gap-4 shrink-0">
+                    <div class="flex items-center justify-center shrink-0 w-16">
                         ${rsiBoxHtml}
-                        ${itemRightContent}
                     </div>
+                    ${itemRightContent}
                 </div>
                 <span class="material-symbols-outlined text-slate-600 cursor-grab drag-handle ml-2 shrink-0">drag_indicator</span>
             </div>`;
         } else {
             return `<div class="bg-surface-dark p-3 border-b border-border-dark/50 watchlist-item rounded-xl mb-1 transition-colors ${flashClass}" data-symbol="${s.symbol}">
-                <div class="flex items-center justify-between gap-3">
-                    <a href="stock-detail.html?symbol=${s.symbol}" class="flex flex-1 items-center gap-3 min-w-0">
+                <a href="stock-detail.html?symbol=${s.symbol}" class="flex items-center justify-between gap-2 w-full">
+                    <div class="flex items-center gap-3 min-w-0 flex-1">
                         ${itemLeftContent}
-                    </a>
-                    <div class="flex items-center gap-4 shrink-0">
-                        ${rsiBoxHtml}
-                        ${itemRightContent}
                     </div>
-                </div>
+                    <div class="flex items-center justify-center shrink-0 w-16">
+                        ${rsiBoxHtml}
+                    </div>
+                    ${itemRightContent}
+                </a>
             </div>`;
         }
     }).join('');
@@ -665,7 +665,6 @@ const renderWatchlist = () => {
         });
     });
 
-    // ลูปสั่งทำงานตัวเลขวิ่งสำหรับราคาหลัก
     container.querySelectorAll('.rolling-price').forEach(el => {
         const fromAttr = el.getAttribute('data-animate-from');
         const toAttr = el.getAttribute('data-animate-to');
@@ -678,7 +677,6 @@ const renderWatchlist = () => {
         }
     });
 
-    // ลูปสั่งทำงานตัวเลขวิ่งสำหรับราคานอกเวลาทำการ
     container.querySelectorAll('.rolling-price-ext').forEach(el => {
         const fromAttr = el.getAttribute('data-animate-from');
         const toAttr = el.getAttribute('data-animate-to');
@@ -691,7 +689,6 @@ const renderWatchlist = () => {
         }
     });
 
-    // 🚀 ลูปสั่งทำงานตัวเลขวิ่ง Rolling สำหรับค่า RSI ทศนิยมจริง
     container.querySelectorAll('.rolling-rsi').forEach(el => {
         const fromAttr = el.getAttribute('data-animate-from');
         const toAttr = el.getAttribute('data-animate-to');
