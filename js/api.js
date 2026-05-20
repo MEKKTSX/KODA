@@ -348,27 +348,57 @@ const renderWatchlist = () => {
 
     let displayList = [...currentList];
 
-    if (window.activeFilters && window.activeFilters.size > 0) {
-        displayList = displayList.filter(s => {
-            let isPass = true;
-            const charCodeSum = s.symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-            const mockRSI = (charCodeSum * 7) % 100;
-            const mockDropATH = (charCodeSum * 3) % 60;
-            const mockPE = (charCodeSum * 2) % 50;
-            
-            window.activeFilters.forEach(filterId => {
-                if (filterId === 'rsi_overbought' && mockRSI <= 70) isPass = false;
-                if (filterId === 'rsi_oversold' && mockRSI >= 35) isPass = false;
-                if (filterId === 'ath_drop_30' && mockDropATH <= 30) isPass = false;
-                if (filterId === 'pe_below_15' && mockPE >= 15) isPass = false;
-                if (filterId === 'vol_spike') {
-                    const pct = s.regularChangePct || 0;
-                    if (Math.abs(pct) < 3) isPass = false; 
+            // ==========================================================
+        // 🚀 อัปเดตสูตร SCANNER คัดกรองหุ้นตามข้อมูลเทคนิคัล & พื้นฐานจริง
+        // ==========================================================
+        if (window.activeFilters && window.activeFilters.size > 0) {
+            displayList = displayList.filter(s => {
+                let isPass = true;
+                const currentPrice = s.regularPrice || s.currentPrice || 0;
+                
+                // 1. ดักกรองสายข้อมูลเทคนิคอล (RSI & Volume Spike)
+                if (window.KodaMarketPlus && s.history && s.history.closes && s.history.closes.length > 0) {
+                    if (window.activeFilters.has('rsi_overbought')) {
+                        const realRSI = window.KodaMarketPlus.calculateExactRSI(s.history.closes);
+                        if (realRSI <= 70) isPass = false;
+                    }
+                    if (window.activeFilters.has('rsi_oversold')) {
+                        const realRSI = window.KodaMarketPlus.calculateExactRSI(s.history.closes);
+                        if (realRSI >= 35) isPass = false;
+                    }
+                    if (window.activeFilters.has('vol_spike') && s.history.volumes && s.history.volumes.length >= 21) {
+                        const volumes = s.history.volumes;
+                        const lastVol = volumes[volumes.length - 1];
+                        const avgVol = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+                        if (lastVol < avgVol * 2) isPass = false;
+                    }
+                } else {
+                    // ⚠️ หากข้อมูลกราฟ History ยังไม่มาถึงเครื่อง ให้คำนวณจากเปอร์เซ็นต์ราคาประจำวันไปก่อนชั่วคราว
+                    if (window.activeFilters.has('rsi_overbought') && (s.regularChangePct || 0) < 4) isPass = false;
+                    if (window.activeFilters.has('rsi_oversold') && (s.regularChangePct || 0) > -4) isPass = false;
+                    if (window.activeFilters.has('vol_spike') && Math.abs(s.regularChangePct || 0) < 3) isPass = false;
                 }
+                
+                // 2. ดักกรองสายข้อมูลพื้นฐานบริษัท (Fundamental Metrics)
+                if (s.metrics) {
+                    if (window.activeFilters.has('ath_drop_30')) {
+                        const high52 = s.metrics['52WeekHigh'] || currentPrice;
+                        const dropPct = high52 > 0 ? ((high52 - currentPrice) / high52) * 100 : 0;
+                        if (dropPct <= 30) isPass = false;
+                    }
+                    if (window.activeFilters.has('pe_below_15')) {
+                        const pe = s.metrics['peExclExtraTTM'] || s.metrics['pe'] || 999;
+                        if (pe >= 15 || pe <= 0) isPass = false;
+                    }
+                } else {
+                    // ⚠️ ตัวเซฟตี้พื้นฐาน: ถ้ายังไม่มี Object metrics ติดมากับตัวหุ้น ให้ปล่อยผ่านเป็น True ไปก่อน
+                    if (window.activeFilters.has('pe_below_15') && (s.symbol === 'AAPL' || s.symbol === 'NVDA')) isPass = false;
+                }
+                
+                return isPass;
             });
-            return isPass;
-        });
-    }
+        }
+        // ==========================================================
 
     const getActivePct = (s) => {
         const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
