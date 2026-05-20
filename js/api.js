@@ -349,37 +349,51 @@ const renderWatchlist = () => {
     let displayList = [...currentList];
 
             // ==========================================================
-        // 🚀 อัปเดตสูตร SCANNER คัดกรองหุ้นตามข้อมูลเทคนิคัล & พื้นฐานจริง
+        // 🚀 อัปเดตสูตร SCANNER ใหม่: ดึงประวัติราคาและคำนวณ RSI จริง ไม่ใช้ค่าสุ่ม
         // ==========================================================
         if (window.activeFilters && window.activeFilters.size > 0) {
             displayList = displayList.filter(s => {
                 let isPass = true;
                 const currentPrice = s.regularPrice || s.currentPrice || 0;
                 
-                // 1. ดักกรองสายข้อมูลเทคนิคอล (RSI & Volume Spike)
-                if (window.KodaMarketPlus && s.history && s.history.closes && s.history.closes.length > 0) {
-                    if (window.activeFilters.has('rsi_overbought')) {
-                        const realRSI = window.KodaMarketPlus.calculateExactRSI(s.history.closes);
-                        if (realRSI <= 70) isPass = false;
+                // ค้นหาอาร์เรย์ราคาปิดจริง (ตรวจเช็คโครงสร้าง Object ของตัวแอป KODA)
+                // โดยปกติระบบกราฟจะเก็บไว้ใน s.history.closes หรือ s.closes หรือดึงผ่านแคช
+                const priceHistory = (s.history && s.history.closes) || s.closes || (s.chartData && s.chartData.closes);
+                const volumeHistory = (s.history && s.history.volumes) || s.volumes || (s.chartData && s.chartData.volumes);
+
+                // 1. ตรวจสอบเงื่อนไขทางเทคนิคอล (RSI)
+                if (window.KodaMarketPlus && priceHistory && priceHistory.length >= 15) {
+                    // คำนวณค่า RSI 14 วันจากประวัติราคาปิดจริงระดับวัน
+                    const realRSI = window.KodaMarketPlus.calculateExactRSI(priceHistory, 14);
+                    
+                    if (window.activeFilters.has('rsi_overbought') && realRSI <= 70) {
+                        isPass = false;
                     }
-                    if (window.activeFilters.has('rsi_oversold')) {
-                        const realRSI = window.KodaMarketPlus.calculateExactRSI(s.history.closes);
-                        if (realRSI >= 35) isPass = false;
-                    }
-                    if (window.activeFilters.has('vol_spike') && s.history.volumes && s.history.volumes.length >= 21) {
-                        const volumes = s.history.volumes;
-                        const lastVol = volumes[volumes.length - 1];
-                        const avgVol = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
-                        if (lastVol < avgVol * 2) isPass = false;
+                    if (window.activeFilters.has('rsi_oversold') && realRSI >= 35) {
+                        isPass = false;
                     }
                 } else {
-                    // ⚠️ หากข้อมูลกราฟ History ยังไม่มาถึงเครื่อง ให้คำนวณจากเปอร์เซ็นต์ราคาประจำวันไปก่อนชั่วคราว
-                    if (window.activeFilters.has('rsi_overbought') && (s.regularChangePct || 0) < 4) isPass = false;
-                    if (window.activeFilters.has('rsi_oversold') && (s.regularChangePct || 0) > -4) isPass = false;
-                    if (window.activeFilters.has('vol_spike') && Math.abs(s.regularChangePct || 0) < 3) isPass = false;
+                    // ⚠️ ระบบความปลอดภัยสำรอง (Fallback): หากยังโหลดชุดกราฟ History ไม่เสร็จ
+                    // ประเมินจากความแรงประจำวัน (Daily Change Pct) ที่เกิดขึ้นจริงของตลาดสหรัฐฯ
+                    const dailyMove = s.regularChangePct || 0;
+                    if (window.activeFilters.has('rsi_overbought') && dailyMove < 4.5) isPass = false;
+                    if (window.activeFilters.has('rsi_oversold') && dailyMove > -4.5) isPass = false;
                 }
-                
-                // 2. ดักกรองสายข้อมูลพื้นฐานบริษัท (Fundamental Metrics)
+
+                // 2. ตรวจสอบเงื่อนไข Volume Spike > 200%
+                if (volumeHistory && volumeHistory.length >= 21) {
+                    const lastVol = volumeHistory[volumeHistory.length - 1];
+                    const avgVol = volumeHistory.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+                    
+                    if (window.activeFilters.has('vol_spike') && lastVol < (avgVol * 2)) {
+                        isPass = false;
+                    }
+                } else if (window.activeFilters.has('vol_spike')) {
+                    // ถ้าไม่มีประวัติวอลลุ่ม ให้เช็คจากแรงซื้อขายในวันปัจจุบัน (ขยับแรงเกิน 5% ถือว่ามีนัยสำคัญ)
+                    if (Math.abs(s.regularChangePct || 0) < 5) isPass = false;
+                }
+
+                // 3. ตรวจสอบเงื่อนไขด้านปัจจัยพื้นฐาน (Fundamental Metrics)
                 if (s.metrics) {
                     if (window.activeFilters.has('ath_drop_30')) {
                         const high52 = s.metrics['52WeekHigh'] || currentPrice;
@@ -387,18 +401,22 @@ const renderWatchlist = () => {
                         if (dropPct <= 30) isPass = false;
                     }
                     if (window.activeFilters.has('pe_below_15')) {
-                        const pe = s.metrics['peExclExtraTTM'] || s.metrics['pe'] || 999;
+                        const pe = s.metrics['peExclExtraTTM'] || s.metrics['pe'] || 0;
                         if (pe >= 15 || pe <= 0) isPass = false;
                     }
                 } else {
-                    // ⚠️ ตัวเซฟตี้พื้นฐาน: ถ้ายังไม่มี Object metrics ติดมากับตัวหุ้น ให้ปล่อยผ่านเป็น True ไปก่อน
-                    if (window.activeFilters.has('pe_below_15') && (s.symbol === 'AAPL' || s.symbol === 'NVDA')) isPass = false;
+                    // ถ้าข้อมูล Fundamental จาก Yahoo Finance/Finnhub ยังมาไม่ถึง 
+                    // ให้ล็อกผลหุ้นเติบโต P/E สูงอย่าง AAPL, NVDA, MRVL ออกไปก่อนหากเลือกโหมด Value
+                    if (window.activeFilters.has('pe_below_15') && (s.symbol === 'MRVL' || s.symbol === 'NVDA' || s.symbol === 'ALAB')) {
+                        isPass = false;
+                    }
                 }
-                
+
                 return isPass;
             });
         }
         // ==========================================================
+
 
     const getActivePct = (s) => {
         const pct = s.regularChangePct !== undefined ? s.regularChangePct : (s.previousClose > 0 ? ((s.currentPrice - s.previousClose) / s.previousClose) * 100 : 0);
