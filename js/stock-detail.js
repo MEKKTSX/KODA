@@ -346,14 +346,20 @@
             extContainer.classList.add('flex'); 
             extLabelEl.textContent = stateText;
             
-            if (extPriceEl.dataset.rawPrice && parseFloat(extPriceEl.dataset.rawPrice) !== extPrice) {
-                extPriceEl.classList.remove('price-update');
-                void extPriceEl.offsetWidth; 
-                extPriceEl.classList.add('price-update');
+            // 🚀 โค้ดใหม่: ดึงราคาเดิมของ Extended Price มาคำนวณเพื่อทำตัวเลขวิ่งแบบคลีนๆ
+            const oldExtPriceRaw = extPriceEl.dataset.rawPrice;
+            const oldExtPrice = oldExtPriceRaw ? parseFloat(oldExtPriceRaw) : extPrice;
+
+            if (oldExtPrice !== extPrice && oldExtPriceRaw) {
+                // เรียกใช้ฟังก์ชันตัวเลขวิ่ง 450ms ตามมาตรฐานราคาหลัก
+                animateKodaRollingNumber(extPriceEl, oldExtPrice, extPrice, 450);
+            } else {
+                extPriceEl.textContent = fmtPrice(extPrice); // โชว์ราคาเต็มตอนโหลดหน้าครั้งแรก
             }
-            extPriceEl.dataset.rawPrice = extPrice;
-            extPriceEl.textContent = fmtPrice(extPrice);
             
+            // บันทึกราคาปัจจุบันลงเครื่องเพื่อเก็บสเตทรอบถัดไป
+            extPriceEl.dataset.rawPrice = extPrice;
+                   
             document.getElementById('extended-currency').textContent = currencyCode;
             
             if (extPercent === 0 || !extPercent) {
