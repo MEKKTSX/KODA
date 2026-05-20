@@ -1,4 +1,4 @@
-// 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
+// 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับสำหรับราคาตลาด (มีสัญลักษณ์เงิน)
 window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
     if (startValue === endValue) {
         element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
@@ -23,6 +23,31 @@ window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400
             element.textContent = window.formatKodaMoney 
                 ? window.formatKodaMoney(endValue) 
                 : symbolPrefix + (endValue * rate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+    };
+    window.requestAnimationFrame(step);
+};
+
+// 🚀 2. ฟังก์ชันพิเศษ: ตัวเลขหมุนแบบ Rolling สำหรับค่าทางเทคนิคอล / RSI (ตัวเลขดิบทศนิยม 2 ตำแหน่ง คลีนๆ)
+window.animateKodaRollingRawNumber = (element, startValue, endValue, duration = 400) => {
+    if (startValue === endValue) {
+        element.textContent = endValue.toFixed(2);
+        return;
+    }
+    
+    let startTime = null; 
+
+    const step = (now) => {
+        if (!startTime) startTime = now;
+        const progress = Math.min((now - startTime) / duration, 1);
+        const easeProgress = progress * (2 - progress); // Ease Out
+        const currentValue = startValue + (endValue - startValue) * easeProgress;
+
+        if (progress < 1) {
+            element.textContent = currentValue.toFixed(2);
+            window.requestAnimationFrame(step);
+        } else {
+            element.textContent = endValue.toFixed(2);
         }
     };
     window.requestAnimationFrame(step);
@@ -265,12 +290,9 @@ const fetchRealPrices = async () => {
             if (histCloses && histCloses.length > 14) {
                 const liveCloses = [...histCloses];
                 
-                // 🛡️ [แก้ไขจุดที่ 1] ปลดล็อกบัคระบบดึงค่าข้ามวันในช่วงเวลาปิดทำการ (Pre/Post Market RSI Engine)
                 if (data.marketState === 'PRE') {
-                    // ช่วงก่อนตลาดเปิด แท่งข้อมูลวันใหม่ยังไม่เกิดบนกราฟ Daily (1d) ให้ใช้วิธี Push เพิ่มเข้าไปท้ายอาเรย์
                     liveCloses.push(data.c);
                 } else {
-                    // ช่วง Regular / Post / Closed แท่งของวันปัจจุบันถูกสร้างในกราฟเรียบร้อยแล้ว ให้สลับแทนที่ตัวสุดท้าย
                     liveCloses[liveCloses.length - 1] = data.c;
                 }
                 
@@ -547,13 +569,23 @@ const renderWatchlist = () => {
             `;
         }
 
+        // 📌 คำนวณค่า RSI จริงแบบทศนิยม พร้อมเก็บ Cache และทำ Data Attribute ส่งไปเล่น Rolling Number
         const rsiValue = extractStockRsiNumeric(s);
-        const rsiDisplay = rsiValue.toFixed(0);
         const rsiClass = getRsiStyleClass(rsiValue);
+        
+        const rsiCacheKey = s.symbol + '_rsi';
+        const oldRsi = window.kodaTickCache[rsiCacheKey] !== undefined ? window.kodaTickCache[rsiCacheKey] : rsiValue;
+        let animateRsiData = '';
+        
+        if (rsiValue !== oldRsi) {
+            animateRsiData = `data-animate-from="${oldRsi}" data-animate-to="${rsiValue}"`;
+        }
+        window.kodaTickCache[rsiCacheKey] = rsiValue;
 
+        // 🛡️ ปรับความกว้างกล่องเป็น w-14 (56px) เพื่อให้ตัวเลขทศนิยมสองตำแหน่งไม่เบียดกัน
         const rsiBoxHtml = `
-            <div class="w-11 h-6 rounded border flex items-center justify-center font-black text-[11px] shrink-0 transition-all duration-300 ${rsiClass}">
-                ${rsiDisplay}
+            <div class="w-14 h-6 rounded border flex items-center justify-center font-black text-[11px] shrink-0 transition-all duration-300 ${rsiClass} rolling-rsi" ${animateRsiData}>
+                ${oldRsi.toFixed(2)}
             </div>
         `;
 
@@ -570,7 +602,6 @@ const renderWatchlist = () => {
             </div>
         `;
 
-        // 📌 🛡️ [แก้ไขจุดที่ 2] ล็อกพื้นที่ชุดราคาเป็น w-[145px] เพื่อรองรับหุ้นราคาสูงนอกเวลาทำการ ป้องการเกิด UI ซ้อนทับ
         const itemRightContent = `
             <div class="flex flex-col items-end justify-center w-[145px] shrink-0 text-right">
                 <div class="flex flex-row items-center gap-1.5 justify-end w-full">
@@ -634,6 +665,7 @@ const renderWatchlist = () => {
         });
     });
 
+    // ลูปสั่งทำงานตัวเลขวิ่งสำหรับราคาหลัก
     container.querySelectorAll('.rolling-price').forEach(el => {
         const fromAttr = el.getAttribute('data-animate-from');
         const toAttr = el.getAttribute('data-animate-to');
@@ -646,6 +678,7 @@ const renderWatchlist = () => {
         }
     });
 
+    // ลูปสั่งทำงานตัวเลขวิ่งสำหรับราคานอกเวลาทำการ
     container.querySelectorAll('.rolling-price-ext').forEach(el => {
         const fromAttr = el.getAttribute('data-animate-from');
         const toAttr = el.getAttribute('data-animate-to');
@@ -654,6 +687,19 @@ const renderWatchlist = () => {
             const to = parseFloat(toAttr);
             if (!isNaN(from) && !isNaN(to) && from !== to) {
                 window.animateKodaRollingNumber(el, from, to, 800);
+            }
+        }
+    });
+
+    // 🚀 ลูปสั่งทำงานตัวเลขวิ่ง Rolling สำหรับค่า RSI ทศนิยมจริง
+    container.querySelectorAll('.rolling-rsi').forEach(el => {
+        const fromAttr = el.getAttribute('data-animate-from');
+        const toAttr = el.getAttribute('data-animate-to');
+        if (fromAttr && toAttr) {
+            const from = parseFloat(fromAttr);
+            const to = parseFloat(toAttr);
+            if (!isNaN(from) && !isNaN(to) && from !== to) {
+                window.animateKodaRollingRawNumber(el, from, to, 800);
             }
         }
     });
