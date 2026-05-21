@@ -1,4 +1,4 @@
-// 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับสำหรับราคาตลาด (มีสัญลักษณ์เงิน)
+// 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับสำหรับราคาตลาด
 window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
     if (startValue === endValue) {
         element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
@@ -6,7 +6,11 @@ window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400
     }
     
     let startTime = null; 
-    const isTHB = localStorage.getItem('koda_currency') === 'THB';
+    
+    // 🌟 เพิ่มบรรทัดนี้: เช็คว่าถ้าเป็นหน้า watchlist ให้ล็อคเป็น USD (isTHB = false)
+    const isWatchlistPage = window.location.pathname.includes('watchlist');
+    const isTHB = isWatchlistPage ? false : (localStorage.getItem('koda_currency') === 'THB');
+    
     const symbolPrefix = isTHB ? '฿' : '$';
     const rate = isTHB ? (window.kodaTHBRate || 34.50) : 1;
 
@@ -151,7 +155,10 @@ const fetchGlobalTHBRate = async () => {
 fetchGlobalTHBRate();
 
 window.formatKodaMoney = (amount, decimals = 2) => {
-    const currency = localStorage.getItem('koda_currency') || 'USD';
+    // 🌟 เพิ่มบรรทัดนี้: เช็คพาทหน้าเว็บ ถ้ามีคำว่า watchlist ให้บังคับ currency เป็น USD ทันที
+    const isWatchlistPage = window.location.pathname.includes('watchlist');
+    const currency = isWatchlistPage ? 'USD' : (localStorage.getItem('koda_currency') || 'USD');
+    
     const rate = window.kodaTHBRate || 34.50;
     
     if (currency === 'THB') {
@@ -159,6 +166,7 @@ window.formatKodaMoney = (amount, decimals = 2) => {
     }
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(amount);
 };
+
 
 const formatCurrency = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
 const formatPercent = (num) => {
