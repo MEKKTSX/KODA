@@ -1,12 +1,11 @@
-// api/get-stock-insights.js (เวอร์ชันเจาะลึกแบบยาวเป็นประเด็น + ดักจับแคชเสีย)
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+// 🚀 ตัวฟังก์ชันที่ถอดระบบ JSON Parse ออก เพื่อให้รับค่าข้อความยาวๆ ได้เสถียร 100%
 async function generateAiSummary(symbol, companyName, industry, apiKey) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
-    // 🚀 ย้ายกล่อง Prompt โครงสร้างเดิมของคุณมาไว้ตรงนี้ พร้อมคุมกฎเรื่องข้อมูลตรงไปตรงมา
     const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดวิเคราะห์เชิงลึกเกี่ยวกับ Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${companyName} (${symbol}) อุตสาหกรรม: ${industry}
     
     กฎเหล็กการวิเคราะห์:
@@ -17,25 +16,19 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
     <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
     <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
     <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-
-    ส่งผลลัพธ์กลับมาเป็นโครงสร้าง JSON รูปแบบนี้เท่านั้น ห้ามมีตัวหนังสืออื่นผสมนอกออบเจกต์:
-    {
-      "summary": "นำโค้ดรหัส HTML ทั้งหมดที่เขียนเสร็จแล้วมาใส่ในคีย์นี้ โดยระวังเรื่องเครื่องหมายอัญประกาศคู่ (Double Quote) ข้างในข้อความ ให้ใช้เป็น Single Quote แทนเพื่อไม่ให้โครงสร้าง JSON พัง"
-    }`;
+    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>`;
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                contents: [{ role: "user", parts: [{ text: prompt }] }], 
-                generationConfig: { responseMimeType: "application/json", temperature: 0.3 } 
-            })
+            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
         });
         const data = await response.json();
-        const parsed = JSON.parse(data.candidates[0].content.parts[0].text);
-        return parsed.summary || 'ไม่สามารถวิเคราะห์ข้อมูลได้';
+        let rawText = data.candidates[0].content.parts[0].text;
+        
+        // ล้างเศษสัญลักษณ์ Markdown เผื่อ Gemini แถมมา
+        return rawText.replace(/```html/g, '').replace(/```/g, '').trim();
     } catch (e) {
         return 'ระบบประมวลผลข้อมูลขัดข้อง กรุณากดรีเฟรชใหม่อีกครั้ง';
     }
@@ -50,7 +43,7 @@ export default async function handler(req, res) {
     try {
         const { data: cachedData } = await supabase.from('stock_cache').select('*').eq('symbol', upperSymbol).maybeSingle();
         
-        // 🚀 ดักจับแคชพัง: ถ้าข้อมูลไม่มี หรือมีแต่เป็นข้อความระบบขัดข้องเดิม ให้บังคับดึงใหม่ทันที
+        // 🚀 ตรรกะซ่อมแซม: ถ้ายังไม่มีข้อมูล หรือข้อมูลเก่าเป็นคำว่า "ขัดข้องชั่วคราว" บังคับให้คัดสรรใหม่ทันที
         const isCacheValid = cachedData && 
                              cachedData.ai_summary && 
                              !cachedData.ai_summary.includes('ขัดข้องชั่วคราว') && 
@@ -79,6 +72,7 @@ export default async function handler(req, res) {
         const earningsStatus = beats >= 3 ? 'BULLISH' : (beats === 2 ? 'NEUTRAL' : 'BEARISH');
         const shortInterest = shortData?.metric?.shortPercentOfFloat || 5;
 
+        // สั่งสร้างสรุปใหม่เวอร์ชันตัวยาวตรงตามต้องการ
         const aiSummaryText = await generateAiSummary(cleanSym, companyName, industry, geminiKey);
 
         const finalStockData = {
@@ -93,5 +87,7 @@ export default async function handler(req, res) {
 
         await supabase.from('stock_cache').upsert([finalStockData]);
         return res.status(200).json({ success: true, data: finalStockData });
-    } catch (err) { return res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { 
+        return res.status(500).json({ success: false, error: err.message }); 
+    }
 }
