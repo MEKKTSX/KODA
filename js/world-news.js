@@ -107,175 +107,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // 📌 3. ดึงข่าวจัดทำ Timeline (ผสานข่าวโลก + Truth Social)
     // ==========================================
     const fetchTimeline = async (forceRefresh = false) => {
-        const cacheKey = 'koda_world_timeline_v18'; 
-        const cached = JSON.parse(localStorage.getItem(cacheKey));
-        const now = Date.now();
-
-        if (!forceRefresh && cached && (now - cached.timestamp < 3600000)) {
-            renderTimeline(cached.data);
-            return;
-        }
-
-        timelineContainer.innerHTML = `<div class="flex flex-col items-center justify-center py-10 gap-3"><div class="size-5 border-2 border-danger border-t-transparent rounded-full animate-spin"></div><p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest animate-pulse">Scanning Global Radars...</p></div>`;
-
+        timelineContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
+                <span class="material-symbols-outlined animate-spin text-[32px] text-danger">progress_activity</span>
+                <span class="text-xs font-bold uppercase tracking-widest text-slate-400">KODA Syncing Live Pipeline...</span>
+            </div>
+        `;
         try {
-            let allNews = [];
-
-            // ดึงข่าว Geo-Politics ปกติ
-            const rssSources = [
-                'https://th.investing.com/rss/news_14.rss',  
-                'https://th.investing.com/rss/news_285.rss', 
-                'http://feeds.bbci.co.uk/news/world/rss.xml',
-                'https://search.cnbc.com/api/v1/search/rss/outbound/rss/content?type=story'
-            ];
-
-            for (let url of rssSources) {
-                const proxies = [
-                    `https://api.allorigins.win/raw?url=${encodeURIComponent(url + '?_=' + Date.now())}`,
-                    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
-                ];
-
-                for (let proxyUrl of proxies) {
-                    try {
-                        const res = await fetch(proxyUrl);
-                        if (!res.ok) continue;
-                        
-                        const text = await res.text();
-                        const parser = new DOMParser();
-                        const xml = parser.parseFromString(text, "text/xml");
-                        const items = xml.querySelectorAll("item");
-                        const sourceTitle = xml.querySelector("title")?.textContent || "Global News";
-                        
-                        items.forEach(item => {
-                            const title = item.querySelector("title")?.textContent || "";
-                            const desc = (item.querySelector("description")?.textContent || "").replace(/<\/?[^>]+(>|$)/g, "");
-                            const pubDateStr = item.querySelector("pubDate")?.textContent;
-                            if (!pubDateStr) return;
-
-                            const pubDate = new Date(pubDateStr);
-                            if (isNaN(pubDate.getTime()) || pubDate.getTime() > now + 86400000) return;
-
-                            if (politicalKeywords.test(title) || politicalKeywords.test(desc)) {
-                                const dateStr = pubDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-                                const timeStr = pubDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-
-                                allNews.push({
-                                    originalTitle: title, 
-                                    title: title, 
-                                    summary: desc,
-                                    url: item.querySelector("link")?.textContent || "",
-                                    source: sourceTitle.replace(' - Investing.com', '').replace('BBC News - ', ''),
-                                    time: pubDate.getTime(),
-                                    timeStr: `${dateStr} • ${timeStr}`,
-                                    newsType: 'geo'
-                                });
-                            }
-                        });
-                        break; 
-                    } catch(e) { continue; }
-                }
-            }
-
-            // ดึง Truth Social ของ @realDonaldTrump
-            try {
-                const truthUrl = 'https://trumpstruth.org/feed';
-                const proxies = [
-                    `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(truthUrl)}&_=${Date.now()}`,
-                    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(truthUrl)}`
-                ];
-
-                for (let p of proxies) {
-                    try {
-                        const res = await fetch(p);
-                        if (!res.ok) continue;
-
-                        let items = [];
-                        if (p.includes('rss2json')) {
-                            const data = await res.json();
-                            if (data && data.items) items = data.items;
-                        } else {
-                            const text = await res.text();
-                            const parser = new DOMParser();
-                            const xml = parser.parseFromString(text, "text/xml");
-                            const xmlItems = xml.querySelectorAll("item");
-                            xmlItems.forEach(x => {
-                                items.push({
-                                    description: x.querySelector("description")?.textContent || "",
-                                    pubDate: x.querySelector("pubDate")?.textContent || "",
-                                    link: x.querySelector("link")?.textContent || ""
-                                });
-                            });
-                        }
-
-                        if (items.length > 0) {
-                            items.forEach(item => {
-                                const rawDesc = item.description || "";
-                                const desc = rawDesc.replace(/<\/?[^>]+(>|$)/g, "").trim();
-                                if (!desc) return;
-
-                                const pubDate = new Date(item.pubDate);
-                                if (isNaN(pubDate.getTime()) || pubDate.getTime() > now + 86400000) return;
-
-                                const dateStr = pubDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-                                const timeStr = pubDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-
-                                allNews.push({
-                                    originalTitle: "ทรัมป์โพสต์ว่า: " + desc.substring(0, 150),
-                                    title: desc.substring(0, 80) + '...', 
-                                    summary: desc,
-                                    url: item.link || "https://truthsocial.com/@realDonaldTrump",
-                                    source: "Truth Social",
-                                    time: pubDate.getTime(),
-                                    timeStr: `${dateStr} • ${timeStr}`,
-                                    newsType: 'truth'
-                                });
-                            });
-                            break;
-                        }
-                    } catch(e) { continue; }
-                }
-            } catch(e) { console.warn("Truth Social fetch failed"); }
-
-            allNews.sort((a, b) => b.time - a.time);
-
-            const uniqueNews = [];
-            const seenTitles = new Set();
-            for (let n of allNews) {
-                if (!seenTitles.has(n.originalTitle)) {
-                    seenTitles.add(n.originalTitle);
-                    uniqueNews.push(n);
-                }
-            }
-
-            if (uniqueNews.length > 0) {
-                const topNews = uniqueNews.slice(0, 15);
-                
-                timelineContainer.innerHTML = `<div class="flex flex-col items-center justify-center py-10 gap-3"><div class="size-5 border-2 border-danger border-t-transparent rounded-full animate-spin"></div><p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest animate-pulse">AI is translating headlines...</p></div>`;
-                
-                try {
-                    const prompt = `แปลและปรับเขียนหัวข้อข่าวต่อไปนี้ใหม่เป็น "ภาษาไทย" ให้กระชับ น่าตื่นเต้น เข้าใจง่ายแบบพาดหัวข่าวด่วน (ห้ามเยิ่นเย้อ ความยาวไม่เกิน 1-2 บรรทัด) 
-                    ตอบกลับมาเป็น JSON Format ที่มี key ชื่อ "headlines" ซึ่งบรรจุ Array ของ String ตามลำดับข่าวนี้เท่านั้น ห้ามมีข้อความอื่น:
-                    ${topNews.map((n, i) => `${i+1}. ${n.originalTitle.replace(/["\r\n`]/g, ' ').trim()}`).join('\n')}`;
-
-                    const rawAiText = await fetchGeminiAPI(prompt, true);
-                    const match = rawAiText.match(/\{[\s\S]*\}/);
-                    const parsedData = match ? JSON.parse(match[0]) : JSON.parse(rawAiText);
-
-                    if (parsedData && parsedData.headlines && Array.isArray(parsedData.headlines)) {
-                        topNews.forEach((n, i) => {
-                            if (parsedData.headlines[i]) n.title = parsedData.headlines[i];
-                        });
-                    }
-                } catch (e) { console.warn("AI Headline rewrite failed", e); }
-
-                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: topNews }));
-                renderTimeline(topNews);
+            // แทนที่จะยิงหา RSS ข้างนอกตรงๆ ให้เปลี่ยนมายิงหา API หลังบ้านของเราเอง
+            const res = await fetch(`/api/get-world-news?_=${Date.now()}`);
+            const result = await res.json();
+            
+            if (result && result.success) {
+                // ส่งอาร์เรย์ข่าวสารไปให้ฟังก์ชันวาด UI แสดงผลทันที
+                renderTimeline(result.data); 
             } else {
-                timelineContainer.innerHTML = `<p class="text-slate-500 text-xs py-10 text-center">No major geopolitical updates detected recently.</p>`;
+                throw new Error("Backend pipeline failed");
             }
-
         } catch (error) {
-            timelineContainer.innerHTML = `<p class="text-danger text-xs py-10 text-center">Error connecting to global radars.</p>`;
+            timelineContainer.innerHTML = `<p class="text-danger text-xs text-center font-bold">Error connecting to KODA Pipeline.</p>`;
         }
     };
 
