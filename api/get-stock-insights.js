@@ -6,22 +6,32 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 async function generateAiSummary(symbol, companyName, industry, apiKey) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
-    const prompt = `วิเคราะห์ข้อมูลและภาพรวมปัจจัยพื้นฐานทางธุรกิจเชิงลึกของบริษัท ${companyName} (${symbol}) อุตสาหกรรม ${industry}
-    กฎเหล็กการวิเคราะห์:
-    1. ตอบตามข้อเท็จจริงและตัวเลข Data จริงเท่านั้น ห้ามใช้คำอวยเกินจริง ห้ามโฆษณาชวนเชื่อหรือชี้นำการลงทุน
-    2. เขียนเจาะลึก ยาว ครอบคลุม โดยจัดรูปแบบโครงสร้างข้อมูลแยกเป็นย่อหน้าโดยใช้แท็ก HTML (<p>, <strong>, <ul>, <li>) ให้สวยงาม
-    3. เนื้อหาต้องครอบคลุม: โครงสร้างรายได้หลักหลัก, ความได้เปรียบทางการแข่งขันในอุตสาหกรรม, และความเสี่ยงเชิงโครงสร้างธุรกิจที่นักลงทุนควรรู้ตรงๆ
+    // 🚀 ย้ายกล่อง Prompt โครงสร้างเดิมของคุณมาไว้ตรงนี้ พร้อมคุมกฎเรื่องข้อมูลตรงไปตรงมา
+    const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดวิเคราะห์เชิงลึกเกี่ยวกับ Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${companyName} (${symbol}) อุตสาหกรรม: ${industry}
     
-    ส่งผลลัพธ์กลับมาเป็นโครงสร้าง JSON รูปแบบนี้เท่านั้น ห้ามมีคำอธิบายอื่นนอกออบเจกต์:
+    กฎเหล็กการวิเคราะห์:
+    1. วิเคราะห์ตามเนื้อผ้าและ Data จริงเท่านั้น ห้ามใช้คำอวยเกินจริง ห้ามโฆษณาชวนเชื่อหรือชี้นำการลงทุน
+    2. อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เขียนเนื้อหาเจาะลึกและครอบคลุมประเด็นยาวต่อเนื่อง ไม่ต้องสรุปย่อจนสั้นเกินไป
+    3. บังคับใช้โครงสร้าง HTML นี้ในการตอบ (ห้ามเปลี่ยนชื่อหัวข้อ และห้ามมีเครื่องหมาย \`\`\`html ครอบเด็ดขาด):
+    
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
+    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
+
+    ส่งผลลัพธ์กลับมาเป็นโครงสร้าง JSON รูปแบบนี้เท่านั้น ห้ามมีตัวหนังสืออื่นผสมนอกออบเจกต์:
     {
-      "summary": "เนื้อหาบทวิเคราะห์ยาวเชิงลึกแบบใช้ HTML Tags ประกอบร่าง"
+      "summary": "นำโค้ดรหัส HTML ทั้งหมดที่เขียนเสร็จแล้วมาใส่ในคีย์นี้ โดยระวังเรื่องเครื่องหมายอัญประกาศคู่ (Double Quote) ข้างในข้อความ ให้ใช้เป็น Single Quote แทนเพื่อไม่ให้โครงสร้าง JSON พัง"
     }`;
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.3 } })
+            body: JSON.stringify({ 
+                contents: [{ role: "user", parts: [{ text: prompt }] }], 
+                generationConfig: { responseMimeType: "application/json", temperature: 0.3 } 
+            })
         });
         const data = await response.json();
         const parsed = JSON.parse(data.candidates[0].content.parts[0].text);
