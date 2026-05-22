@@ -4,5 +4,5 @@
       "source": "/api/yf-chart/:path*",
       "destination": "https://query1.finance.yahoo.com/v8/finance/chart/:path*"
     }
-  ],
+  ]
 }
