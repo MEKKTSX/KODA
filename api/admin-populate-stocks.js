@@ -1,3 +1,4 @@
+// api/admin-populate-stocks.js (เวอร์ชันปลดล็อก Deadlock + ระบบ Cool-down 1 ชั่วโมง)
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -26,12 +27,11 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
         
         const data = await response.json();
         
-        // 🚨 ดักจับ Error ตรงจาก Gemini API แล้วส่งข้อความจริงกลับไปบันทึก
         if (data.error) {
             return `Gemini API Error: ${data.error.message} (${data.error.status})`;
         }
         if (!data.candidates || data.candidates.length === 0) {
-            return `Gemini Error: No candidates returned. Response: ${JSON.stringify(data)}`;
+            return `Gemini Error: No candidates returned.`;
         }
         
         let rawText = data.candidates[0].content.parts[0].text;
@@ -54,31 +54,40 @@ export default async function handler(req, res) {
             .from('ticker_list')
             .select('symbol')
             .eq('is_active', true)
-            .limit(200); 
+            .limit(250); 
 
         if (tickerError || !dbTickers) throw new Error(tickerError?.message || "ดึงรายชื่อหุ้นล่ม");
 
-        const { data: currentCaches } = await supabase.from('stock_cache').select('symbol, ai_summary');
-        const cachedMap = new Map((currentCaches || []).map(c => [c.symbol, c.ai_summary]));
+        // 🚀 ดึงคอลัมน์ last_updated มาคำนวณสิทธิ์คูลดาวน์ด้วย
+        const { data: currentCaches } = await supabase.from('stock_cache').select('symbol, ai_summary, last_updated');
+        const cachedMap = new Map((currentCaches || []).map(c => [c.symbol, { summary: c.ai_summary, updated: c.last_updated }]));
 
         let queue = [];
         for (let t of dbTickers) {
-            const currentSummary = cachedMap.get(t.symbol);
+            const cache = cachedMap.get(t.symbol);
             
-            // 🚀 ปรับตรรกะกวาดขยะ: ถ้าไม่มีข้อมูล หรือข้อความระบุว่า "ขัดข้อง/Error" ในคลัง จับเคลียร์แผลดึงใหม่ทันที
-            const isError = !currentSummary || 
-                            currentSummary.includes('ขัดข้อง') || 
-                            currentSummary.includes('Error') || 
-                            currentSummary.includes('NULL');
-
-            if (!cachedMap.has(t.symbol) || isError) {
+            if (!cache) {
+                // 1. ถ้ายังไม่มีข้อมูลในคลังเลย -> ให้เข้าคิวรันตามปกติ
                 queue.push(t.symbol);
+            } else {
+                const currentSummary = cache.summary || '';
+                const isError = currentSummary.includes('ขัดข้อง') || currentSummary.includes('Error') || currentSummary.includes('NULL');
+                
+                // คำนวณระยะเวลาห่างจากการพยายามครั้งล่าสุด
+                const timePassed = Date.now() - new Date(cache.updated).getTime();
+                const oneHour = 60 * 60 * 1000; 
+
+                // 2. ถ้ามีคำว่า Error แต่พึ่งยิงไปไม่ถึง 1 ชั่วโมง -> ให้ติดคูลดาวน์ "ห้ามดึงมาซ่อมซ้ำ" ปล่อยข้ามไปก่อนเลย
+                if (isError && timePassed > oneHour) {
+                    queue.push(t.symbol);
+                }
             }
+            
             if (queue.length >= 2) break; 
         }
 
         if (queue.length === 0) {
-            return res.status(200).json({ success: true, message: "คลังข้อมูลหุ้นสะอาดเรียบร้อยแล้ว" });
+            return res.status(200).json({ success: true, message: "หุ้นรอบนี้อยู่ในสภาวะคูลดาวน์กักตัว รอรอบเวลาถัดไปเพื่อซ่อมแซม" });
         }
 
         let logs = [];
