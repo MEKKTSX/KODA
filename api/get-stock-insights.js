@@ -4,7 +4,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 async function generateAiSummary(symbol, companyName, industry, apiKey) {
     // แนะนำให้ใช้ตัวนี้ครับ (เสถียรสุด ทราฟฟิกเซิร์ฟเวอร์โล่ง)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
     
     const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดวิเคราะห์เชิงลึกเกี่ยวกับ Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${companyName} (${symbol}) อุตสาหกรรม: ${industry}
     
