@@ -79,7 +79,7 @@
                 }
             });
 
-            if (targetId === 'tab-company' && !loadedTabs.company) { fetchCompanySummary(); loadedTabs.company = true; }
+            if (targetId === 'tab-company' && !loadedTabs.company) { /**fetchCompanySummary();**/ loadedTabs.company = true; }
             
             // 📌 จุดแก้บัค: เมื่อกดแท็บ "บทวิเคราะห์"
             if (targetId === 'tab-analysis') {
@@ -346,20 +346,14 @@
             extContainer.classList.add('flex'); 
             extLabelEl.textContent = stateText;
             
-            // 🚀 โค้ดใหม่: ดึงราคาเดิมของ Extended Price มาคำนวณเพื่อทำตัวเลขวิ่งแบบคลีนๆ
-            const oldExtPriceRaw = extPriceEl.dataset.rawPrice;
-            const oldExtPrice = oldExtPriceRaw ? parseFloat(oldExtPriceRaw) : extPrice;
-
-            if (oldExtPrice !== extPrice && oldExtPriceRaw) {
-                // เรียกใช้ฟังก์ชันตัวเลขวิ่ง 450ms ตามมาตรฐานราคาหลัก
-                animateKodaRollingNumber(extPriceEl, oldExtPrice, extPrice, 450);
-            } else {
-                extPriceEl.textContent = fmtPrice(extPrice); // โชว์ราคาเต็มตอนโหลดหน้าครั้งแรก
+            if (extPriceEl.dataset.rawPrice && parseFloat(extPriceEl.dataset.rawPrice) !== extPrice) {
+                extPriceEl.classList.remove('price-update');
+                void extPriceEl.offsetWidth; 
+                extPriceEl.classList.add('price-update');
             }
-            
-            // บันทึกราคาปัจจุบันลงเครื่องเพื่อเก็บสเตทรอบถัดไป
             extPriceEl.dataset.rawPrice = extPrice;
-                   
+            extPriceEl.textContent = fmtPrice(extPrice);
+            
             document.getElementById('extended-currency').textContent = currencyCode;
             
             if (extPercent === 0 || !extPercent) {
@@ -891,55 +885,55 @@
     // ==========================================
     // 📌 TAB 2: สรุปบริษัท AI 
     // ==========================================
-    const fetchCompanySummary = async (force = false) => {
-        const container = document.getElementById('ai-company-content');
-        const dateEl = document.getElementById('ai-summary-date');
-        const cacheKey = `koda_company_summary_v3_${symbol}`;
-        const cached = JSON.parse(localStorage.getItem(cacheKey));
-        const now = Date.now();
+    // const fetchCompanySummary = async (force = false) => {
+    //     const container = document.getElementById('ai-company-content');
+    //     const dateEl = document.getElementById('ai-summary-date');
+    //     const cacheKey = `koda_company_summary_v3_${symbol}`;
+    //     const cached = JSON.parse(localStorage.getItem(cacheKey));
+    //     const now = Date.now();
 
-        if (!force && cached && (now - cached.timestamp < 90 * 24 * 60 * 60 * 1000)) {
-            container.innerHTML = cached.html;
-            dateEl.textContent = `Last updated: ${new Date(cached.timestamp).toLocaleDateString('th-TH')}`;
-            return;
-        }
+    //     if (!force && cached && (now - cached.timestamp < 90 * 24 * 60 * 60 * 1000)) {
+    //         container.innerHTML = cached.html;
+    //         dateEl.textContent = `Last updated: ${new Date(cached.timestamp).toLocaleDateString('th-TH')}`;
+    //         return;
+    //     }
 
-        container.innerHTML = `<div class="flex flex-col items-center justify-center py-6"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3"></div><p class="text-primary font-bold text-xs animate-pulse">AI กำลังวิเคราะห์ปัจจัยพื้นฐาน...</p></div>`;
+    //     container.innerHTML = `<div class="flex flex-col items-center justify-center py-6"><div class="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3"></div><p class="text-primary font-bold text-xs animate-pulse">AI กำลังวิเคราะห์ปัจจัยพื้นฐาน...</p></div>`;
 
-        try {
-            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
-            const profile = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json());
-            const industry = profile.finnhubIndustry || 'General';
+    //     try {
+    //         const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+    //         const profile = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${getFHKey()}`).then(r=>r.json());
+    //         const industry = profile.finnhubIndustry || 'General';
             
-            const GEMINI_API_KEY = window.ENV_KEYS?.GEMINI ? window.ENV_KEYS.GEMINI[0] : '';
-            if (!GEMINI_API_KEY) throw new Error('No Gemini Key');
+    //         const GEMINI_API_KEY = window.ENV_KEYS?.GEMINI ? window.ENV_KEYS.GEMINI[0] : '';
+    //         if (!GEMINI_API_KEY) throw new Error('No Gemini Key');
 
-            const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดสรุป Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${symbol} (${currentStockName}) อุตสาหกรรม: ${industry}
-            ให้อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เข้าใจง่ายสำหรับนักลงทุนรายย่อย (หลีกเลี่ยงศัพท์แสงที่ยากเกินไป)
-            บังคับใช้โครงสร้าง HTML นี้ในการตอบ:
-            <div style="margin-bottom: 12px;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> ...</div>
-            <div style="margin-bottom: 12px;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> ...</div>
-            <div style="margin-bottom: 12px;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> ...</div>
-            <div style="padding: 12px; background: rgba(52,168,235,0.1); border-radius: 8px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> ...</div>
-            ตอบด้วยรหัส HTML ล้วน ห้ามมีเครื่องหมาย \`\`\`html`;
+    //         const prompt = `ในฐานะผู้เชี่ยวชาญด้านธุรกิจและการลงทุน โปรดสรุป Business Model, พื้นฐาน, และ Ecosystem ของบริษัท ${symbol} (${currentStockName}) อุตสาหกรรม: ${industry}
+    //         ให้อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เข้าใจง่ายสำหรับนักลงทุนรายย่อย (หลีกเลี่ยงศัพท์แสงที่ยากเกินไป)
+    //         บังคับใช้โครงสร้าง HTML นี้ในการตอบ:
+    //         <div style="margin-bottom: 12px;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> ...</div>
+    //         <div style="margin-bottom: 12px;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> ...</div>
+    //         <div style="margin-bottom: 12px;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> ...</div>
+    //         <div style="padding: 12px; background: rgba(52,168,235,0.1); border-radius: 8px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> ...</div>
+    //         ตอบด้วยรหัส HTML ล้วน ห้ามมีเครื่องหมาย \`\`\`html`;
 
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-            });
-            const data = await res.json();
+    //         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    //             method: 'POST', headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+    //         });
+    //         const data = await res.json();
             
-            if (data.candidates && data.candidates[0].content.parts[0].text) {
-                const aiHtml = data.candidates[0].content.parts[0].text.replace(/```html/g, '').replace(/```/g, '').trim();
-                container.innerHTML = aiHtml;
-                dateEl.textContent = `Last updated: ${new Date().toLocaleDateString('th-TH')}`;
-                localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, html: aiHtml }));
-            } else { throw new Error('AI Error'); }
-        } catch(e) {
-            container.innerHTML = `<p class="text-danger text-sm text-center py-4">ไม่สามารถสรุปข้อมูลบริษัทได้</p>`;
-        }
-    };
-    document.getElementById('btn-refresh-summary').addEventListener('click', () => fetchCompanySummary(true));
+    //         if (data.candidates && data.candidates[0].content.parts[0].text) {
+    //             const aiHtml = data.candidates[0].content.parts[0].text.replace(/```html/g, '').replace(/```/g, '').trim();
+    //             container.innerHTML = aiHtml;
+    //             dateEl.textContent = `Last updated: ${new Date().toLocaleDateString('th-TH')}`;
+    //             localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, html: aiHtml }));
+    //         } else { throw new Error('AI Error'); }
+    //     } catch(e) {
+    //         container.innerHTML = `<p class="text-danger text-sm text-center py-4">ไม่สามารถสรุปข้อมูลบริษัทได้</p>`;
+    //     }
+    // };
+    // document.getElementById('btn-refresh-summary').addEventListener('click', () => fetchCompanySummary(true));
 
     // ==========================================
     // 📌 TAB ใหม่: บทวิเคราะห์ (Analysis / TA)
