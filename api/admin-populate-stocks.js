@@ -40,24 +40,20 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
     }
 }
 
+// ... (ส่วนฟังก์ชัน generateAiSummary คงไว้เหมือนเดิม) ...
+
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     
     const rawFhKeys = process.env.FINNHUB_KEY_KEYS || '';
     const fhKey = rawFhKeys.split(',')[0].trim();
     
-    // 🚀 เพิ่มระบบกระจายโหลด (Load Balancing): สุ่มหยิบคีย์ Gemini ทุกครั้งที่รัน
+    // โหลดคีย์ Gemini ทั้งหมดมาเตรียมไว้เป็น Array
     const rawGeminiKeys = process.env.GEMINI_API_KEYS || '';
     const keysArray = rawGeminiKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
-    const geminiKey = keysArray[Math.floor(Math.random() * keysArray.length)];
 
     try {
-        const { data: dbTickers, error: tickerError } = await supabase
-            .from('ticker_list')
-            .select('symbol')
-            .eq('is_active', true)
-            .limit(250); 
-
+        const { data: dbTickers, error: tickerError } = await supabase.from('ticker_list').select('symbol').eq('is_active', true).limit(250); 
         if (tickerError || !dbTickers) throw new Error(tickerError?.message || "ดึงรายชื่อหุ้นล่ม");
 
         const { data: currentCaches } = await supabase.from('stock_cache').select('symbol, ai_summary, last_updated');
@@ -66,14 +62,12 @@ export default async function handler(req, res) {
         let queue = [];
         for (let t of dbTickers) {
             const cache = cachedMap.get(t.symbol);
-            
             if (!cache) {
                 queue.push(t.symbol);
             } else {
                 const currentSummary = cache.summary || '';
-                const isError = currentSummary.includes('Error') || currentSummary.includes('ขัดข้อง') || currentSummary.includes('NULL');
+                const isError = currentSummary.includes('Error') || currentSummary.includes('ขัดข้อง') || currentSummary.includes('NULL') || currentSummary.includes('overloaded');
                 
-                // ระบบคูลดาวน์ 1 ชั่วโมง ป้องกันการรัวยิงหุ้นตัวเดิมที่พังซ้ำซาก
                 const timePassed = Date.now() - new Date(cache.updated).getTime();
                 const oneHour = 60 * 60 * 1000; 
 
@@ -81,8 +75,6 @@ export default async function handler(req, res) {
                     queue.push(t.symbol);
                 }
             }
-            
-            // จำกัดรอบละ 2 ตัว เพื่อเซฟโควตา 100%
             if (queue.length >= 2) break; 
         }
 
@@ -92,8 +84,10 @@ export default async function handler(req, res) {
 
         let logs = [];
         for (let symbol of queue) {
-            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
+            // 🚀 ย้ายการสุ่ม Gemini Key มาไว้ใน Loop: หุ้น 1 ตัว สุ่มหยิบ 1 คีย์ กระจายโหลดได้จริง
+            const geminiKey = keysArray[Math.floor(Math.random() * keysArray.length)];
             
+            const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
             const [profile, shortData, earnings] = await Promise.all([
                 fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSym}&token=${fhKey}`).then(r => r.json()).catch(() => ({})),
                 fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${cleanSym}&metric=all&token=${fhKey}`).then(r => r.json()).catch(() => ({})),
@@ -107,6 +101,7 @@ export default async function handler(req, res) {
             const earningsStatus = beats >= 3 ? 'BULLISH' : (beats === 2 ? 'NEUTRAL' : 'BEARISH');
             const shortInterest = shortData?.metric?.shortPercentOfFloat || 5;
 
+            // ส่ง geminiKey ที่สุ่มได้ของรอบนี้เข้าไปทำงาน
             const aiSummaryText = await generateAiSummary(cleanSym, companyName, industry, geminiKey);
 
             const stockRecord = {
