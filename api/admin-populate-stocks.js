@@ -74,7 +74,7 @@ export default async function handler(req, res) {
             if (!cachedMap.has(t.symbol) || isError) {
                 queue.push(t.symbol);
             }
-            if (queue.length >= 5) break; 
+            if (queue.length >= 2) break; 
         }
 
         if (queue.length === 0) {
