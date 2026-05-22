@@ -1,24 +1,11 @@
-// api/admin-populate-stocks.js (บอทอัปเดตข้อมูลหุ้นกลุ่มเป้าหมายเข้าตารางล่วงหน้า)
+// api/admin-populate-stocks.js (ระบบจัดคิวรอบละ 5 ตัวเพื่อป้องกันท่อล่ม)
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// 🚀 เปลี่ยนใหม่เป็นดึงจากตาราง ticker_list บน Supabase:
-const { data: dbTickers, error: tickerError } = await supabase
-    .from('ticker_list')
-    .select('symbol')
-    .eq('is_active', true);
-
-if (tickerError || !dbTickers) {
-    return res.status(500).json({ success: false, error: "คลังรายชื่อหุ้นขัดข้อง: " + tickerError.message });
-}
-
-// แปลงผลลัพธ์ให้ออกมาเป็นอาร์เรย์รายชื่อเหมือนเดิมเพื่อส่งไปวิ่งวนลูปต่อ
-const TARGET_STOCKS = dbTickers.map(row => row.symbol);
-
 async function generateAiInsights(symbol, companyName, industry, apiKey) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const prompt = `วิเคราะห์ข้อมูลบริษัท ${companyName} (${symbol}) อุตสาหกรรม ${industry} เพื่อนำไปทำระบบ Business Model Canvas (ภาษาไทย) และ Business Ecosystem (ภาษาอังกฤษ) ส่งผลลัพธ์กลับมาเป็นโครงสร้าง JSON ออบเจกต์ที่มีคีย์หลักชื่อ bmc และ ecosystem ตามปกติเท่านั้น`;
+    const prompt = `วิเคราะห์ข้อมูลบริษัท ${companyName} (${symbol}) อุตสาหกรรม ${industry} เพื่อทำระบบ Business Model Canvas (ภาษาไทย) และ Business Ecosystem ส่งกลับมาเป็นโครงสร้าง JSON ออบเจกต์ที่มีคีย์หลักชื่อ bmc และ ecosystem เท่านั้น`;
 
     try {
         const response = await fetch(url, {
@@ -39,11 +26,51 @@ export default async function handler(req, res) {
     const rawGeminiKeys = process.env.GEMINI_API_KEYS || '';
     const geminiKey = rawGeminiKeys.split(',')[0].trim();
 
-    let logs = [];
+    try {
+        // 🚀 1. ค้นหาหุ้นจาก ticker_list ที่ "ยังไม่มี" ในตาราง stock_cache หรือมีแต่เก่าที่สุดมาทำก่อนรอบละ 5 ตัว
+        // เทคนิคใช้ตรรกะ Left Join ด้วยคำสั่งตรรกะของ Supabase หรือใช้วิธีเปรียบเทียบเวลาอัปเดตเก่าที่สุด
+        const { data: dbTickers, error: tickerError } = await supabase
+            .from('ticker_list')
+            .select(`
+                symbol,
+                stock_cache ( last_updated )
+            `)
+            .eq('is_active', true)
+            .order('created_at', { ascending: true }) // นำหุ้นสารตั้งต้นมาตั้งคิว
+            .limit(30); // ดึงมากรองสุ่มหากลุ่มทำงาน
 
-    // วนลูปเพื่อไล่กวาดข้อมูลหุ้นทีละตัวใน List สารตั้งต้น
-    for (let symbol of TARGET_STOCKS) {
-        try {
+        if (tickerError || !dbTickers) throw new Error(tickerError?.message || "ดึงรายชื่อหุ้นล่ม");
+
+        // 🚀 2. กรองหาหุ้นที่ระบบยังไม่เคยมีแคช หรือแคชหมดอายุ คัดเลือกเน้นๆ รอบละ 5 ตัว
+        let queue = [];
+        const { data: currentCaches } = await supabase.from('stock_cache').select('symbol');
+        const cachedSymbols = new Set((currentCaches || []).map(c => c.symbol));
+
+        for(let t of dbTickers) {
+            if(!cachedSymbols.has(t.symbol)) {
+                queue.push(t.symbol);
+            }
+            if(queue.length >= 5) break; // คัดเลือกเจอครบ 5 ตัวแล้วหยุดเอาเข้าคิวรอบนี้ทันที
+        }
+
+        // ถ้าหุ้น 2,000 ตัวถูกเก็บข้อมูลลงตารางจนครบแล้ว ให้สลับมาเก็บหุ้นที่ข้อมูลเก่าที่สุดรอบละ 5 ตัวแทน
+        if (queue.length === 0) {
+            const { data: oldCaches } = await supabase
+                .from('stock_cache')
+                .select('symbol')
+                .order('last_updated', { ascending: true })
+                .limit(5);
+            queue = (oldCaches || []).map(c => c.symbol);
+        }
+
+        if (queue.length === 0) {
+            return res.status(200).json({ success: true, message: "ไม่มีคิวหุ้นคงค้างในระบบ" });
+        }
+
+        let logs = [];
+        
+        // 🚀 3. เริ่มลูปยิงอัปเดตหุ้นทั้ง 5 ตัวเข้าคลังข้อมูล
+        for (let symbol of queue) {
             const cleanSym = symbol.split(':')[1] || symbol.split('.')[0];
             
             const [profile, shortData, earnings] = await Promise.all([
@@ -56,9 +83,7 @@ export default async function handler(req, res) {
             const industry = profile.finnhubIndustry || 'General';
 
             let beats = 0;
-            if (earnings && earnings.length > 0) {
-                earnings.slice(0, 4).forEach(q => { if (q.actual > q.estimate) beats++; });
-            }
+            if (earnings && earnings.length > 0) { earnings.slice(0, 4).forEach(q => { if (q.actual > q.estimate) beats++; }); }
             const earningsStatus = beats >= 3 ? 'BULLISH' : (beats === 2 ? 'NEUTRAL' : 'BEARISH');
             const shortInterest = shortData?.metric?.shortPercentOfFloat || 5;
 
@@ -76,12 +101,12 @@ export default async function handler(req, res) {
             };
 
             await supabase.from('stock_cache').upsert([stockRecord]);
-            logs.push(`Successfully populated data cache for: ${symbol}`);
-            
-        } catch (err) {
-            logs.push(`Error building data cache for ${symbol}: ${err.message}`);
+            logs.push(`Populated data for: ${symbol}`);
         }
-    }
 
-    return res.status(200).json({ success: true, message: "KODA Master Pipeline Synced", logs: logs });
+        return res.status(200).json({ success: true, processed: queue, logs: logs });
+
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
 }
