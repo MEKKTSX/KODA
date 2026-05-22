@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     const keysArray = rawGeminiKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
 
     try {
-        const { data: dbTickers, error: tickerError } = await supabase.from('ticker_list').select('symbol').eq('is_active', true).limit(250); 
+        const { data: dbTickers, error: tickerError } = await supabase.from('ticker_list').select('symbol').eq('is_active', true); 
         if (tickerError || !dbTickers) throw new Error(tickerError?.message || "ดึงรายชื่อหุ้นล่ม");
 
         const { data: currentCaches } = await supabase.from('stock_cache').select('symbol, ai_summary, last_updated');
