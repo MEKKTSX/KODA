@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// 🚀 ตัวฟังก์ชันที่ถอดระบบ JSON Parse ออก เพื่อให้รับค่าข้อความยาวๆ ได้เสถียร 100%
 async function generateAiSummary(symbol, companyName, industry, apiKey) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
@@ -13,24 +12,30 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
     2. อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เขียนเนื้อหาเจาะลึกและครอบคลุมประเด็นยาวต่อเนื่อง ไม่ต้องสรุปย่อจนสั้นเกินไป
     3. บังคับใช้โครงสร้าง HTML นี้ในการตอบ (ห้ามเปลี่ยนชื่อหัวข้อ และห้ามมีเครื่องหมาย \`\`\`html ครอบเด็ดขาด):
     
-    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>`;
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เนื้อหาเจาะลึก]</div>
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เนื้อหาเจาะลึก]</div>
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เนื้อหาเจาะลึก]</div>
+    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เนื้อหาเจาะลึก]</div>`;
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
         const data = await response.json();
-        let rawText = data.candidates[0].content.parts[0].text;
         
-        // ล้างเศษสัญลักษณ์ Markdown เผื่อ Gemini แถมมา
+        if (data.error) {
+            return `Gemini API Error: ${data.error.message} (${data.error.status})`;
+        }
+        if (!data.candidates || data.candidates.length === 0) {
+            return `Gemini Error: No candidates returned. Response: ${JSON.stringify(data)}`;
+        }
+        
+        let rawText = data.candidates[0].content.parts[0].text;
         return rawText.replace(/```html/g, '').replace(/```/g, '').trim();
     } catch (e) {
-        return 'ระบบประมวลผลข้อมูลขัดข้อง กรุณากดรีเฟรชใหม่อีกครั้ง';
+        return `Technical Catch Error: ${e.message}`;
     }
 }
 
@@ -43,10 +48,10 @@ export default async function handler(req, res) {
     try {
         const { data: cachedData } = await supabase.from('stock_cache').select('*').eq('symbol', upperSymbol).maybeSingle();
         
-        // 🚀 ตรรกะซ่อมแซม: ถ้ายังไม่มีข้อมูล หรือข้อมูลเก่าเป็นคำว่า "ขัดข้องชั่วคราว" บังคับให้คัดสรรใหม่ทันที
         const isCacheValid = cachedData && 
                              cachedData.ai_summary && 
-                             !cachedData.ai_summary.includes('ขัดข้องชั่วคราว') && 
+                             !cachedData.ai_summary.includes('ขัดข้อง') && 
+                             !cachedData.ai_summary.includes('Error') && 
                              (Date.now() - new Date(cachedData.last_updated).getTime() < 15 * 24 * 60 * 60 * 1000);
 
         if (cachedData && isCacheValid) {
@@ -72,7 +77,6 @@ export default async function handler(req, res) {
         const earningsStatus = beats >= 3 ? 'BULLISH' : (beats === 2 ? 'NEUTRAL' : 'BEARISH');
         const shortInterest = shortData?.metric?.shortPercentOfFloat || 5;
 
-        // สั่งสร้างสรุปใหม่เวอร์ชันตัวยาวตรงตามต้องการ
         const aiSummaryText = await generateAiSummary(cleanSym, companyName, industry, geminiKey);
 
         const finalStockData = {
@@ -87,7 +91,5 @@ export default async function handler(req, res) {
 
         await supabase.from('stock_cache').upsert([finalStockData]);
         return res.status(200).json({ success: true, data: finalStockData });
-    } catch (err) { 
-        return res.status(500).json({ success: false, error: err.message }); 
-    }
+    } catch (err) { return res.status(500).json({ success: false, error: err.message }); }
 }

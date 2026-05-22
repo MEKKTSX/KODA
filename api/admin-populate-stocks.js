@@ -1,4 +1,3 @@
-// api/admin-populate-stocks.js (เวอร์ชันยิงตรง Plain Text ไม่ผ่าน JSON เสถียร 100%)
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -13,24 +12,32 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
     2. อธิบายเป็น "ภาษาไทย" แบบเห็นภาพชัดเจน เขียนเนื้อหาเจาะลึกและครอบคลุมประเด็นยาวต่อเนื่อง ไม่ต้องสรุปย่อจนสั้นเกินไป
     3. บังคับใช้โครงสร้าง HTML นี้ในการตอบ (ห้ามเปลี่ยนชื่อหัวข้อ และห้ามมีเครื่องหมาย \`\`\`html ครอบเด็ดขาด):
     
-    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>
-    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เขียนอธิบายเนื้อหาเจาะลึกตรงนี้]</div>`;
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เนื้อหาเจาะลึก]</div>
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เนื้อหาเจาะลึก]</div>
+    <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เนื้อหาเจาะลึก]</div>
+    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เนื้อหาเจาะลึก]</div>`;
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }) // ถอดคอมไพเลอร์ JSON ออก
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
-        const data = await response.json();
-        let rawText = data.candidates[0].content.parts[0].text;
         
-        // ล้างเศษสัญลักษณ์ Markdown เผื่อ AI แถมมา
+        const data = await response.json();
+        
+        // 🚨 ดักจับ Error ตรงจาก Gemini API แล้วส่งข้อความจริงกลับไปบันทึก
+        if (data.error) {
+            return `Gemini API Error: ${data.error.message} (${data.error.status})`;
+        }
+        if (!data.candidates || data.candidates.length === 0) {
+            return `Gemini Error: No candidates returned. Response: ${JSON.stringify(data)}`;
+        }
+        
+        let rawText = data.candidates[0].content.parts[0].text;
         return rawText.replace(/```html/g, '').replace(/```/g, '').trim();
-    } catch (e) { 
-        return 'ระบบประมวลผลข้อมูลขัดข้อง กรุณากดรีเฟรชใหม่อีกครั้ง'; 
+    } catch (e) {
+        return `Technical Catch Error: ${e.message}`;
     }
 }
 
@@ -47,7 +54,7 @@ export default async function handler(req, res) {
             .from('ticker_list')
             .select('symbol')
             .eq('is_active', true)
-            .limit(150); 
+            .limit(200); 
 
         if (tickerError || !dbTickers) throw new Error(tickerError?.message || "ดึงรายชื่อหุ้นล่ม");
 
@@ -57,15 +64,21 @@ export default async function handler(req, res) {
         let queue = [];
         for (let t of dbTickers) {
             const currentSummary = cachedMap.get(t.symbol);
-            // 🚀 ตรรกะซ่อมแซมคลัง: หุ้นตัวไหนไม่มีข้อมูล หรือคราวที่แล้วขึ้นข้อความขัดข้อง จับยัดเข้าคิวล้างแผลใหม่ทันที!
-            if (!cachedMap.has(t.symbol) || !currentSummary || currentSummary.includes('ขัดข้องชั่วคราว')) {
+            
+            // 🚀 ปรับตรรกะกวาดขยะ: ถ้าไม่มีข้อมูล หรือข้อความระบุว่า "ขัดข้อง/Error" ในคลัง จับเคลียร์แผลดึงใหม่ทันที
+            const isError = !currentSummary || 
+                            currentSummary.includes('ขัดข้อง') || 
+                            currentSummary.includes('Error') || 
+                            currentSummary.includes('NULL');
+
+            if (!cachedMap.has(t.symbol) || isError) {
                 queue.push(t.symbol);
             }
             if (queue.length >= 5) break; 
         }
 
-        if (queue.length === 0 && currentCaches && currentCaches.length > 0) {
-            return res.status(200).json({ success: true, message: "คลังข้อมูลหุ้นสมบูรณ์แบบแล้ว" });
+        if (queue.length === 0) {
+            return res.status(200).json({ success: true, message: "คลังข้อมูลหุ้นสะอาดเรียบร้อยแล้ว" });
         }
 
         let logs = [];
@@ -98,7 +111,7 @@ export default async function handler(req, res) {
             };
 
             await supabase.from('stock_cache').upsert([stockRecord]);
-            logs.push(`Populated: ${symbol}`);
+            logs.push(`Processed: ${symbol}`);
         }
 
         return res.status(200).json({ success: true, processed: queue, logs: logs });
