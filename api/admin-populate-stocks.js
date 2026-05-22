@@ -75,7 +75,7 @@ export default async function handler(req, res) {
                     queue.push(t.symbol);
                 }
             }
-            if (queue.length >= 2) break; 
+            if (queue.length >= 1) break; 
         }
 
         if (queue.length === 0) {
