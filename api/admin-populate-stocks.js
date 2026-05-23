@@ -54,13 +54,49 @@ export default async function handler(req, res) {
     const keysArray = rawGeminiKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
 
     try {
-        const { data: dbTickers, error: tickerError } = await supabase.from('ticker_list').select('symbol').eq('is_active', true); 
-        if (tickerError || !dbTickers) throw new Error(tickerError?.message || "ดึงรายชื่อหุ้นล่ม");
+        // 🚀 1. ดึงรายชื่อหุ้นทั้งหมด (ทะลุลิมิต 1,000 ตัวด้วยลูป Range)
+        let dbTickers = [];
+        let startFrom = 0;
+        const batchSize = 1000;
+        
+        while (true) {
+            const { data, error: tickerError } = await supabase
+                .from('ticker_list')
+                .select('symbol')
+                .eq('is_active', true)
+                .range(startFrom, startFrom + batchSize - 1);
 
-        const { data: currentCaches } = await supabase.from('stock_cache').select('symbol, ai_summary, last_updated');
-        const cachedMap = new Map((currentCaches || []).map(c => [c.symbol, { summary: c.ai_summary, updated: c.last_updated }]));
+            if (tickerError) throw new Error(tickerError.message);
+            if (!data || data.length === 0) break;
+            
+            dbTickers = dbTickers.concat(data);
+            if (data.length < batchSize) break; // ถ้าได้ข้อมูลมาน้อยกว่า 1,000 แปลว่าหมดหมดคลังแล้ว ให้จบการลูป
+            startFrom += batchSize;
+        }
+
+        // 🚀 2. ดึงคลังแคชทั้งหมดที่มีอยู่ (ทะลุลิมิต 1,000 ตัวด้วยวิธีเดียวกัน)
+        let currentCaches = [];
+        startFrom = 0;
+        
+        while (true) {
+            const { data, error: cacheError } = await supabase
+                .from('stock_cache')
+                .select('symbol, ai_summary, last_updated')
+                .range(startFrom, startFrom + batchSize - 1);
+
+            if (cacheError) throw new Error(cacheError.message);
+            if (!data || data.length === 0) break;
+            
+            currentCaches = currentCaches.concat(data);
+            if (data.length < batchSize) break;
+            startFrom += batchSize;
+        }
+
+        // เปลี่ยนให้เป็น Map เพื่อใช้ประมวลผลความเร็วสูงเหมือนเดิม
+        const cachedMap = new Map(currentCaches.map(c => [c.symbol, { summary: c.ai_summary, updated: c.last_updated }]));
 
         let queue = [];
+        // ... (ตรรกะการคัดเลือกคิวและลูปเรียก Gemini ด้านล่างคงไว้เหมือนเดิมทุกประการ) ...
         for (let t of dbTickers) {
             const cache = cachedMap.get(t.symbol);
             if (!cache) {
