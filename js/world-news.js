@@ -114,17 +114,34 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         try {
-            // แทนที่จะยิงหา RSS ข้างนอกตรงๆ ให้เปลี่ยนมายิงหา API หลังบ้านของเราเอง
             const res = await fetch(`/api/get-world-news?_=${Date.now()}`);
             const result = await res.json();
             
-            if (result && result.success) {
-                // ส่งอาร์เรย์ข่าวสารไปให้ฟังก์ชันวาด UI แสดงผลทันที
-                renderTimeline(result.data); 
+            if (result && result.success && result.data) {
+                // 🚀 🛠️ สร้างท่อแปลง Data หลังบ้าน ให้ตรงกับโครงสร้างที่ฟังก์ชัน renderTimeline ต้องการ
+                const formattedNews = result.data.map(n => {
+                    const pubDate = new Date(n.created_at);
+                    const dateStr = pubDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+                    const timeStr = pubDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+                    
+                    return {
+                        title: n.title,
+                        summary: n.summary || 'คลิกเพื่อเปิดกล่องเครื่องมือ AI สั่งวิเคราะห์เจาะลึกสถานการณ์เชิงภูมิรัฐศาสตร์',
+                        url: n.link || '#', // 🔗 แปลงคีย์ link ในฐานข้อมูล เข้าคีย์ url ของหน้าบ้าน
+                        source: n.source || 'World News',
+                        time: pubDate.getTime() || Math.floor(Math.random() * 100000), // สร้างเลข ID แสตมป์เวลาให้คลาส CSS
+                        timeStr: `${dateStr} • ${timeStr}`,
+                        newsType: (n.source && n.source.includes('Trump')) ? 'truth' : 'geo' // ตรวจสอบแหล่งที่มาเพื่อจัดกลุ่มประเภทข่าว
+                    };
+                });
+
+                // ส่งข้อมูลที่แปลงรูปแปลงร่างเรียบร้อยแล้วไปวาดหน้าจอ UI
+                renderTimeline(formattedNews); 
             } else {
                 throw new Error("Backend pipeline failed");
             }
         } catch (error) {
+            console.error("Timeline Render Error:", error);
             timelineContainer.innerHTML = `<p class="text-danger text-xs text-center font-bold">Error connecting to KODA Pipeline.</p>`;
         }
     };
