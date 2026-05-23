@@ -1,102 +1,132 @@
-// api/get-world-news.js (เวอร์ชันแก้บัค Vercel Freeze + Field Mapping)
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const RSS_SOURCES = [
-    { name: 'Investing.com', url: 'https://th.investing.com/rss/news_14.rss', type: 'geo' },
-    { name: 'BBC World', url: 'http://feeds.bbci.co.uk/news/world/rss.xml', type: 'geo' },
-    { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', type: 'tech' }
-];
+// 🧠 ฟังก์ชันใช้ Gemini แปลและสรุปจั่วหัวข่าวเป็นภาษาไทยแบบกระชับสั้นๆ
+async function translateHeadlineToThai(englishTitle, sourceName, apiKey) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+    
+    const prompt = `คุณคือบรรณาธิการข่าวการเงินและการลงทุนระดับโลก 
+    โปรดแปลและเรียบเรียงจั่วหัวข่าวภาษาอังกฤษต่อไปนี้ ให้เป็น "ภาษาไทยที่กระชับ สั้นพาดหัวได้ในประโยคเดียว" 
+    อ่านแล้วเข้าใจทันที ตรงไปตรงมา ห้ามเติมสีสันหรืออวยเกินจริง 
 
-// ฟังก์ชันแปลงรูปแบบเวลาให้ตรงกับที่ frontend (world-news.js) ต้องการใช้แสดงผล
-function formatNewsDate(isoString) {
-    const pubDate = new Date(isoString);
-    const dateStr = pubDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-    const timeStr = pubDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-    return `${dateStr} • ${timeStr}`;
-}
+    ข่าวจากแหล่งข่าว: ${sourceName}
+    จั่วหัวอังกฤษ: ${englishTitle}
 
-async function parseRssFeed(url) {
-    try {
-        const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`);
-        if (!res.ok) return [];
-        const data = await res.json();
-        return data.items || [];
-    } catch (e) { return []; }
-}
-
-async function translateWithGemini(title, summary) {
-    const rawKeys = process.env.GEMINI_API_KEYS || '';
-    const apiKey = rawKeys.split(',')[0].trim();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const prompt = `คุณคือบอทอัจฉริยะของแอป KODA โปรดแปลพาดหัวข่าวต่อไปนี้เป็น "ภาษาไทย" ให้สั้น บังคับส่งผลกลับมาเป็น JSON รูปแบบนี้เท่านั้น: {"th_title": "พาดหัวภาษาไทย", "th_summary": "สรุปภาษาไทย"} ข่าว: Headline: ${title} Snippet: ${summary}`;
+    ตอบกลับเป็นข้อความภาษาไทยสั้นๆ ล้วน ห้ามมีเครื่องหมายคำพูด ห้ามมีคำเกริ่นนำใดๆ ทั้งสิ้น`;
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
         const data = await response.json();
-        return JSON.parse(data.candidates[0].content.parts[0].text);
-    } catch (e) { return { th_title: title, th_summary: summary }; }
+        return data.candidates[0].content.parts[0].text.trim();
+    } catch (e) {
+        return englishTitle; // ถ้าแปลพลาด ให้ใช้ตัวอังกฤษเดิมไปก่อนเพื่อไม่ให้ระบบล่ม
+    }
 }
 
-async function processNextUpdates() {
-    let newItemsCount = 0;
-    for (let source of RSS_SOURCES) {
-        if (newItemsCount >= 3) break;
-        const feedItems = await parseRssFeed(source.url);
-        for (let item of feedItems) {
-            const sourceUrl = item.link;
-            const { data: existing } = await supabase.from('world_news').select('id').eq('source_url', sourceUrl).maybeSingle();
-            if (!existing) {
-                const cleanDesc = (item.description || item.content || "").replace(/<\/?[^>]+(>|$)/g, "").substring(0, 300);
-                const aiResult = await translateWithGemini(item.title, cleanDesc);
-                await supabase.from('world_news').insert([{ 
-                    title: aiResult.th_title, 
-                    summary: aiResult.th_summary, 
-                    source_url: sourceUrl, 
-                    source_name: source.name, 
-                    news_type: source.type, 
-                    published_time: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString() 
-                }]);
-                newItemsCount++;
-                if (newItemsCount >= 3) break;
-            }
-        }
+// ปรับปรุงฟังก์ชันสกัดข่าวใน api/get-world-news.js ให้ดึงสรุปเนื้อหาข่าวสารมาด้วย
+async function fetchNewsFromRss(feedUrl, sourceName) {
+    try {
+        const res = await fetch(feedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const text = await res.text();
+        
+        const items = text.split('<item>').slice(1, 4); 
+        return items.map(item => {
+            const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || item.match(/<title>(.*?)<\/title>/);
+            const linkMatch = item.match(/<link>(.*?)<\/link>/);
+            
+            // 🚀 เพิ่มระบบเจาะสกัดเนื้อหาข่าว (Description) จากในแท็ก RSS
+            const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || item.match(/<description>(.*?)<\/description>/);
+            let summaryText = descMatch ? descMatch[1] : '';
+            // ล้างโค้ดรหัส HTML แปลกๆ ออกให้เหลือแต่ข้อความล้วนสะอาดๆ
+            summaryText = summaryText.replace(/<\/?[^>]+(>|$)/g, "").substring(0, 200).trim();
+
+            return {
+                title: titleMatch ? titleMatch[1] : '',
+                link: linkMatch ? linkMatch[1] : '',
+                summary: summaryText, // แนบข้อความสรุปข่าวสารกลับออกไปด้วย
+                source: sourceName,
+                created_at: new Date().toISOString()
+            };
+        }).filter(news => news.title && news.link);
+    } catch (e) {
+        return [];
     }
 }
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     
-    // ดึงข้อมูลแคชข่าวในตารางขึ้นมาตรวจสอบ
-    let { data: dbNews } = await supabase.from('world_news').select('*').order('published_time', { ascending: false }).limit(15);
-    
-    // แก้บัค Vercel Freeze: ถ้าตารางว่างเปล่า ให้บังคับรันบอทกวาดข่าวให้เสร็จสมบูรณ์ก่อนส่งกลับรอบแรก
-    if (!dbNews || dbNews.length === 0) {
-        await processNextUpdates();
-        const { data: updatedNews } = await supabase.from('world_news').select('*').order('published_time', { ascending: false }).limit(15);
-        dbNews = updatedNews;
-    } else {
-        const isCacheOld = (Date.now() - new Date(dbNews[0].created_at).getTime() > 3600000);
-        if (isCacheOld) {
-            processNextUpdates().catch(e => console.error(e));
+    // 🔑 โหลดคีย์ Gemini แบบกระจายน้ำหนัก
+    const rawGeminiKeys = process.env.GEMINI_API_KEYS || '';
+    const keysArray = rawGeminiKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
+
+    try {
+        // 🌐 1. รวมศูนย์แหล่งข่าวที่คุณต้องการ (ดึง Seeking Alpha และ Truth Social ผ่านท่อ RSS สาธารณะ)
+        const sources = [
+            { name: 'Donald Trump (Truth Social)', url: 'https://rsshub.app/truthsocial/user/realDonaldTrump' },
+            { name: 'Seeking Alpha', url: 'https://seekingalpha.com/feed.xml' },
+            { name: 'Investing.com', url: 'https://www.investing.com/rss/news.rss' },
+            { name: 'BBC News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml' }
+        ];
+
+        // วิ่งไปกวาดข่าวจากทุกแหล่งพร้อมกัน
+        const allFeeds = await Promise.all(sources.map(s => fetchNewsFromRss(s.url, s.name)));
+        const aggregatedNews = allFeeds.flat();
+
+        if (aggregatedNews.length === 0) {
+            return res.status(200).json({ success: true, message: "ไม่มีข่าวใหม่ในรอบนี้" });
         }
+
+        // 🧠 2. แปลจั่วหัวข่าวเป็นภาษาไทยรายตัวด้วย Gemini
+        let savedCount = 0;
+        for (let news of aggregatedNews) {
+            // เช็กก่อนว่าข่าวนั้นมีอยู่แล้วในระบบไหม (กันบันทึกซ้ำซ้อนด้วย Link)
+            const { data: exists } = await supabase.from('world_news').select('id').eq('link', news.link).maybeSingle();
+            
+            if (!exists) {
+                const currentKey = keysArray[Math.floor(Math.random() * keysArray.length)];
+                
+                // สั่งแปลหัวข่าวเป็นไทยกระชับ
+                const thaiTitle = await translateHeadlineToThai(news.title, news.source, currentKey);
+                
+                // บันทึกลงฐานข้อมูล (สมมติว่าตารางชื่อ world_news)
+                await supabase.from('world_news').insert([{
+                    title: thaiTitle,
+                    link: news.link,
+                    summary: news.summary,
+                    source: news.source,
+                    created_at: news.created_at
+                }]);
+                
+                savedCount++;
+                if (savedCount >= 3) break; // บันทึกรอบละไม่เกิน 3 ข่าวใหม่พอ เพื่อป้องกัน Tokens เต็มไว
+            }
+        }
+
+        // ⚔️ 3. กฎเหล็ก: ควบคุมจำนวนข้อมูลให้แน่นอยู่ที่ 15 ข่าวล่าสุดเสมอ
+        const { data: totalNews } = await supabase
+            .from('world_news')
+            .select('id')
+            .order('created_at', { ascending: false });
+
+        if (totalNews && totalNews.length > 15) {
+            // ดึงไอดีที่อยู่อันดับที่ 16 เป็นต้นไปออกมารวมกันเป็นอาร์เรย์
+            const idsToDelete = totalNews.slice(15).map(item => item.id);
+            
+            // สั่งล้างแถวข้อมูลเก่าที่เกินสิทธิ์ทิ้งทันที
+            await supabase
+                .from('world_news')
+                .delete()
+                .in('id', idsToDelete);
+        }
+
+        return res.status(200).json({ success: true, processed: savedCount, current_total: totalNews?.length || 0 });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
     }
-
-    // แมปปิ้งโครงสร้างข้อมูลให้ตรงกับที่ไฟล์หน้าบ้าน (world-news.js) เรียกใช้เป๊ะๆ
-    const formattedData = (dbNews || []).map(n => ({
-        title: n.title,
-        summary: n.summary,
-        url: n.source_url,
-        source: n.source_name,  // แปลงให้หน้าบ้านรู้จัก
-        newsType: n.news_type,  // แปลงให้หน้าบ้านรู้จัก
-        timeStr: formatNewsDate(n.published_time), // สร้างข้อความเวลาภาษาไทย
-        time: new Date(n.published_time).getTime()
-    }));
-
-    return res.status(200).json({ success: true, data: formattedData });
 }
