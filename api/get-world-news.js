@@ -4,7 +4,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 // 🧠 ฟังก์ชันใช้ Gemini แปลและสรุปจั่วหัวข่าวเป็นภาษาไทยแบบกระชับสั้นๆ
 async function translateHeadlineToThai(englishTitle, sourceName, apiKey) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
     
     const prompt = `คุณคือบรรณาธิการข่าวการเงินและการลงทุนระดับโลก 
     โปรดแปลและเรียบเรียงจั่วหัวข่าวภาษาอังกฤษต่อไปนี้ ให้เป็น "ภาษาไทยที่กระชับ สั้นพาดหัวได้ในประโยคเดียว" 
@@ -28,44 +28,33 @@ async function translateHeadlineToThai(englishTitle, sourceName, apiKey) {
     }
 }
 
-// 🛡️ ปรับปรุงระบบสกัดข่าวสารจาก RSS: ปลอมตัวตนหลบเลี่ยงการบล็อกจาก Cloudflare และรองรับแท็กเว้นบรรทัด
-async function fetchNewsFromRss(feedUrl, sourceName) {
+// 🚀 ถอดแบบกลไกดึงข้อมูลจากชุดโค้ดเก่า: ดึงผ่าน rss2json proxy เพื่อเลี่ยงการโดน Cloudflare บล็อกบน Vercel
+async function fetchNewsViaProxy(feedUrl, sourceName) {
     try {
-        const res = await fetch(feedUrl, { 
-            headers: { 
-                // 🚀 ยัดค่า Headers สมจริงเสมือนเปิดผ่าน Chrome เพื่อหลบเลี่ยงการโดนดีดคำสั่งทิ้งจาก Seeking Alpha และ RSSHub
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'application/xml, text/xml, */*'
-            }, 
-            signal: AbortSignal.timeout(10000) 
-        });
+        const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&_=${Date.now()}`;
+        const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
         
-        if (!res.ok) {
-            console.error(`[Fetch Blocked] ${sourceName} returned status: ${res.status}`);
-            return [];
-        }
+        if (!res.ok) return [];
         
-        const text = await res.text();
-        const items = text.split(/<item>/i).slice(1, 6); // หยิบเช็ก 5 ข่าวล่าสุดต่อรอบ
+        const data = await res.json();
+        if (!data || !data.items || !Array.isArray(data.items)) return [];
         
-        return items.map(item => {
-            // 🚀 ปรับปรุง Regex สกัดคำ: ใช้การกวาดข้อความภาพรวมแล้วสั่งล้างสัญลักษณ์ CDATA ทิ้งทีหลัง เพื่อกันปัญหาเว้นบรรทัดพัง
-            const title = (item.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/<!\[CDATA\[|\]\]>/gi, '').trim();
-            const link = (item.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || '').replace(/<!\[CDATA\[|\]\]>/gi, '').trim();
-            let summaryText = (item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || '').replace(/<!\[CDATA\[|\]\]>/gi, '');
-            
+        // ดึงมาเฉพาะ 4 ข่าวใหม่ล่าสุดของแต่ละแหล่งข่าวเพื่อประหยัด Tokens
+        return data.items.slice(0, 4).map(item => {
+            let summaryText = item.description || item.content || '';
+            // ล้างแท็ก HTML และคุมความยาวสรุปเนื้อข่าว
             summaryText = summaryText.replace(/<\/?[^>]+(>|$)/g, "").substring(0, 200).trim();
-
+            
             return {
-                title: title,
-                link: link,
+                title: (item.title || '').trim(),
+                link: (item.link || '').trim(),
                 summary: summaryText || 'คลิกเปิดกล่องเครื่องมือ KODA AI เพื่อสั่งวิเคราะห์ผลกระทบเชิงลึกทางภูมิรัฐศาสตร์',
                 source: sourceName,
-                created_at: new Date().toISOString()
+                created_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()
             };
         }).filter(news => news.title && news.link);
     } catch (e) {
-        console.error(`[RSS Fetch Error] Source: ${sourceName} ->`, e.message);
+        console.error(`[Proxy Fetch Failure] Source: ${sourceName} ->`, e.message);
         return [];
     }
 }
@@ -84,16 +73,14 @@ export default async function handler(req, res) {
             { name: 'BBC News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml' }
         ];
 
-        const allFeeds = await Promise.all(sources.map(s => fetchNewsFromRss(s.url, s.name)));
+        // ยิงกวาดฟีดข่าวผ่าน Proxy พร้อมกันทั้งหมด
+        const allFeeds = await Promise.all(sources.map(s => fetchNewsViaProxy(s.url, s.name)));
         const aggregatedNews = allFeeds.flat();
 
         let savedCount = 0;
-        
-        // 💡 หมายเหตุ: หากชื่อตารางในฐานข้อมูลของคุณใช้ "world-news" (ขีดกลาง) ให้สลับมาแก้เครื่องหมายตรงนี้ครับ
-        const tableName = 'world_news'; 
+        const tableName = 'world_news';
 
         for (let news of aggregatedNews) {
-            // ตรวจสอบข่าวซ้ำในคลังด้วย link
             const { data: exists } = await supabase.from(tableName).select('id').eq('link', news.link).maybeSingle();
             
             if (!exists) {
@@ -109,11 +96,11 @@ export default async function handler(req, res) {
                 }]);
                 
                 savedCount++;
-                if (savedCount >= 4) break; // ดึงรอบละ 4 ข่าวใหม่พอ เพื่อป้องกัน Tokens วิ่งชนเพดานไว
+                if (savedCount >= 4) break; // จำกัดการแปลรอบละ 4 ข่าวใหม่
             }
         }
 
-        // ⚔️ บังคับคุมจำนวนข้อมูลท้ายตาราง ล็อกยอดไว้ไม่เกิน 15 ข่าวล่าสุดเสมอ
+        // ⚔️ กฎควบคุมฐานข้อมูล: ล็อกยอดข่าวเก่า-ใหม่รวมกันแน่นๆ ไม่เกิน 15 ข่าวล่าสุด
         const { data: totalNews } = await supabase
             .from(tableName)
             .select('id')
@@ -124,7 +111,7 @@ export default async function handler(req, res) {
             await supabase.from(tableName).delete().in('id', idsToDelete);
         }
 
-        // 🚀 ดึงชุดข้อมูล 15 ข่าวล่าสุดที่อัปเดตเรียบร้อย ส่งยัดใส่คีย์ data กลับไปให้หน้าบ้านโหลดทำงานทันที
+        // ดึงชุดข้อมูลข่าวล่าสุด 15 แถวส่งกลับไปให้ไฟล์ world-news.js หน้าบ้านประมวลผลทันที
         const { data: freshNewsData } = await supabase
             .from(tableName)
             .select('*')
