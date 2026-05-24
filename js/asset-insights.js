@@ -5,6 +5,28 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (symbol.includes(':') || symbol === 'XAUUSD') return;
 
+    const normalizeAiSummaryHtml = (html) => {
+        const template = document.createElement('template');
+        template.innerHTML = html || 'ไม่มีข้อมูลบทวิเคราะห์บริษัทนี้ในระบบ';
+
+        template.content.querySelectorAll('div').forEach(div => {
+            const text = div.textContent || '';
+            const inlineStyle = div.getAttribute('style') || '';
+            const isFutureBlock = div.dataset.kodaBlock === 'future-catalysts' ||
+                /โอกาสในอนาคต|Future Catalysts/i.test(text) ||
+                /rgba\(52,\s*168,\s*235|#34a8eb/i.test(inlineStyle);
+
+            if (isFutureBlock) {
+                div.removeAttribute('style');
+                div.removeAttribute('data-koda-block');
+                div.classList.add('koda-future-card');
+                div.querySelectorAll('[style]').forEach(child => child.removeAttribute('style'));
+            }
+        });
+
+        return template.innerHTML;
+    };
+
     const fetchKodaAiSummary = async () => {
         const contentEl = document.getElementById('ai-company-content');
         const dateEl = document.getElementById('ai-summary-date');
@@ -26,8 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const stockData = result.data;
                 
                 contentEl.innerHTML = `
-                    <div class="text-slate-300 text-sm leading-relaxed space-y-4 font-medium">
-                        ${stockData.ai_summary || 'ไม่มีข้อมูลบทวิเคราะห์บริษัทนี้ในระบบ'}
+                    <div class="koda-ai-summary text-sm font-medium">
+                        ${normalizeAiSummaryHtml(stockData.ai_summary)}
                     </div>
                 `;
                 
