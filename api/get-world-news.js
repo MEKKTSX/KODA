@@ -213,7 +213,7 @@ async function insertNewItems(supabase, newsItems, geminiKeys) {
         const { data: exists, error: existsError } = await supabase
             .from(TABLE_NAME)
             .select('id')
-            .eq('link', news.link)
+            .eq('source_url', news.link)
             .maybeSingle();
 
         if (existsError) {
@@ -226,9 +226,11 @@ async function insertNewItems(supabase, newsItems, geminiKeys) {
         const thaiTitle = await translateHeadlineToThai(news.title, news.source, currentKey);
         const { error: insertError } = await supabase.from(TABLE_NAME).insert([{
             title: thaiTitle,
-            link: news.link,
             summary: news.summary,
-            source: news.source,
+            source_url: news.link,
+            source_name: news.source,
+            news_type: news.source.includes('Trump') ? 'truth' : 'geo',
+            published_time: news.created_at,
             created_at: news.created_at
         }]);
 
