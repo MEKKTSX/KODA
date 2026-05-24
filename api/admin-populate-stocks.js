@@ -1,6 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+function getSupabaseClient() {
+    const url = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !serviceKey) {
+        throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    return createClient(url, serviceKey);
+}
 
 async function generateAiSummary(symbol, companyName, industry, apiKey) {
     // แนะนำให้ใช้ตัวนี้ครับ (เสถียรสุด ทราฟฟิกเซิร์ฟเวอร์โล่ง)
@@ -46,7 +55,7 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     
-    const rawFhKeys = process.env.FINNHUB_KEY_KEYS || '';
+    const rawFhKeys = process.env.FINNHUB_API_KEYS || process.env.FINNHUB_KEY_KEYS || process.env.FINNHUB_API_KEY || '';
     const fhKey = rawFhKeys.split(',')[0].trim();
     
     // โหลดคีย์ Gemini ทั้งหมดมาเตรียมไว้เป็น Array
@@ -54,6 +63,8 @@ export default async function handler(req, res) {
     const keysArray = rawGeminiKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
 
     try {
+        const supabase = getSupabaseClient();
+
         // 🚀 1. ดึงรายชื่อหุ้นทั้งหมด (ทะลุลิมิต 1,000 ตัวด้วยลูป Range)
         let dbTickers = [];
         let startFrom = 0;

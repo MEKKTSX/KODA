@@ -1,130 +1,320 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const TABLE_NAME = 'world_news';
+const MAX_RETURNED_NEWS = 20;
+const MAX_NEW_INSERTS_PER_RUN = 12;
+const REQUEST_TIMEOUT_MS = 10000;
 
-// 🧠 ฟังก์ชันใช้ Gemini แปลและสรุปจั่วหัวข่าวเป็นภาษาไทยแบบกระชับสั้นๆ
+function getSupabaseClient() {
+    const url = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !serviceKey) {
+        throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    return createClient(url, serviceKey);
+}
+
+function decodeEntities(value = '') {
+    return value
+        .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+}
+
+function stripHtml(value = '') {
+    return decodeEntities(value)
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeDate(value) {
+    const parsed = value ? new Date(value) : new Date();
+    if (Number.isNaN(parsed.getTime()) || parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+        return new Date().toISOString();
+    }
+    return parsed.toISOString();
+}
+
+function tagValue(xml, tagName) {
+    const pattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, 'i');
+    return decodeEntities(xml.match(pattern)?.[1] || '').trim();
+}
+
+function parseXmlFeed(xml, sourceName) {
+    const blocks = xml.match(/<item[\s\S]*?<\/item>|<entry[\s\S]*?<\/entry>/gi) || [];
+
+    return blocks.slice(0, 8).map(block => {
+        const title = stripHtml(tagValue(block, 'title'));
+        const summary = stripHtml(
+            tagValue(block, 'description') ||
+            tagValue(block, 'content:encoded') ||
+            tagValue(block, 'content') ||
+            tagValue(block, 'summary')
+        ).substring(0, 260);
+
+        let link = tagValue(block, 'link');
+        if (!link) {
+            link = block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1] || '';
+        }
+
+        const pubDate =
+            tagValue(block, 'pubDate') ||
+            tagValue(block, 'published') ||
+            tagValue(block, 'updated') ||
+            tagValue(block, 'dc:date');
+
+        return {
+            title,
+            link: stripHtml(link),
+            summary: summary || 'Open KODA AI analysis for deeper context on this event.',
+            source: sourceName,
+            created_at: normalizeDate(pubDate)
+        };
+    }).filter(item => item.title && item.link);
+}
+
+function normalizeProxyItems(items, sourceName) {
+    return items.slice(0, 8).map(item => ({
+        title: stripHtml(item.title || ''),
+        link: (item.link || item.guid || '').trim(),
+        summary: stripHtml(item.description || item.content || item.content_text || '').substring(0, 260) ||
+            'Open KODA AI analysis for deeper context on this event.',
+        source: sourceName,
+        created_at: normalizeDate(item.pubDate || item.published || item.updated)
+    })).filter(item => item.title && item.link);
+}
+
+async function fetchWithTimeout(url) {
+    return fetch(url, {
+        headers: {
+            'User-Agent': 'KODA-NewsBot/1.0 (+https://github.com/MEKKTSX/KODA)',
+            'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, application/json, */*'
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+}
+
+async function fetchDirectFeed(feedUrl, sourceName) {
+    const response = await fetchWithTimeout(feedUrl);
+    if (!response.ok) {
+        throw new Error(`Direct feed returned ${response.status}`);
+    }
+
+    const text = await response.text();
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('json') || text.trim().startsWith('{')) {
+        const data = JSON.parse(text);
+        return normalizeProxyItems(data.items || data.entries || [], sourceName);
+    }
+
+    return parseXmlFeed(text, sourceName);
+}
+
+async function fetchProxyFeed(feedUrl, sourceName) {
+    const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&_=${Date.now()}`;
+    const response = await fetchWithTimeout(proxyUrl);
+    if (!response.ok) {
+        throw new Error(`rss2json returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    return normalizeProxyItems(data.items || [], sourceName);
+}
+
+async function fetchSource(source) {
+    const feedUrls = [source.url, ...(source.fallbackUrls || [])];
+    const errors = [];
+
+    for (const feedUrl of feedUrls) {
+        for (const loader of [fetchDirectFeed, fetchProxyFeed]) {
+            try {
+                const items = await loader(feedUrl, source.name);
+                if (items.length > 0) {
+                    return items;
+                }
+            } catch (error) {
+                errors.push(`${feedUrl}: ${error.message}`);
+            }
+        }
+    }
+
+    console.warn(`[News Fetch Failure] ${source.name}`, errors);
+    return [];
+}
+
+function dedupeNews(items) {
+    const seen = new Set();
+    const unique = [];
+
+    for (const item of items) {
+        const key = (item.link || item.title).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(item);
+    }
+
+    return unique.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function interleaveFeeds(feeds) {
+    const mixed = [];
+    const maxLength = Math.max(0, ...feeds.map(feed => feed.length));
+
+    for (let index = 0; index < maxLength; index++) {
+        for (const feed of feeds) {
+            if (feed[index]) mixed.push(feed[index]);
+        }
+    }
+
+    return dedupeNews(mixed);
+}
+
 async function translateHeadlineToThai(englishTitle, sourceName, apiKey) {
+    if (!apiKey) return englishTitle;
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
-    
-    const prompt = `คุณคือบรรณาธิการข่าวการเงินและการลงทุนระดับโลก 
-    โปรดแปลและเรียบเรียงจั่วหัวข่าวภาษาอังกฤษต่อไปนี้ ให้เป็น "ภาษาไทยที่กระชับ สั้นพาดหัวได้ในประโยคเดียว" 
-    อ่านแล้วเข้าใจทันที ตรงไปตรงมา ห้ามเติมสีสันหรือใช้น้ำเยอะ
+    const prompt = `Translate this finance/world-news headline into concise Thai. Return only one Thai headline, no quotes, no prefix.
 
-    ข่าวจากแหล่งข่าว: ${sourceName}
-    จั่วหัวอังกฤษ: ${englishTitle}
-
-    ตอบกลับเป็นข้อความภาษาไทยสั้นๆ ล้วน ห้ามมีเครื่องหมายคำพูด ห้ามมีคำเกริ่นนำใดๆ ทั้งสิ้น`;
+Source: ${sourceName}
+Headline: ${englishTitle}`;
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
         });
+
+        if (!response.ok) return englishTitle;
+
         const data = await response.json();
-        return data.candidates[0].content.parts[0].text.trim();
-    } catch (e) {
-        return englishTitle; 
+        return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || englishTitle;
+    } catch {
+        return englishTitle;
     }
 }
 
-// 🚀 ถอดแบบกลไกดึงข้อมูลจากชุดโค้ดเก่า: ดึงผ่าน rss2json proxy เพื่อเลี่ยงการโดน Cloudflare บล็อกบน Vercel
-async function fetchNewsViaProxy(feedUrl, sourceName) {
-    try {
-        const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&_=${Date.now()}`;
-        const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-        
-        if (!res.ok) return [];
-        
-        const data = await res.json();
-        if (!data || !data.items || !Array.isArray(data.items)) return [];
-        
-        // ดึงมาเฉพาะ 4 ข่าวใหม่ล่าสุดของแต่ละแหล่งข่าวเพื่อประหยัด Tokens
-        return data.items.slice(0, 4).map(item => {
-            let summaryText = item.description || item.content || '';
-            // ล้างแท็ก HTML และคุมความยาวสรุปเนื้อข่าว
-            summaryText = summaryText.replace(/<\/?[^>]+(>|$)/g, "").substring(0, 200).trim();
-            
-            return {
-                title: (item.title || '').trim(),
-                link: (item.link || '').trim(),
-                summary: summaryText || 'คลิกเปิดกล่องเครื่องมือ KODA AI เพื่อสั่งวิเคราะห์ผลกระทบเชิงลึกทางภูมิรัฐศาสตร์',
-                source: sourceName,
-                created_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()
-            };
-        }).filter(news => news.title && news.link);
-    } catch (e) {
-        console.error(`[Proxy Fetch Failure] Source: ${sourceName} ->`, e.message);
-        return [];
+async function insertNewItems(supabase, newsItems, geminiKeys) {
+    let savedCount = 0;
+    const errors = [];
+
+    for (const news of newsItems) {
+        if (savedCount >= MAX_NEW_INSERTS_PER_RUN) break;
+
+        const { data: exists, error: existsError } = await supabase
+            .from(TABLE_NAME)
+            .select('id')
+            .eq('link', news.link)
+            .maybeSingle();
+
+        if (existsError) {
+            errors.push(`lookup failed for ${news.link}: ${existsError.message}`);
+            continue;
+        }
+        if (exists) continue;
+
+        const currentKey = geminiKeys[savedCount % Math.max(geminiKeys.length, 1)];
+        const thaiTitle = await translateHeadlineToThai(news.title, news.source, currentKey);
+        const { error: insertError } = await supabase.from(TABLE_NAME).insert([{
+            title: thaiTitle,
+            link: news.link,
+            summary: news.summary,
+            source: news.source,
+            created_at: news.created_at
+        }]);
+
+        if (insertError) {
+            errors.push(`insert failed for ${news.link}: ${insertError.message}`);
+            continue;
+        }
+
+        savedCount++;
     }
+
+    return { savedCount, errors };
+}
+
+async function pruneOldNews(supabase) {
+    const { data, error } = await supabase
+        .from(TABLE_NAME)
+        .select('id')
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Supabase prune lookup failed: ${error.message}`);
+    if (!data || data.length <= MAX_RETURNED_NEWS) return;
+
+    const idsToDelete = data.slice(MAX_RETURNED_NEWS).map(item => item.id);
+    const { error: deleteError } = await supabase.from(TABLE_NAME).delete().in('id', idsToDelete);
+    if (deleteError) throw new Error(`Supabase prune delete failed: ${deleteError.message}`);
+}
+
+async function getLatestNews(supabase) {
+    const { data, error } = await supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(MAX_RETURNED_NEWS);
+
+    if (error) throw new Error(`Supabase latest news lookup failed: ${error.message}`);
+    return data || [];
 }
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    
-    const rawGeminiKeys = process.env.GEMINI_API_KEYS || '';
-    const keysArray = rawGeminiKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
 
     try {
+        const supabase = getSupabaseClient();
+        const geminiKeys = (process.env.GEMINI_API_KEYS || '')
+            .split(',')
+            .map(key => key.trim())
+            .filter(Boolean);
+
         const sources = [
-            { name: 'Donald Trump (Truth Social)', url: 'https://rsshub.app/truthsocial/user/realDonaldTrump' },
-            { name: 'Seeking Alpha', url: 'https://seekingalpha.com/feed.xml' },
+            {
+                name: 'Donald Trump (Truth Social)',
+                url: 'https://rsshub.app/truthsocial/user/realDonaldTrump',
+                fallbackUrls: ['https://www.trumpstruth.org/feed']
+            },
+            { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+            { name: 'CNBC World', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362' },
+            { name: 'The Guardian World', url: 'https://www.theguardian.com/world/rss' },
             { name: 'Investing.com', url: 'https://www.investing.com/rss/news.rss' },
-            { name: 'BBC News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml' }
+            { name: 'Seeking Alpha', url: 'https://seekingalpha.com/feed.xml' }
         ];
 
-        // ยิงกวาดฟีดข่าวผ่าน Proxy พร้อมกันทั้งหมด
-        const allFeeds = await Promise.all(sources.map(s => fetchNewsViaProxy(s.url, s.name)));
-        const aggregatedNews = allFeeds.flat();
+        const fetchedFeeds = await Promise.all(sources.map(fetchSource));
+        const aggregatedNews = interleaveFeeds(fetchedFeeds);
+        const { savedCount, errors } = await insertNewItems(supabase, aggregatedNews, geminiKeys);
 
-        let savedCount = 0;
-        const tableName = 'world_news';
+        await pruneOldNews(supabase);
+        const freshNewsData = await getLatestNews(supabase);
 
-        for (let news of aggregatedNews) {
-            const { data: exists } = await supabase.from(tableName).select('id').eq('link', news.link).maybeSingle();
-            
-            if (!exists) {
-                const currentKey = keysArray[Math.floor(Math.random() * keysArray.length)];
-                const thaiTitle = await translateHeadlineToThai(news.title, news.source, currentKey);
-                
-                await supabase.from(tableName).insert([{
-                    title: thaiTitle,
-                    link: news.link,
-                    summary: news.summary,
-                    source: news.source,
-                    created_at: news.created_at
-                }]);
-                
-                savedCount++;
-                if (savedCount >= 4) break; // จำกัดการแปลรอบละ 4 ข่าวใหม่
-            }
-        }
-
-        // ⚔️ กฎควบคุมฐานข้อมูล: ล็อกยอดข่าวเก่า-ใหม่รวมกันแน่นๆ ไม่เกิน 15 ข่าวล่าสุด
-        const { data: totalNews } = await supabase
-            .from(tableName)
-            .select('id')
-            .order('created_at', { ascending: false });
-
-        if (totalNews && totalNews.length > 15) {
-            const idsToDelete = totalNews.slice(15).map(item => item.id);
-            await supabase.from(tableName).delete().in('id', idsToDelete);
-        }
-
-        // ดึงชุดข้อมูลข่าวล่าสุด 15 แถวส่งกลับไปให้ไฟล์ world-news.js หน้าบ้านประมวลผลทันที
-        const { data: freshNewsData } = await supabase
-            .from(tableName)
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(15);
-
-        return res.status(200).json({ 
-            success: true, 
-            data: freshNewsData || [], 
-            processed: savedCount 
+        return res.status(200).json({
+            success: true,
+            data: freshNewsData,
+            processed: savedCount,
+            fetched: aggregatedNews.length,
+            sources: sources.map((source, index) => ({
+                name: source.name,
+                count: fetchedFeeds[index]?.length || 0
+            })),
+            warnings: errors
         });
-
     } catch (err) {
+        console.error('[World News Pipeline Error]', err);
         return res.status(500).json({ success: false, error: err.message });
     }
 }
