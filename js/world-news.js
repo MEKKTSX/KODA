@@ -110,49 +110,79 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 📌 3. ดึงข่าวจัดทำ Timeline (ผสานข่าวโลก + Truth Social)
     // ==========================================
+    const formatTimelineNews = (items) => items.map(n => {
+        const pubDate = new Date(n.published_time || n.created_at);
+        const dateStr = pubDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+        const timeStr = pubDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+        const source = n.source_name || n.source || 'World News';
+        const url = n.source_url || n.link || '#';
+        const newsType = (n.news_type || '').toLowerCase();
+        const isTruth = newsType === 'truth' || /trump|truthsocial|trumpstruth/i.test(`${source} ${url}`);
+
+        return {
+            title: n.title,
+            summary: n.summary || 'คลิกเพื่อเปิดกล่องเครื่องมือ AI สั่งวิเคราะห์เจาะลึกสถานการณ์เชิงภูมิรัฐศาสตร์',
+            url,
+            source,
+            time: pubDate.getTime() || Math.floor(Math.random() * 100000),
+            timeStr: `${dateStr} • ${timeStr}`,
+            newsType: isTruth ? 'truth' : (newsType || 'geo')
+        };
+    });
+
+    const loadTimelineFromApi = async (url) => {
+        const res = await fetch(url);
+        const result = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            throw new Error(result.error || `Backend pipeline failed with HTTP ${res.status}`);
+        }
+        if (!result || !result.success || !Array.isArray(result.data)) {
+            throw new Error("Backend pipeline failed");
+        }
+
+        return result;
+    };
+
+    const renderTimelineResult = (result) => {
+        if (result.data.length === 0) {
+            timelineContainer.innerHTML = `<p class="text-slate-500 text-xs text-center font-bold py-10">No world news in Supabase yet. Syncing live sources...</p>`;
+            return false;
+        }
+
+        renderTimeline(formatTimelineNews(result.data));
+        return true;
+    };
+
     const fetchTimeline = async (forceRefresh = false) => {
         timelineContainer.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
-                <span class="material-symbols-outlined animate-spin text-[32px] text-danger">progress_activity</span>
-                <span class="text-xs font-bold uppercase tracking-widest text-slate-400">KODA Syncing Live Pipeline...</span>
+            <div class="flex flex-col items-center justify-center py-8 gap-3 text-slate-500">
+                <span class="material-symbols-outlined animate-spin text-[28px] text-danger">progress_activity</span>
+                <span class="text-xs font-bold uppercase tracking-widest text-slate-400">Loading latest saved intel...</span>
             </div>
         `;
         try {
-            const res = await fetch(`/api/get-world-news?_=${Date.now()}`);
-            const result = await res.json().catch(() => ({}));
+            const cachedResult = await loadTimelineFromApi(`/api/get-world-news?cache=1&_=${Date.now()}`);
+            const hasCachedNews = renderTimelineResult(cachedResult);
 
-            if (!res.ok) {
-                throw new Error(result.error || `Backend pipeline failed with HTTP ${res.status}`);
+            const shouldSync = forceRefresh || true;
+            if (!shouldSync) return;
+
+            if (!hasCachedNews) {
+                timelineContainer.insertAdjacentHTML('beforeend', `
+                    <div class="flex items-center justify-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest pb-8">
+                        <span class="material-symbols-outlined animate-spin text-[14px]">progress_activity</span> Syncing feeds
+                    </div>
+                `);
             }
-            
-            if (result && result.success && Array.isArray(result.data)) {
-                if (result.data.length === 0) {
-                    timelineContainer.innerHTML = `<p class="text-slate-500 text-xs text-center font-bold py-10">No world news in Supabase yet. Try refreshing again in a moment.</p>`;
-                    return;
-                }
 
-                // 🚀 🛠️ สร้างท่อแปลง Data หลังบ้าน ให้ตรงกับโครงสร้างที่ฟังก์ชัน renderTimeline ต้องการ
-                const formattedNews = result.data.map(n => {
-                    const pubDate = new Date(n.created_at);
-                    const dateStr = pubDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-                    const timeStr = pubDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-                    
-                    return {
-                        title: n.title,
-                        summary: n.summary || 'คลิกเพื่อเปิดกล่องเครื่องมือ AI สั่งวิเคราะห์เจาะลึกสถานการณ์เชิงภูมิรัฐศาสตร์',
-                        url: n.link || '#', // 🔗 แปลงคีย์ link ในฐานข้อมูล เข้าคีย์ url ของหน้าบ้าน
-                        source: n.source || 'World News',
-                        time: pubDate.getTime() || Math.floor(Math.random() * 100000), // สร้างเลข ID แสตมป์เวลาให้คลาส CSS
-                        timeStr: `${dateStr} • ${timeStr}`,
-                        newsType: (n.source && n.source.includes('Trump')) ? 'truth' : 'geo' // ตรวจสอบแหล่งที่มาเพื่อจัดกลุ่มประเภทข่าว
-                    };
-                });
-
-                // ส่งข้อมูลที่แปลงรูปแปลงร่างเรียบร้อยแล้วไปวาดหน้าจอ UI
-                renderTimeline(formattedNews); 
-            } else {
-                throw new Error("Backend pipeline failed");
-            }
+            loadTimelineFromApi(`/api/get-world-news?_=${Date.now()}`)
+                .then(syncResult => {
+                    if (syncResult.processed > 0 || !hasCachedNews) {
+                        renderTimelineResult(syncResult);
+                    }
+                })
+                .catch(error => console.warn("Background news sync failed:", error));
         } catch (error) {
             console.error("Timeline Render Error:", error);
             timelineContainer.innerHTML = `<div class="text-center py-10 px-4">
@@ -164,21 +194,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderTimeline = (newsList) => {
         timelineContainer.innerHTML = newsList.map(n => {
-            const isTruth = n.newsType === 'truth';
+            const isTruth = n.newsType === 'truth' || /trump|truthsocial|trumpstruth/i.test(`${n.source} ${n.url}`);
             const isDanger = !isTruth && /war|attack|missile|strike|ยิง|สงคราม|โจมตี|ขีปนาวุธ|ปะทะ|คว่ำบาตร|วิกฤต/i.test(n.title);
             const dotColor = isTruth ? '#8b5cf6' : (isDanger ? '#ff4d4d' : '#34a8eb');
+            const cardClass = isTruth
+                ? 'border-purple-500/70 shadow-[0_0_22px_rgba(139,92,246,0.25)] bg-purple-500/5 hover:border-purple-400'
+                : 'border-border-dark shadow-sm hover:border-danger/50';
+            const timeClass = isTruth
+                ? 'text-purple-300 border-purple-500/30 bg-purple-500/10'
+                : (isDanger ? 'text-danger border-border-dark/50 bg-background-dark' : 'text-primary border-border-dark/50 bg-background-dark');
 
             const sourceHtml = isTruth 
-                ? `<span class="bg-purple-500/20 text-purple-400 text-[9px] px-2 py-0.5 rounded font-black tracking-widest uppercase border border-purple-500/30 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">campaign</span> @realDonaldTrump</span>`
+                ? `<span class="bg-purple-500/25 text-purple-300 text-[9px] px-2 py-0.5 rounded font-black tracking-widest uppercase border border-purple-400/40 flex items-center gap-1 shadow-[0_0_10px_rgba(139,92,246,0.22)]"><span class="material-symbols-outlined text-[12px]">campaign</span> @realDonaldTrump</span>`
                 : `<span class="text-slate-500 text-[9px] uppercase font-bold">${n.source}</span>`;
 
             return `
             <div class="relative mb-6 group cursor-pointer" onclick="window.openWorldModal(\`${encodeURIComponent(n.title)}\`, \`${encodeURIComponent(n.summary)}\`, \`${encodeURIComponent(n.url)}\`, \`${encodeURIComponent(n.source)}\`, \`${encodeURIComponent(n.timeStr)}\`, \`${n.newsType}\`)">
                 <style>.dot-${n.time}:before { background-color: ${dotColor}; border-color: ${isTruth ? 'rgba(139,92,246,0.3)' : (isDanger ? 'rgba(255,77,77,0.3)' : 'rgba(52,168,235,0.3)')}; border-width: 3px; left: -22px; width: 12px; height: 12px; z-index: 0 !important; }</style>
                 <div class="timeline-dot dot-${n.time}"></div>
-                <div class="bg-surface-dark border ${isTruth ? 'border-purple-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]' : 'border-border-dark shadow-sm'} p-3 rounded-xl hover:border-${isTruth ? 'purple-500' : 'danger/50'} transition-all">
+                <div class="bg-surface-dark border ${cardClass} p-3 rounded-xl transition-all">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-${isTruth ? 'purple-400' : (isDanger ? 'danger' : 'primary')} text-[11px] font-black tracking-widest bg-background-dark px-2 py-0.5 rounded border border-border-dark/50">${n.timeStr}</span>
+                        <span class="${timeClass} text-[11px] font-black tracking-widest px-2 py-0.5 rounded border">${n.timeStr}</span>
                         ${sourceHtml}
                     </div>
                     <h4 class="text-white text-sm font-bold leading-snug line-clamp-2">${n.title}</h4>
