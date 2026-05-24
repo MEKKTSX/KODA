@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // 🔑 1. ระบบ API Key Pool (สลับอัตโนมัติเมื่อติด Limit)
-    const GEMINI_API_KEYS = window.ENV_KEYS.GEMINI;
+    const GEMINI_API_KEYS = Array.isArray(window.ENV_KEYS?.GEMINI) ? window.ENV_KEYS.GEMINI : [];
     
     let currentKeyIdx = 0; 
 
@@ -40,6 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 📌 2. ฟังก์ชันดึง AI แบบฉลาด (ล้างข้อจำกัดที่ทำให้เกิด Error 400)
     // ==========================================
     const fetchGeminiAPI = async (prompt, isJson = false) => {
+        if (GEMINI_API_KEYS.length === 0) {
+            throw new Error("No Gemini API keys configured");
+        }
+
         let retries = 3;
 
         while (retries > 0) {
@@ -115,9 +119,18 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         try {
             const res = await fetch(`/api/get-world-news?_=${Date.now()}`);
-            const result = await res.json();
+            const result = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                throw new Error(result.error || `Backend pipeline failed with HTTP ${res.status}`);
+            }
             
-            if (result && result.success && result.data) {
+            if (result && result.success && Array.isArray(result.data)) {
+                if (result.data.length === 0) {
+                    timelineContainer.innerHTML = `<p class="text-slate-500 text-xs text-center font-bold py-10">No world news in Supabase yet. Try refreshing again in a moment.</p>`;
+                    return;
+                }
+
                 // 🚀 🛠️ สร้างท่อแปลง Data หลังบ้าน ให้ตรงกับโครงสร้างที่ฟังก์ชัน renderTimeline ต้องการ
                 const formattedNews = result.data.map(n => {
                     const pubDate = new Date(n.created_at);
@@ -142,7 +155,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("Timeline Render Error:", error);
-            timelineContainer.innerHTML = `<p class="text-danger text-xs text-center font-bold">Error connecting to KODA Pipeline.</p>`;
+            timelineContainer.innerHTML = `<div class="text-center py-10 px-4">
+                <p class="text-danger text-xs font-bold">Error connecting to KODA Pipeline.</p>
+                <p class="text-slate-500 text-[10px] mt-2 break-words">${error.message || 'Unknown backend error'}</p>
+            </div>`;
         }
     };
 
