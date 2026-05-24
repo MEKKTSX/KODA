@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const TABLE_NAME = 'world_news';
-const MAX_RETURNED_NEWS = 20;
+const MAX_RETURNED_NEWS = 15;
 const MAX_NEW_INSERTS_PER_RUN = 12;
 const REQUEST_TIMEOUT_MS = 10000;
 
@@ -279,10 +279,25 @@ export default async function handler(req, res) {
 
     try {
         const supabase = getSupabaseClient();
+        const cacheOnly = req.query?.cache === '1' || req.query?.mode === 'cache';
         const geminiKeys = (process.env.GEMINI_API_KEYS || '')
             .split(',')
             .map(key => key.trim())
             .filter(Boolean);
+
+        if (cacheOnly) {
+            await pruneOldNews(supabase);
+            const freshNewsData = await getLatestNews(supabase);
+
+            return res.status(200).json({
+                success: true,
+                data: freshNewsData,
+                processed: 0,
+                fetched: 0,
+                cacheOnly: true,
+                warnings: []
+            });
+        }
 
         const sources = [
             {
