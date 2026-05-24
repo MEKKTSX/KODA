@@ -25,7 +25,7 @@ async function generateAiSummary(symbol, companyName, industry, apiKey) {
     <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🏢 ทำธุรกิจอะไร (Core Business):</strong> [เนื้อหาเจาะลึก]</div>
     <div style="margin-bottom: 14px; line-height: 1.6;"><strong>🌐 Ecosystem & รายได้ (How they make money):</strong> [เนื้อหาเจาะลึก]</div>
     <div style="margin-bottom: 14px; line-height: 1.6;"><strong>⚔️ จุดเด่น / คู่แข่ง (Moat & Competitors):</strong> [เนื้อหาเจาะลึก]</div>
-    <div style="padding: 14px; background: rgba(52,168,235,0.1); border-radius: 12px; border: 1px solid rgba(52,168,235,0.3); color: #34a8eb; margin-top: 16px; line-height: 1.6;"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เนื้อหาเจาะลึก]</div>`;
+    <div data-koda-block="future-catalysts"><strong>💡 โอกาสในอนาคต (Future Catalysts):</strong> [เนื้อหาเจาะลึก]</div>`;
 
     try {
         const response = await fetch(url, {
