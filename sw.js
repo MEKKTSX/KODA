@@ -11,7 +11,7 @@ const urlsToCache = [
   '/css/koda-shell.css',
   '/js/tailwind-config.js',
   '/js/layout.js',
-  '/koda.png'
+  '/KODA.png'
 ];
 
 self.addEventListener('install', event => {

@@ -322,19 +322,17 @@
     </script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-      for(let registration of registrations) {
-        registration.unregister(); // 🚀 สั่งฆ่า SW ตัวเก่าที่ค้างอยู่ในเครื่องทิ้งซะ
-        console.log('Service Worker Unregistered (Cache Cleared)');
-      }
-    });
-      setTimeout(() => {
-            if (typeof window.renderWatchlist === 'function') {
-                window.renderWatchlist();
-            }
-        }, 800); 
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker registered successfully!', reg))
+        .catch(err => console.error('Service Worker registration failed:', err));
     });
   }
+  setTimeout(() => {
+    if (typeof window.renderWatchlist === 'function') {
+      window.renderWatchlist();
+    }
+  }, 800);
 </script>
     
 <div id="modal-manage-categories" class="fixed inset-0 z-[100] hidden items-center justify-center bg-background-dark/80 backdrop-blur-sm transition-opacity opacity-0 pb-10">
