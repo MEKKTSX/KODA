@@ -29,17 +29,25 @@
 
     <main class="flex-1 overflow-y-auto pb-28 px-4 lg:px-0 pt-6 space-y-6 max-w-2xl lg:max-w-3xl">
         
-        <section id="profile-section" class="bg-surface-dark border border-border-dark rounded-2xl p-4 flex items-center gap-4">
-            <div class="relative">
-                <div class="size-16 rounded-full bg-gradient-to-tr from-slate-500 to-slate-700 p-0.5">
-                    <div class="size-full bg-background-dark rounded-full flex items-center justify-center overflow-hidden">
-                        <span class="material-symbols-outlined text-3xl text-slate-300">person</span>
+        <section id="profile-section" class="bg-surface-dark border border-border-dark rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-4 transition-all duration-300 hover:border-slate-700/50 shadow-lg">
+            <div class="relative shrink-0">
+                <div class="size-20 rounded-full bg-gradient-to-tr from-primary to-fuchsia-500 p-[2px] shadow-[0_0_15px_rgba(37,99,235,0.25)]">
+                    <div id="profile-avatar-container" class="size-full bg-background-dark rounded-full flex items-center justify-center overflow-hidden">
+                        <span class="material-symbols-outlined text-4xl text-slate-400" id="profile-avatar-icon">person</span>
+                        <img id="profile-avatar-img" src="" class="hidden w-full h-full object-cover">
                     </div>
                 </div>
-                <div class="absolute bottom-0 right-0 size-4 bg-success border-2 border-surface-dark rounded-full"></div>
+                <div id="profile-status-dot" class="absolute bottom-0.5 right-0.5 size-4 bg-slate-500 border-2 border-surface-dark rounded-full transition-colors duration-300"></div>
             </div>
-            <div class="flex-1">
-                <h3 class="text-white text-lg font-bold">USER LOCAL</h3>
+            <div class="flex-1 text-center sm:text-left min-w-0">
+                <h3 class="text-white text-lg font-black tracking-wide truncate" id="profile-name">USER LOCAL</h3>
+                <p class="text-slate-500 text-xs font-semibold mt-1 truncate" id="profile-email">Offline Mode / Local Data Only</p>
+                <div class="flex items-center gap-2 mt-2 justify-center sm:justify-start">
+                    <span id="profile-badge" class="bg-slate-800 text-slate-400 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-border-dark flex items-center gap-1"><span class="material-symbols-outlined text-[10px]">shield</span> Local User</span>
+                </div>
+            </div>
+            <div class="shrink-0 w-full sm:w-auto" id="profile-action-container">
+                <!-- Will be dynamically loaded with login/logout buttons -->
             </div>
         </section>
 
@@ -138,18 +146,37 @@
         </div>
         
         <div class="mt-6">
-            <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3 px-2">Data Management</h3>
-            <div class="bg-surface-dark border border-border-dark rounded-2xl p-4">
-                <div class="flex items-center justify-between">
-                    <div class="pr-4">
-                        <p class="text-white text-sm font-bold">Backup & Restore</p>
-                        <p class="text-slate-500 text-[10px] mt-1 leading-snug">Export your Portfolio & Watchlist to a secure JSON file, or import to restore data.</p>
+            <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3 px-2">Cloud Sync & Backup</h3>
+            <div class="bg-surface-dark border border-border-dark rounded-2xl p-5 mb-4 shadow-lg transition-all duration-300 hover:border-slate-700/50">
+                <div id="cloud-sync-status-container" class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="text-center sm:text-left flex-1">
+                        <div class="flex items-center justify-center sm:justify-start gap-1.5 mb-1">
+                            <span class="material-symbols-outlined text-blue-400 text-[20px]">cloud_queue</span>
+                            <p class="text-white text-sm font-bold">Google Cloud Backup</p>
+                        </div>
+                        <p class="text-slate-500 text-[10px] leading-relaxed" id="cloud-sync-desc">Connect your Google Account to back up your portfolio & watchlist securely in the cloud, allowing instant sync across all your devices.</p>
+                    </div>
+                    <div id="cloud-sync-actions" class="flex w-full sm:w-auto gap-2.5 shrink-0 justify-center">
+                        <!-- Dynamic Cloud Save/Restore/Info buttons -->
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-3 px-2">Local File Management</h3>
+            <div class="bg-surface-dark border border-border-dark rounded-2xl p-5 shadow-lg transition-all duration-300 hover:border-slate-700/50">
+                <div class="flex items-center justify-between gap-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-1.5 mb-1">
+                            <span class="material-symbols-outlined text-slate-400 text-[20px]">save</span>
+                            <p class="text-white text-sm font-bold">Local JSON Files</p>
+                        </div>
+                        <p class="text-slate-500 text-[10px] leading-relaxed">Save your portfolio configurations as a local JSON file or import a backup file directly from your computer.</p>
                     </div>
                     <div class="flex gap-2 shrink-0">
-                        <button id="btn-export-data" class="bg-primary/20 text-primary hover:bg-primary hover:text-white size-9 rounded-xl transition-colors flex items-center justify-center active:scale-95" title="Export Data">
+                        <button id="btn-export-data" class="bg-slate-800 text-slate-300 hover:bg-primary/20 hover:text-primary size-9 rounded-xl transition-all flex items-center justify-center active:scale-95 border border-border-dark hover:border-primary/30" title="Export to File">
                             <span class="material-symbols-outlined text-[18px]">download</span>
                         </button>
-                        <label for="input-import-data" class="bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white size-9 rounded-xl transition-colors flex items-center justify-center cursor-pointer active:scale-95" title="Import Data">
+                        <label for="input-import-data" class="bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white size-9 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95 border border-border-dark hover:border-slate-600" title="Import from File">
                             <span class="material-symbols-outlined text-[18px]">upload</span>
                         </label>
                         <input type="file" id="input-import-data" accept=".json" class="hidden">
@@ -177,6 +204,7 @@
 </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/layout.js"></script>
 
 <script src="js/market-plus.js"></script>
@@ -299,10 +327,285 @@
   }
 </script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     
     // ==========================================
-    // 📌 ระบบ Backup & Restore Data (รองรับ V2: กราฟพอร์ต)
+    // 📌 ระบบ Cloud Backup & Supabase Auth (Google OAuth)
+    // ==========================================
+    let supabase = null;
+    
+    // สร้าง Toast แจ้งเตือนสุดล้ำ แทนการใช้ alert แบบเดิมๆ
+    const showToast = (message, type = 'success') => {
+        const existing = document.getElementById('koda-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'koda-toast';
+        const colorClass = type === 'success' 
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.15)]' 
+            : 'border-rose-500/30 bg-rose-500/10 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.15)]';
+        const icon = type === 'success' ? 'check_circle' : 'error';
+        
+        toast.className = `fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2.5 px-4 py-3 rounded-xl border ${colorClass} backdrop-blur-md transition-all duration-300 transform translate-y-4 opacity-0 text-xs font-black uppercase tracking-wider`;
+        toast.innerHTML = `<span class="material-symbols-outlined text-[18px]">${icon}</span> <span>${message}</span>`;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.remove('translate-y-4', 'opacity-0');
+        }, 10);
+
+        setTimeout(() => {
+            toast.classList.add('translate-y-4', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    };
+
+    const initSupabaseAuth = async () => {
+        await window.loadKodaConfig();
+        const keys = window.ENV_KEYS || {};
+        const url = keys.SUPABASE_URL;
+        const key = keys.SUPABASE_ANON_KEY;
+
+        if (!url || !key) {
+            console.warn("[KODA] Credentials not set in Vercel. Cloud Sync Offline.");
+            renderOfflineUI();
+            return;
+        }
+
+        try {
+            supabase = window.supabase.createClient(url, key);
+            setupAuthListener();
+        } catch (e) {
+            console.error("[KODA] Supabase init error:", e);
+            renderOfflineUI();
+        }
+    };
+
+    const renderOfflineUI = () => {
+        const cloudActions = document.getElementById('cloud-sync-actions');
+        if (cloudActions) {
+            cloudActions.innerHTML = `
+                <button disabled class="px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-slate-800 text-slate-500 border border-border-dark flex items-center gap-1 cursor-not-allowed">
+                    <span class="material-symbols-outlined text-[16px]">cloud_off</span> Offline
+                </button>
+            `;
+        }
+        document.getElementById('cloud-sync-desc').textContent = "Cloud Sync is currently offline. Please configure your Vercel Environment keys (SUPABASE_URL and SUPABASE_ANON_KEY).";
+    };
+
+    const setupAuthListener = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        renderUserUI(user);
+
+        supabase.auth.onAuthStateChange((event, session) => {
+            renderUserUI(session?.user || null);
+        });
+    };
+
+    const renderUserUI = (user) => {
+        const nameEl = document.getElementById('profile-name');
+        const emailEl = document.getElementById('profile-email');
+        const avatarContainer = document.getElementById('profile-avatar-container');
+        const avatarIcon = document.getElementById('profile-avatar-icon');
+        const avatarImg = document.getElementById('profile-avatar-img');
+        const statusDot = document.getElementById('profile-status-dot');
+        const badgeEl = document.getElementById('profile-badge');
+        const actionContainer = document.getElementById('profile-action-container');
+        const cloudActions = document.getElementById('cloud-sync-actions');
+        const cloudDesc = document.getElementById('cloud-sync-desc');
+
+        if (user) {
+            const fullName = user.user_metadata?.full_name || user.user_metadata?.name || "KODA Member";
+            const email = user.email || "";
+            const avatarUrl = user.user_metadata?.avatar_url || "";
+
+            nameEl.textContent = fullName;
+            emailEl.textContent = email;
+            statusDot.className = "absolute bottom-0.5 right-0.5 size-4 bg-emerald-500 border-2 border-surface-dark rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]";
+            badgeEl.className = "bg-blue-500/25 text-blue-400 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-blue-500/40 flex items-center gap-1 shadow-[0_0_10px_rgba(59,130,246,0.22)]";
+            badgeEl.innerHTML = `<span class="material-symbols-outlined text-[10px]">cloud</span> Cloud User`;
+
+            if (avatarUrl) {
+                avatarIcon.classList.add('hidden');
+                avatarImg.src = avatarUrl;
+                avatarImg.classList.remove('hidden');
+            } else {
+                avatarIcon.classList.remove('hidden');
+                avatarImg.classList.add('hidden');
+            }
+
+            actionContainer.innerHTML = `
+                <button id="btn-cloud-logout" class="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500/10 hover:bg-rose-500 border border-rose-500/30 hover:border-rose-500 text-rose-400 hover:text-white transition-all duration-300 flex items-center justify-center gap-1 active:scale-95">
+                    <span class="material-symbols-outlined text-[16px]">logout</span> Sign Out
+                </button>
+            `;
+            document.getElementById('btn-cloud-logout').addEventListener('click', handleLogout);
+
+            cloudActions.innerHTML = `
+                <button id="btn-cloud-backup" class="flex-1 sm:flex-initial bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-xl border border-blue-500/30 transition-all flex items-center justify-center gap-1 active:scale-95 shadow-[0_0_15px_rgba(37,99,235,0.25)]" title="Backup to Cloud">
+                    <span class="material-symbols-outlined text-[16px]">cloud_upload</span> Backup
+                </button>
+                <button id="btn-cloud-restore" class="flex-1 sm:flex-initial bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-2 px-4 rounded-xl border border-border-dark transition-all flex items-center justify-center gap-1 active:scale-95 hover:border-slate-600" title="Restore from Cloud">
+                    <span class="material-symbols-outlined text-[16px]">cloud_download</span> Restore
+                </button>
+            `;
+            cloudDesc.innerHTML = `<span class="text-emerald-400 font-black uppercase tracking-wider flex items-center gap-1 mb-1"><span class="size-2 bg-emerald-500 rounded-full animate-pulse"></span> Cloud Account Connected</span> Cloud backup & cross-device sync are active.`;
+
+            document.getElementById('btn-cloud-backup').addEventListener('click', handleCloudBackup);
+            document.getElementById('btn-cloud-restore').addEventListener('click', handleCloudRestore);
+
+        } else {
+            nameEl.textContent = "USER LOCAL";
+            emailEl.textContent = "Offline Mode / Local Data Only";
+            statusDot.className = "absolute bottom-0.5 right-0.5 size-4 bg-slate-500 border-2 border-surface-dark rounded-full";
+            badgeEl.className = "bg-slate-800 text-slate-400 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-border-dark flex items-center gap-1";
+            badgeEl.innerHTML = `<span class="material-symbols-outlined text-[10px]">shield</span> Local User`;
+            avatarIcon.classList.remove('hidden');
+            avatarImg.classList.add('hidden');
+
+            actionContainer.innerHTML = `
+                <button id="btn-cloud-login" class="w-full sm:w-auto bg-gradient-to-r from-primary to-blue-600 text-white font-bold text-xs py-2.5 px-4 rounded-xl border border-primary/30 transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-[0_0_15px_rgba(37,99,235,0.25)] hover:from-primary/95 hover:to-blue-500">
+                    <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                    </svg>
+                    <span>Login with Google</span>
+                </button>
+            `;
+            document.getElementById('btn-cloud-login').addEventListener('click', handleLogin);
+
+            cloudActions.innerHTML = `
+                <button id="btn-cloud-login-sync" class="w-full bg-slate-800 hover:bg-slate-700/80 text-slate-300 font-bold text-xs py-2 px-4 rounded-xl border border-border-dark transition-all flex items-center justify-center gap-1 active:scale-95">
+                    <span class="material-symbols-outlined text-[16px] text-primary">cloud_queue</span> Enable Cloud Sync
+                </button>
+            `;
+            cloudDesc.textContent = "Connect your Google Account to back up your portfolio & watchlist securely in the cloud, allowing instant sync across all your devices.";
+            document.getElementById('btn-cloud-login-sync').addEventListener('click', handleLogin);
+        }
+    };
+
+    const handleLogin = async () => {
+        if (!supabase) return;
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + '/config.html'
+                }
+            });
+            if (error) throw error;
+        } catch (e) {
+            console.error("[KODA] Sign in failed:", e);
+            showToast("Login failed: " + e.message, 'danger');
+        }
+    };
+
+    const handleLogout = async () => {
+        if (!supabase) return;
+        if (confirm("Are you sure you want to sign out from Google Cloud?")) {
+            try {
+                const { error } = await supabase.auth.signOut();
+                if (error) throw error;
+                showToast("Signed out successfully", 'success');
+            } catch (e) {
+                console.error("[KODA] Sign out failed:", e);
+                showToast("Sign out failed: " + e.message, 'danger');
+            }
+        }
+    };
+
+    const handleCloudBackup = async () => {
+        if (!supabase) return;
+        const backupBtn = document.getElementById('btn-cloud-backup');
+        const originalHTML = backupBtn.innerHTML;
+        
+        backupBtn.innerHTML = `<span class="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Backing up...`;
+        backupBtn.disabled = true;
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("No active session found");
+
+            const portData = localStorage.getItem('koda_portfolio_data') || '{}';
+            const equityData = localStorage.getItem('koda_equity_history') || '[]';
+
+            const { error } = await supabase
+                .from('user_backups')
+                .upsert({
+                    id: user.id,
+                    portfolio_data: JSON.parse(portData),
+                    equity_history: JSON.parse(equityData),
+                    updated_at: new Date().toISOString()
+                });
+
+            if (error) throw error;
+
+            showToast("Backup saved to Google Cloud!", 'success');
+        } catch (e) {
+            console.error("[KODA] Cloud backup failed:", e);
+            showToast("Backup failed: " + e.message, 'danger');
+        } finally {
+            backupBtn.innerHTML = originalHTML;
+            backupBtn.disabled = false;
+        }
+    };
+
+    const handleCloudRestore = async () => {
+        if (!supabase) return;
+        
+        if (confirm("Warning: Restoring will overwrite all current local portfolio and watchlist data. Do you want to proceed?")) {
+            const restoreBtn = document.getElementById('btn-cloud-restore');
+            const originalHTML = restoreBtn.innerHTML;
+            
+            restoreBtn.innerHTML = `<span class="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Restoring...`;
+            restoreBtn.disabled = true;
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) throw new Error("No active session found");
+
+                const { data, error } = await supabase
+                    .from('user_backups')
+                    .select('portfolio_data, equity_history')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                if (error) throw error;
+                
+                if (!data) {
+                    showToast("No backup found in Google Cloud", 'danger');
+                    return;
+                }
+
+                if (data.portfolio_data) {
+                    localStorage.setItem('koda_portfolio_data', JSON.stringify(data.portfolio_data));
+                }
+                if (data.equity_history) {
+                    localStorage.setItem('koda_equity_history', JSON.stringify(data.equity_history));
+                }
+
+                showToast("Restored from Google Cloud! Reloading...", 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+
+            } catch (e) {
+                console.error("[KODA] Cloud restore failed:", e);
+                showToast("Restore failed: " + e.message, 'danger');
+            } finally {
+                restoreBtn.innerHTML = originalHTML;
+                restoreBtn.disabled = false;
+            }
+        }
+    };
+
+    // Initialize Supabase immediately
+    await initSupabaseAuth();
+
+    // ==========================================
+    // 📌 ระบบ Backup & Restore Data Local (Fallback)
     // ==========================================
     const btnExport = document.getElementById('btn-export-data');
     const inputImport = document.getElementById('input-import-data');
@@ -312,12 +615,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!btnExport) return;
         const originalHTML = btnExport.innerHTML;
         btnExport.innerHTML = `<span class="material-symbols-outlined text-[18px]">check</span>`;
-        btnExport.classList.replace('text-primary', 'text-success');
-        btnExport.classList.replace('bg-primary/20', 'bg-success/20');
+        btnExport.classList.replace('text-slate-300', 'text-success');
+        btnExport.classList.replace('bg-slate-800', 'bg-success/20');
         setTimeout(() => {
             btnExport.innerHTML = originalHTML;
-            btnExport.classList.replace('text-success', 'text-primary');
-            btnExport.classList.replace('bg-success/20', 'bg-primary/20');
+            btnExport.classList.replace('text-success', 'text-slate-300');
+            btnExport.classList.replace('bg-success/20', 'bg-slate-800');
         }, 2000);
     };
 
@@ -336,7 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showSuccess();
         } catch (e) {
             navigator.clipboard.writeText(data);
-            alert("อุปกรณ์บล็อกการดาวน์โหลด ระบบได้ 'คัดลอก' ข้อมูลพอร์ตไว้แล้ว นำไปวาง (Paste) ในแอปสมุดโน้ตได้เลยครับ");
+            showToast("บล็อกดาวน์โหลด! ระบบได้ Copy ข้อมูลให้แล้ว นำไป Paste ได้เลยครับ", 'success');
             showSuccess();
         }
     };
@@ -349,15 +652,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const parsedPort = JSON.parse(portData);
             if (!parsedPort || (parsedPort.holdings?.length === 0 && (!parsedPort.watchlists || Object.keys(parsedPort.watchlists).length === 0))) {
-                alert("Portfolio is empty. Nothing to export.");
+                showToast("Portfolio is empty. Nothing to export.", 'danger');
                 return;
             }
             
-            // 📌 สร้าง Bundle มัดรวมข้อมูลเป็น V2
             const backupBundle = {
                 version: "2.0",
                 portfolio: parsedPort,
-                equityHistory: JSON.parse(equityData) // เซฟเส้นกราฟย้อนหลังไปด้วย!
+                equityHistory: JSON.parse(equityData)
             };
             
             const dataString = JSON.stringify(backupBundle);
@@ -395,26 +697,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if (confirm("Warning: กู้คืนข้อมูลนี้จะทับข้อมูลปัจจุบันของคุณทั้งหมด ยืนยันหรือไม่?")) {
                         
-                        // ตรวจสอบว่าเป็นไฟล์ V2 ที่มีกราฟด้วยหรือไม่
                         if (importedData.version === "2.0" && importedData.portfolio) {
-                            // 🌟 กู้คืน V2: ได้ครบทั้งหุ้นและกราฟ
                             localStorage.setItem('koda_portfolio_data', JSON.stringify(importedData.portfolio));
                             if (importedData.equityHistory) {
                                 localStorage.setItem('koda_equity_history', JSON.stringify(importedData.equityHistory));
                             }
                         } else if (importedData.holdings !== undefined || importedData.watchlists !== undefined) {
-                            // 🌟 กู้คืน V1 (ไฟล์สำรองเก่า): ได้แค่พอร์ตอย่างเดียว
                             localStorage.setItem('koda_portfolio_data', JSON.stringify(importedData));
                         } else {
-                            alert('ไฟล์ JSON ไม่ถูกต้อง ไม่ใช่ของแอพ KODA ครับ');
+                            showToast('ไฟล์ JSON ไม่ถูกต้อง ไม่ใช่ของแอป KODA ครับ', 'danger');
                             return;
                         }
                         
-                        alert('กู้คืนข้อมูลสำเร็จ! แอปจะทำการรีเฟรช');
-                        window.location.reload();
+                        showToast('กู้คืนข้อมูลสำเร็จ! แอปจะทำการรีเฟรช', 'success');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
                     }
                 } catch (error) {
-                    alert('Error reading the JSON file. It might be corrupted.');
+                    showToast('Error reading file. It might be corrupted.', 'danger');
                 }
             };
             reader.readAsText(file);

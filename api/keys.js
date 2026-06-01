@@ -9,6 +9,8 @@ export default function handler(req, res) {
         SERPER: process.env.SERPER_API_KEYS || "",
         // 📌 ดักจับทุกชื่อเผื่อพิมพ์ผิดใน Vercel รับรองว่าคีย์ไม่หายชัวร์
         FINNHUB: process.env.FINNHUB_API_KEYS || process.env.FINNHUB_KEY_KEYS || process.env.FINNHUB_API_KEY || "",
-        ALPHAVANTAGE: process.env.ALPHAVANTAGE_API_KEY || ""
+        ALPHAVANTAGE: process.env.ALPHAVANTAGE_API_KEY || "",
+        SUPABASE_URL: process.env.SUPABASE_URL || "",
+        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || ""
     });
 }
