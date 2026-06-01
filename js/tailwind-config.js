@@ -35,6 +35,9 @@
       --koda-slate-700: #334155;
       --koda-slate-800: #1e293b;
       --koda-slate-900: #0f172a;
+
+      --koda-header-bg: rgba(248, 250, 252, 0.92);
+      --koda-nav-bg: rgba(255, 255, 255, 0.95);
     }
     
     html.dark, body.dark, .dark {
@@ -62,6 +65,9 @@
       --koda-slate-700: #e2e8f0;
       --koda-slate-800: #1e293b;
       --koda-slate-900: #f8fafc;
+
+      --koda-header-bg: rgba(19, 27, 46, 0.92);
+      --koda-nav-bg: rgba(19, 27, 46, 0.95);
     }
 
     /* Force clean white text on dark/colored background components regardless of mode */
@@ -119,3 +125,60 @@ tailwind.config = {
     },
   },
 };
+
+// 3. Robust, Silent Cloud Auto-Backup via dynamic Supabase loading
+(function() {
+  let backupTimeout = null;
+
+  window.triggerKodaAutoBackup = function() {
+    if (backupTimeout) clearTimeout(backupTimeout);
+    backupTimeout = setTimeout(async () => {
+      try {
+        if (!window.supabase) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        if (typeof window.loadKodaConfig !== 'function') return;
+        await window.loadKodaConfig();
+        
+        const keys = window.ENV_KEYS || {};
+        if (!keys.SUPABASE_URL || !keys.SUPABASE_ANON_KEY) return;
+
+        const supabase = window.supabase.createClient(keys.SUPABASE_URL, keys.SUPABASE_ANON_KEY);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const portData = localStorage.getItem('koda_portfolio_data') || '{}';
+        const equityData = localStorage.getItem('koda_equity_history') || '[]';
+
+        await supabase
+          .from('user_backups')
+          .upsert({
+            id: user.id,
+            portfolio_data: JSON.parse(portData),
+            equity_history: JSON.parse(equityData),
+            updated_at: new Date().toISOString()
+          });
+
+        console.log("[KODA Auto-Backup] Silent cloud backup sync complete!");
+      } catch (e) {
+        console.error("[KODA Auto-Backup] Silent backup failed:", e);
+      }
+    }, 3000); // 3-second debounce to protect database performance
+  };
+
+  // Intercept all localStorage updates to trigger auto-backup when portfolio or watchlist data changes
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = function(key, value) {
+    originalSetItem.apply(this, arguments);
+    if (key === 'koda_portfolio_data' || key === 'koda_equity_history') {
+      window.triggerKodaAutoBackup();
+    }
+  };
+})();

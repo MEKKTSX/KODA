@@ -62,7 +62,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0.875rem 1rem;
-  background: rgba(248, 250, 252, 0.92);
+  background: var(--koda-header-bg);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--koda-border);
 }
@@ -195,7 +195,7 @@ body {
   left: 0;
   right: 0;
   z-index: 50;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--koda-nav-bg);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--koda-border);
   padding-bottom: env(safe-area-inset-bottom, 0);

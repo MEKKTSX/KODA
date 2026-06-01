@@ -1,14 +1,13 @@
 // 🚀 1. ฟังก์ชันแกนกลาง: ตัวเลขวิ่งนับ (Global Animation)
     window.animateKodaRollingNumber = (element, startValue, endValue, duration = 400) => {
     if (startValue === endValue) {
-        element.textContent = window.formatKodaMoney ? window.formatKodaMoney(endValue) : '$' + endValue.toFixed(2);
+        element.textContent = '$' + endValue.toFixed(2);
         return;
     }
     
-    let startTime = null; // ย้ายมาจับเวลาในเฟรมแรก
-    const isTHB = localStorage.getItem('koda_currency') === 'THB';
-    const symbolPrefix = isTHB ? '฿' : '$';
-    const rate = isTHB ? (window.kodaTHBRate || 34.50) : 1;
+    let startTime = null;
+    const symbolPrefix = '$';
+    const rate = 1;
 
     const step = (now) => {
         if (!startTime) startTime = now;
@@ -17,14 +16,10 @@
         const currentValue = startValue + (endValue - startValue) * easeProgress;
 
         if (progress < 1) {
-            // ประหยัดพลังงานเครื่อง: ใช้แค่ String ธรรมดาตอนตัวเลขกำลังวิ่ง
             element.textContent = symbolPrefix + (currentValue * rate).toFixed(2);
             window.requestAnimationFrame(step);
         } else {
-            // วิ่งเสร็จแล้ว: ค่อย Format จัดเต็มเพื่อความสวยงาม
-            element.textContent = window.formatKodaMoney 
-                ? window.formatKodaMoney(endValue) 
-                : symbolPrefix + (endValue * rate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            element.textContent = symbolPrefix + endValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
     };
     window.requestAnimationFrame(step);
@@ -445,7 +440,7 @@
                     <div class="flex items-center gap-1 mt-0.5 justify-end">
                         <span class="text-[9px] text-slate-400">${stateIcon} </span>
                         <span class="text-[9px] text-slate-400 rolling-price-ext" ${animateExtData}>
-                            ${window.formatKodaMoney ? window.formatKodaMoney(oldExtPrice) : formatCurrency(oldExtPrice)}
+                            ${formatCurrency(oldExtPrice)}
                         </span>
                         <span class="text-[9px] font-bold ${extColor}">(${extSign}${s.extPercent.toFixed(2)}%)</span>
                     </div>
@@ -468,7 +463,7 @@
                     <div class="flex flex-col items-end justify-center">
                         <div class="flex flex-row items-center gap-1.5">
                             <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
-                                ${window.formatKodaMoney ? window.formatKodaMoney(oldPrice) : formatCurrency(oldPrice)}
+                                ${formatCurrency(oldPrice)}
                             </p>
                             <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
                                 <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
@@ -496,7 +491,7 @@
                 <div class="flex flex-col items-end justify-center">
                     <div class="flex flex-row items-center gap-1.5">
                         <p class="text-slate-100 font-bold text-sm leading-tight rolling-price" ${animateData}>
-                            ${window.formatKodaMoney ? window.formatKodaMoney(oldPrice) : formatCurrency(oldPrice)}
+                            ${formatCurrency(oldPrice)}
                         </p>
                         <div class="inline-block px-1.5 py-[1px] rounded ${c.bgClass}">
                             <p class="${c.colorClass} text-[10px] font-bold py-[1px]">${c.text}</p>
