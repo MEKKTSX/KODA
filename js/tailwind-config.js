@@ -26,8 +26,8 @@
       
       --koda-white-text: #0f172a;
       --koda-slate-50: #f8fafc;
-      --koda-slate-100: #f1f5f9;
-      --koda-slate-200: #e2e8f0;
+      --koda-slate-100: #1e293b;
+      --koda-slate-200: #cbd5e1;
       --koda-slate-300: #475569;
       --koda-slate-400: #64748b;
       --koda-slate-500: #64748b;
@@ -53,14 +53,14 @@
       
       --koda-white-text: #ffffff;
       --koda-slate-50: #0f172a;
-      --koda-slate-100: #1e293b;
-      --koda-slate-200: #334155;
+      --koda-slate-100: #f1f5f9;
+      --koda-slate-200: #cbd5e1;
       --koda-slate-300: #cbd5e1;
       --koda-slate-400: #94a3b8;
-      --koda-slate-500: #64748b;
+      --koda-slate-500: #94a3b8;
       --koda-slate-600: #cbd5e1;
       --koda-slate-700: #e2e8f0;
-      --koda-slate-800: #f1f5f9;
+      --koda-slate-800: #1e293b;
       --koda-slate-900: #f8fafc;
     }
 
