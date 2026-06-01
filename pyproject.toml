@@ -1,8 +1,0 @@
-[project]
-name = "koda"
-version = "0.1.0"
-dependencies = [
-    "yfinance",
-    "pandas",
-    "pytz"
-]
