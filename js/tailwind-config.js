@@ -1,4 +1,89 @@
-/** KODA UI v2 — shared Tailwind theme (legacy color names mapped to light palette) */
+/** KODA UI v2 — shared Tailwind theme with dynamic Dark/White theme support via CSS Variables */
+
+// 1. IIFE to inject the CSS Variables and initialize the theme class immediately
+(function() {
+  const style = document.createElement('style');
+  style.id = 'koda-theme-variables';
+  style.innerHTML = `
+    :root {
+      --koda-bg: #f8fafc;
+      --koda-surface: #ffffff;
+      --koda-surface-muted: #f1f5f9;
+      --koda-border: #e2e8f0;
+      --koda-border-strong: #cbd5e1;
+      --koda-primary: #2563eb;
+      --koda-primary-hover: #1d4ed8;
+      --koda-primary-muted: #dbeafe;
+      --koda-success: #059669;
+      --koda-danger: #dc2626;
+      --koda-text: #0f172a;
+      --koda-text-muted: #64748b;
+      --koda-text-subtle: #94a3b8;
+      
+      --koda-background-dark: #f8fafc;
+      --koda-surface-dark: #ffffff;
+      --koda-border-dark: #e2e8f0;
+      
+      --koda-white-text: #0f172a;
+      --koda-slate-50: #f8fafc;
+      --koda-slate-100: #f1f5f9;
+      --koda-slate-200: #e2e8f0;
+      --koda-slate-300: #475569;
+      --koda-slate-400: #64748b;
+      --koda-slate-500: #64748b;
+      --koda-slate-600: #475569;
+      --koda-slate-700: #334155;
+      --koda-slate-800: #1e293b;
+      --koda-slate-900: #0f172a;
+    }
+    
+    html.dark, body.dark, .dark {
+      --koda-bg: #0b0f19;
+      --koda-surface: #131b2e;
+      --koda-surface-muted: #1e293b;
+      --koda-border: #1e293b;
+      --koda-border-strong: #334155;
+      --koda-text: #f8fafc;
+      --koda-text-muted: #94a3b8;
+      --koda-text-subtle: #64748b;
+      
+      --koda-background-dark: #0b0f19;
+      --koda-surface-dark: #131b2e;
+      --koda-border-dark: #1e293b;
+      
+      --koda-white-text: #ffffff;
+      --koda-slate-50: #0f172a;
+      --koda-slate-100: #1e293b;
+      --koda-slate-200: #334155;
+      --koda-slate-300: #cbd5e1;
+      --koda-slate-400: #94a3b8;
+      --koda-slate-500: #64748b;
+      --koda-slate-600: #cbd5e1;
+      --koda-slate-700: #e2e8f0;
+      --koda-slate-800: #f1f5f9;
+      --koda-slate-900: #f8fafc;
+    }
+
+    /* Force clean white text on dark/colored background components regardless of mode */
+    .bg-primary, .bg-danger, .bg-success, .bg-emerald-500, .bg-rose-500, .bg-blue-600, .bg-indigo-600, .bg-yellow-500, .bg-gradient-to-r, .bg-gradient-to-tr {
+      color: #ffffff !important;
+    }
+    .bg-primary *, .bg-danger *, .bg-success *, .bg-emerald-500 *, .bg-rose-500 *, .bg-blue-600 *, .bg-indigo-600 *, .bg-yellow-500 *, .bg-gradient-to-r *, .bg-gradient-to-tr * {
+      color: #ffffff !important;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Initialize DOM classes based on saved theme preference
+  const isDark = localStorage.getItem('koda_dark_mode') === 'true';
+  if (isDark) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+})();
+
+// 2. Shared Tailwind Configuration mapping colors to theme CSS variables
 tailwind.config = {
   darkMode: "class",
   theme: {
@@ -7,10 +92,23 @@ tailwind.config = {
         primary: "#2563EB",
         success: "#059669",
         danger: "#DC2626",
-        "background-light": "#F8FAFC",
-        "background-dark": "#F8FAFC",
-        "surface-dark": "#FFFFFF",
-        "border-dark": "#E2E8F0",
+        white: "var(--koda-white-text)",
+        "background-light": "var(--koda-bg)",
+        "background-dark": "var(--koda-background-dark)",
+        "surface-dark": "var(--koda-surface-dark)",
+        "border-dark": "var(--koda-border-dark)",
+        slate: {
+          50: "var(--koda-slate-50)",
+          100: "var(--koda-slate-100)",
+          200: "var(--koda-slate-200)",
+          300: "var(--koda-slate-300)",
+          400: "var(--koda-slate-400)",
+          500: "var(--koda-slate-500)",
+          600: "var(--koda-slate-600)",
+          700: "var(--koda-slate-700)",
+          800: "var(--koda-slate-800)",
+          900: "var(--koda-slate-900)",
+        }
       },
       fontFamily: {
         display: ["Inter", "sans-serif"],

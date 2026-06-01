@@ -85,15 +85,18 @@
                     </div>
                 </div>
 
-                <div class="flex items-center justify-between p-4 opacity-60">
-                    <div class="flex items-center gap-3">
+                <div class="flex items-center justify-between p-4 hover:bg-slate-800 transition-colors">
+                    <div class="flex items-center gap-3 text-slate-200">
                         <span class="material-symbols-outlined text-slate-400">dark_mode</span>
                         <div>
                             <p class="text-slate-200 text-sm font-medium">Dark Mode</p>
-                            <p class="text-slate-500 text-[10px]">System default (Locked)</p>
+                            <p class="text-slate-500 text-[10px]" id="dark-mode-desc">Switch interface to Dark Mode</p>
                         </div>
                     </div>
-                    <span class="material-symbols-outlined text-success">check_circle</span>
+                    <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                        <input type="checkbox" id="toggle-dark" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-surface-dark appearance-none cursor-pointer z-10 top-0 transition-transform duration-200 ease-in-out translate-x-0"/>
+                        <label for="toggle-dark" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-600 cursor-pointer transition-colors duration-200 ease-in-out"></label>
+                    </div>
                 </div>
             </div>
         </section>
@@ -286,6 +289,55 @@
             translateToggle.addEventListener('change', function() {
                 localStorage.setItem('koda_translate_th', this.checked ? 'true' : 'false');
                 this.nextElementSibling.style.backgroundColor = this.checked ? '#34a8eb' : '#475569';
+            });
+        }
+
+        const darkToggle = document.getElementById('toggle-dark');
+        const darkDesc = document.getElementById('dark-mode-desc');
+        if (darkToggle) {
+            const isDark = localStorage.getItem('koda_dark_mode') === 'true';
+            darkToggle.style.transition = 'none';
+            darkToggle.nextElementSibling.style.transition = 'none';
+            
+            darkToggle.checked = isDark;
+            
+            if (isDark) {
+                darkToggle.classList.add('translate-x-5');
+                darkToggle.classList.remove('translate-x-0');
+                darkToggle.nextElementSibling.style.backgroundColor = '#34a8eb';
+                if (darkDesc) darkDesc.textContent = "Switch interface to White Mode";
+                document.documentElement.classList.add('dark');
+                document.body?.classList.add('dark');
+            } else {
+                darkToggle.classList.remove('translate-x-5');
+                darkToggle.classList.add('translate-x-0');
+                darkToggle.nextElementSibling.style.backgroundColor = '#475569';
+                if (darkDesc) darkDesc.textContent = "Switch interface to Dark Mode";
+                document.documentElement.classList.remove('dark');
+                document.body?.classList.remove('dark');
+            }
+
+            setTimeout(() => {
+                darkToggle.style.transition = '';
+                darkToggle.nextElementSibling.style.transition = '';
+            }, 50);
+
+            darkToggle.addEventListener('change', function() {
+                localStorage.setItem('koda_dark_mode', this.checked ? 'true' : 'false');
+                this.nextElementSibling.style.backgroundColor = this.checked ? '#34a8eb' : '#475569';
+                if (darkDesc) darkDesc.textContent = this.checked ? "Switch interface to White Mode" : "Switch interface to Dark Mode";
+                
+                if (this.checked) {
+                    this.classList.add('translate-x-5');
+                    this.classList.remove('translate-x-0');
+                    document.documentElement.classList.add('dark');
+                    document.body?.classList.add('dark');
+                } else {
+                    this.classList.remove('translate-x-5');
+                    this.classList.add('translate-x-0');
+                    document.documentElement.classList.remove('dark');
+                    document.body?.classList.remove('dark');
+                }
             });
         }
 
