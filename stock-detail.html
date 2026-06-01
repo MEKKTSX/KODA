@@ -1,61 +1,45 @@
 <!DOCTYPE html>
-<html class="dark" lang="en">
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>KODA - Stock Details</title>
     <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="js/tailwind-config.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0a0e17">
-    
+    <meta name="theme-color" content="#2563EB">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <script id="tailwind-config">
-        tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#34a8eb", "success": "#00c076", "danger": "#ff4d4d", "background-dark": "#0a0e17", "surface-dark": "#161c2b", "border-dark": "#232b3e" }, fontFamily: { "display": ["Inter", "sans-serif"] } } } }
-    </script>
+    <link rel="stylesheet" href="css/koda-tokens.css">
+    <link rel="stylesheet" href="css/koda-shell.css">
     <style>
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        .fill-icon { font-variation-settings: 'FILL' 1; }
-        ::-webkit-scrollbar { display: none; }
-        body { min-height: max(884px, 100dvh); }
-        .tab-btn.active { color: #34a8eb; border-bottom: 2px solid #34a8eb; }
-        .tab-btn { border-bottom: 2px solid transparent; }
-        .koda-ai-summary { color: #cbd5e1; }
-        .koda-ai-summary div { margin-bottom: 14px; line-height: 1.72; }
-        .koda-ai-summary strong { color: #f8fafc; font-weight: 800; }
-        .koda-ai-summary .koda-future-card {
-            margin-top: 18px;
-            margin-bottom: 0;
-            padding: 16px;
-            border-radius: 14px;
-            color: #dbeafe !important;
-            background: linear-gradient(135deg, rgba(52,168,235,0.14), rgba(0,192,118,0.08));
-            border: 1px solid rgba(125,211,252,0.28);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px rgba(0,0,0,0.18);
-        }
-        .koda-ai-summary .koda-future-card strong { color: #7dd3fc !important; }
+        .tab-btn.active { color: #2563eb; border-bottom: 2px solid #2563eb; }
+        .tab-btn { border-bottom: 2px solid transparent; color: #64748b; }
         @keyframes pulse-glow { 0% { opacity: 1; } 50% { opacity: 0.5; transform: scale(1.02); } 100% { opacity: 1; } }
         .price-update { animation: pulse-glow 0.8s ease-out; }
+        #tv-chart-container, #koda-chart-container { min-height: 320px; }
+        @media (min-width: 1024px) {
+            #tv-chart-container, #koda-chart-container { min-height: 420px; }
+        }
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen font-display">
-<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative overflow-x-hidden">
+<body class="bg-background-dark text-slate-900 min-h-screen font-display">
+<div id="koda-sidebar-container"></div>
+<div class="koda-app">
+<div class="koda-main relative overflow-x-hidden">
     
-    <header class="flex items-center p-4 justify-between sticky top-0 bg-background-dark/95 backdrop-blur-md z-30 border-b border-border-dark/30">
-        <button onclick="window.history.back()" class="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors"><span class="material-symbols-outlined">arrow_back</span></button>
-        <div class="flex flex-col items-center flex-1">
-            <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight" id="detail-symbol">-</h2>
-            <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider" id="detail-name">Loading...</p>
+    <header class="koda-page-header">
+        <button type="button" onclick="window.history.back()" class="flex size-10 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"><span class="material-symbols-outlined">arrow_back</span></button>
+        <div class="flex flex-col items-center flex-1 lg:items-start lg:ml-2">
+            <h2 class="koda-page-title" id="detail-symbol">-</h2>
+            <p class="text-slate-500 text-xs font-medium" id="detail-name">Loading...</p>
         </div>
-        <button id="btn-toggle-star" class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors"><span id="icon-star" class="material-symbols-outlined transition-colors">star</span></button>
+        <button type="button" id="btn-toggle-star" class="flex size-10 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"><span id="icon-star" class="material-symbols-outlined transition-colors">star</span></button>
     </header>
 
-    <main class="flex-1 overflow-y-auto pb-24">
+    <main class="flex-1 overflow-y-auto pb-24 lg:pb-8 lg:max-w-7xl lg:mx-auto lg:w-full">
         
         <section class="px-4 pt-4 pb-4">
             <div class="flex justify-between items-start w-full">
@@ -321,7 +305,8 @@
     <div id="bottom-nav-container"></div>   
     
 </div>
-<script src="js/nav.js"></script>
+</div>
+<script src="js/layout.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
         const scripts = ["js/ai-helper.js", "js/stock-detail.js", "js/financial-details.js", "js/asset-insights.js"];

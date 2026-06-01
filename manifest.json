@@ -4,8 +4,8 @@
   "description": "AI-Powered Market & Portfolio Tracker",
   "start_url": "/index.html",
   "display": "standalone",
-  "background_color": "#0a0e17",
-  "theme_color": "#34a8eb",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
   "icons": [
     {
       "src": "KODA.png",

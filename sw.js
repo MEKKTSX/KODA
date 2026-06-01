@@ -1,11 +1,16 @@
-const CACHE_NAME = 'koda-app-v1.3-beta';
+const CACHE_NAME = 'koda-app-v2.0-business';
 const urlsToCache = [
   '/',
   '/index.html',
   '/watchlist.html',
+  '/portfolio.html',
   '/world-news.html',
   '/ai-ops.html',
   '/config.html',
+  '/css/koda-tokens.css',
+  '/css/koda-shell.css',
+  '/js/tailwind-config.js',
+  '/js/layout.js',
   '/koda.png'
 ];
 

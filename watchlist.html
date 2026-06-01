@@ -1,61 +1,22 @@
 <!DOCTYPE html>
-<html class="dark" lang="en">
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>KODA - Watchlist & Markets</title>
     <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="js/tailwind-config.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0a0e17">
-    <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#34a8eb", 
-                        "success": "#00c076", 
-                        "danger": "#ff4d4d", 
-                        "background-dark": "#0a0e17", 
-                        "surface-dark": "#161c2b", 
-                        "border-dark": "#232b3e",
-                    },
-                    fontFamily: { "display": ["Inter", "sans-serif"] },
-                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "9999px" },
-                },
-            },
-        }
-    </script>
+    <meta name="theme-color" content="#2563EB">
+    <link rel="stylesheet" href="css/koda-tokens.css">
+    <link rel="stylesheet" href="css/koda-shell.css">
     <style>
-        /* 📌 ระบบกรอบสีทองวิ่งวน (Animated Conic Gradient) */
-        @keyframes border-spin {
-            100% { transform: rotate(360deg); }
-        }
-        .golden-border-wrapper {
-            position: relative;
-            overflow: hidden;
-            border-radius: 0.375rem; /* rounded-md */
-            padding: 1.5px; /* ความหนาของกรอบ */
-            display: inline-block;
-        }
-        .golden-border-content {
-            position: relative;
-            background: #161c2b; /* สีพื้นหลังกล่อง (surface-dark) */
-            border-radius: 0.25rem;
-            z-index: 1;
-        }
-
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        ::-webkit-scrollbar { display: none; }
-        body { min-height: max(884px, 100dvh); }
         a, button { -webkit-tap-highlight-color: transparent; }
     
-        /* 📌 กรอบไฮไลท์วันปัจจุบัน (กระจกสีเขียววิบวับ) */
+                /* 📌 กรอบไฮไลท์วันปัจจุบัน (กระจกสีเขียววิบวับ) */
         .highlight-today-col {
             position: relative;
             border: 1.5px solid #00c076; /* สีเขียว success */
@@ -86,51 +47,40 @@
             100% { left: 150%; opacity: 0; } /* หน่วงเวลาที่เหลือให้ครบ 2 วิแล้วค่อยเริ่มใหม่ */
         }
     
-        /* 📌 เอฟเฟกต์กระพริบกรอบ (Border Flash) เวลาหุ้นขยับ (Tick-by-Tick) */
+    /* 📌 เอฟเฟกต์กระพริบกรอบ (Border Flash) เวลาหุ้นขยับ (Tick-by-Tick) */
         .flash-up-border { animation: flashGreenBorder 0.8s ease-out; }
         .flash-down-border { animation: flashRedBorder 0.8s ease-out; }
 
         @keyframes flashGreenBorder {
-            0% { background-color: rgba(0, 192, 118, 0.2); border-color: rgba(0, 192, 118, 0.8); }
-            100% { background-color: transparent; border-color: #232b3e; }
+            0% { background-color: rgba(5, 150, 105, 0.15); border-color: rgba(5, 150, 105, 0.6); }
+            100% { background-color: transparent; border-color: #e2e8f0; }
         }
         @keyframes flashRedBorder {
-            0% { background-color: rgba(255, 77, 77, 0.2); border-color: rgba(255, 77, 77, 0.8); }
-            100% { background-color: transparent; border-color: #232b3e; }
+            0% { background-color: rgba(220, 38, 38, 0.12); border-color: rgba(220, 38, 38, 0.5); }
+            100% { background-color: transparent; border-color: #e2e8f0; }
         }
-    
-        /* 📌 เอฟเฟกต์พรีเมียมสแกนเนอร์ */
-        .scanner-glow-active {
-            background: linear-gradient(90deg, rgba(251, 191, 36, 0.15) 0%, rgba(22, 28, 43, 0.8) 100%);
-            border-color: #fbbf24 !important;
-            box-shadow: 0 0 15px rgba(251, 191, 36, 0.08), inset 0 0 10px rgba(251, 191, 36, 0.05);
-        }
-        .filter-checkbox-checked {
-            background-color: #fbbf24 !important;
-            border-color: #fbbf24 !important;
-            color: #0a0e17 !important;
-            box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
-        }
-        .filter-option-btn {
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen font-display">
-<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative">
+<body class="bg-background-dark text-slate-900 min-h-screen font-display">
+<div id="koda-sidebar-container"></div>
+<div class="koda-app">
+<div class="koda-main relative">
     
-    <header class="flex items-center p-4 pb-2 justify-between sticky top-0 bg-background-dark z-20 border-b border-border-dark/30">
-        <div class="text-slate-400 flex size-10 shrink-0 items-center justify-center">
-            <span class="material-symbols-outlined text-3xl">account_circle</span>
+    <header class="koda-page-header">
+        <div class="flex items-center gap-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <span class="material-symbols-outlined text-primary text-2xl">bar_chart</span>
+            </div>
+            <h2 class="koda-page-title">Markets</h2>
         </div>
-        <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight flex-1 px-3">Markets</h2>
-        <div class="flex gap-2 items-center">
-            <button class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300">
+        <div class="flex gap-1 items-center">
+            <button type="button" class="flex size-10 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 koda-search-trigger">
                 <span class="material-symbols-outlined">search</span>
             </button>
-            <button class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 relative">
+            <button type="button" class="flex size-10 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 relative">
                 <span class="material-symbols-outlined">notifications</span>
-                <span class="absolute top-2.5 right-2.5 size-2 bg-danger rounded-full border-2 border-background-dark"></span>
+                <span class="absolute top-2.5 right-2.5 size-2 bg-danger rounded-full border-2 border-white"></span>
             </button>
         </div>
     </header>
@@ -175,7 +125,6 @@
                 </div>
                 <div class="space-y-1 max-h-[60vh] overflow-y-auto no-scrollbar" id="watchlist-container"></div>
             </div>
-            
         </section>
         
         <section id="section-earnings" class="tab-main-content hidden pb-8 px-2 pt-4">
@@ -266,10 +215,12 @@
 
     <div id="bottom-nav-container"></div>
 </div>
+</div>
 
-<script src="js/nav.js"></script>
+    <script src="js/layout.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
+        // ✅ เรียงลำดับ api.js ไว้ตัวแรกสุดเสมอ!
         const scripts = [
             "js/api.js", "js/markets.js", "js/drag-drop.js", "js/search.js", 
             "js/ai-helper.js", "js/market-plus.js", "js/ai-pro.js"
@@ -282,90 +233,106 @@
     });
 </script>
 
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const tabBtns = document.querySelectorAll('.tab-main-btn');
-        const tabContents = document.querySelectorAll('.tab-main-content');
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // ระบบเปลี่ยนแท็บใหม่
+            const tabBtns = document.querySelectorAll('.tab-main-btn');
+            const tabContents = document.querySelectorAll('.tab-main-content');
 
-        tabBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                tabBtns.forEach(b => {
-                    b.classList.remove('bg-primary', 'text-white', 'shadow-md');
-                    b.classList.add('text-slate-400', 'bg-transparent');
-                });
-                
-                tabContents.forEach(c => {
-                    c.classList.add('hidden');
-                    c.classList.remove('block');
-                });
-
-                btn.classList.remove('text-slate-400', 'bg-transparent');
-                btn.classList.add('bg-primary', 'text-white', 'shadow-md');
-
-                const targetId = btn.getAttribute('data-target');
-                document.getElementById(targetId).classList.remove('hidden');
-                document.getElementById(targetId).classList.add('block');
-                
-                if (targetId !== 'section-watchlists' && window.activeFilters && window.activeFilters.size > 0) {
-                    window.activeFilters.clear();
-                    const countEl = document.getElementById('filter-count');
-                    if (countEl) countEl.textContent = '0';
-                    
-                    document.querySelectorAll('.filter-option-btn').forEach(b => {
-                        b.classList.remove('border-[#fbbf24]', 'bg-[#fbbf24]/10', 'text-[#fbbf24]', 'shadow-[0_0_10px_rgba(251,191,36,0.15)]');
-                        b.classList.add('border-border-dark', 'bg-background-dark', 'text-slate-300');
-                        const icon = b.querySelector('.material-symbols-outlined');
-                        if (icon) { icon.classList.remove('text-[#fbbf24]'); icon.classList.add('text-slate-500'); }
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // 1. รีเซ็ตปุ่มทั้งหมด
+                    tabBtns.forEach(b => {
+                        b.classList.remove('bg-primary', 'text-white', 'shadow-md');
+                        b.classList.add('text-slate-400', 'bg-transparent');
                     });
                     
-                    if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
-                }
-            });
-        });
+                    // 2. ซ่อนเนื้อหาทั้งหมด
+                    tabContents.forEach(c => {
+                        c.classList.add('hidden');
+                        c.classList.remove('block');
+                    });
 
-        const fetchIndices = async () => {
-            const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
-            if(!FINNHUB_API_KEY) return;
-            
-            const formatData = (elVal, elPct, data) => {
-                if(!data || data.c === 0) return;
-                elVal.textContent = data.c.toLocaleString(undefined, {minimumFractionDigits: 2});
-                elPct.textContent = `${data.dp > 0 ? '+' : ''}${data.dp.toFixed(2)}%`;
-                elPct.className = `text-[9px] font-bold mt-0.5 ${data.dp >= 0 ? 'text-success' : 'text-danger'}`;
-            };
+                    // 3. เปิดใช้งานแท็บที่ถูกคลิก
+                    btn.classList.remove('text-slate-400', 'bg-transparent');
+                    btn.classList.add('bg-primary', 'text-white', 'shadow-md');
 
-            try {
-                const [spy, qqq, btc] = await Promise.all([
-                    fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                    fetch(`https://finnhub.io/api/v1/quote?symbol=QQQ&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
-                    fetch(`https://finnhub.io/api/v1/quote?symbol=BINANCE:BTCUSDT&token=${FINNHUB_API_KEY}`).then(r=>r.json()).catch(e=>null)
-                ]);
-                
-                formatData(document.getElementById('idx-spy-val'), document.getElementById('idx-spy-pct'), spy);
-                formatData(document.getElementById('idx-qqq-val'), document.getElementById('idx-qqq-pct'), qqq);
-                
-                if (btc && btc.c === 0) {
-                    const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r=>r.json());
-                    if (binanceRes) {
-                        document.getElementById('idx-btc-val').textContent = parseFloat(binanceRes.lastPrice).toLocaleString(undefined, {minimumFractionDigits: 2});
-                        const pct = parseFloat(binanceRes.priceChangePercent);
-                        document.getElementById('idx-btc-pct').textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
-                        document.getElementById('idx-btc-pct').className = `text-[9px] font-bold mt-0.5 ${pct >= 0 ? 'text-success' : 'text-danger'}`;
+                    const targetId = btn.getAttribute('data-target');
+                    document.getElementById(targetId).classList.remove('hidden');
+                    document.getElementById(targetId).classList.add('block');
+                    
+                    // 🚀 4. เพิ่มโค้ดล้างค่า Scanner อัตโนมัติเมื่อออกจากหน้า Watchlist
+                    if (targetId !== 'section-watchlists' && window.activeFilters && window.activeFilters.size > 0) {
+                        window.activeFilters.clear();
+                        const countEl = document.getElementById('filter-count');
+                        if (countEl) countEl.textContent = '0';
+                        
+                        // รีเซ็ตสีปุ่ม Filter ให้กลับเป็นค่าเริ่มต้น
+                        document.querySelectorAll('.filter-option-btn').forEach(b => {
+                            b.classList.remove('border-[#fbbf24]', 'bg-[#fbbf24]/10', 'text-[#fbbf24]', 'shadow-[0_0_10px_rgba(251,191,36,0.15)]');
+                            b.classList.add('border-border-dark', 'bg-background-dark', 'text-slate-300');
+                            const icon = b.querySelector('.material-symbols-outlined');
+                            if (icon) { icon.classList.remove('text-[#fbbf24]'); icon.classList.add('text-slate-500'); }
+                        });
+                        
+                        // สั่งวาดหน้า Watchlist ใหม่ให้เป็นปกติ (ไม่ถูกกรอง)
+                        if (typeof window.renderWatchlist === 'function') window.renderWatchlist();
                     }
-                }
-            } catch(e) {}
-        };
-        fetchIndices();
-        setInterval(fetchIndices, 10000);
-    });
-</script>
+                });
+            });
+
+            // ดึงราคา 3 ดัชนีหลักง่ายๆ ผ่าน Finnhub
+            const fetchIndices = async () => {
+                const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
+                if(!FINNHUB_API_KEY) return;
+                
+                const formatData = (elVal, elPct, data) => {
+                    if(!data || data.c === 0) return;
+                    elVal.textContent = data.c.toLocaleString(undefined, {minimumFractionDigits: 2});
+                    elPct.textContent = `${data.dp > 0 ? '+' : ''}${data.dp.toFixed(2)}%`;
+                    elPct.className = `text-[9px] font-bold mt-0.5 ${data.dp >= 0 ? 'text-success' : 'text-danger'}`;
+                };
+
+                try {
+                    // SPY, QQQ, BTC
+                    const [spy, qqq, btc] = await Promise.all([
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=QQQ&token=${FINNHUB_API_KEY}`).then(r=>r.json()),
+                        fetch(`https://finnhub.io/api/v1/quote?symbol=BINANCE:BTCUSDT&token=${FINNHUB_API_KEY}`).then(r=>r.json()).catch(e=>null)
+                    ]);
+                    
+                    formatData(document.getElementById('idx-spy-val'), document.getElementById('idx-spy-pct'), spy);
+                    formatData(document.getElementById('idx-qqq-val'), document.getElementById('idx-qqq-pct'), qqq);
+                    
+                    // ส่วน BTC Binance ไม่ให้ % แบบเดียวกัน เลยดึงตรงจาก Binance เบาๆ
+                    if (btc && btc.c === 0) {
+                        const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT').then(r=>r.json());
+                        if (binanceRes) {
+                            document.getElementById('idx-btc-val').textContent = parseFloat(binanceRes.lastPrice).toLocaleString(undefined, {minimumFractionDigits: 2});
+                            const pct = parseFloat(binanceRes.priceChangePercent);
+                            document.getElementById('idx-btc-pct').textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
+                            document.getElementById('idx-btc-pct').className = `text-[9px] font-bold mt-0.5 ${pct >= 0 ? 'text-success' : 'text-danger'}`;
+                        }
+                    }
+                } catch(e) {}
+            };
+            fetchIndices();
+            setInterval(fetchIndices, 10000); // อัปเดตทุก 10 วิ
+        });
+    </script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(registrations) {
       for(let registration of registrations) {
-        registration.unregister();
+        registration.unregister(); // 🚀 สั่งฆ่า SW ตัวเก่าที่ค้างอยู่ในเครื่องทิ้งซะ
         console.log('Service Worker Unregistered (Cache Cleared)');
       }
+    });
+      setTimeout(() => {
+            if (typeof window.renderWatchlist === 'function') {
+                window.renderWatchlist();
+            }
+        }, 800); 
     });
   }
 </script>
@@ -380,11 +347,16 @@
                 <input type="text" id="new-category-input" placeholder="ตั้งชื่อหมวดหมู่ใหม่..." class="flex-1 bg-background-dark border border-border-dark rounded-xl px-3 py-2 text-sm text-white focus:border-primary outline-none">
                 <button id="btn-add-category" class="bg-primary text-white px-3 py-2 rounded-xl font-bold text-sm">เพิ่ม</button>
             </div>
-            <div class="p-4 pt-0 overflow-y-auto max-h-[50vh] no-scrollbar space-y-2" id="categories-list-container"></div>
+            <div class="p-4 pt-0 overflow-y-auto max-h-[50vh] no-scrollbar space-y-2" id="categories-list-container">
+                </div>
         </div>
     </div>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    
+    // ==========================================
+    // 📌 โครงสร้างข้อมูล Filter (ออกแบบให้เพิ่ม/ลดได้ง่ายในอนาคต)
+    // ==========================================
     const SCANNER_FEATURES = [
         { id: 'rsi_overbought', label: 'RSI > 70 (Overbought)' },
         { id: 'rsi_oversold', label: 'RSI < 35 (Oversold)' },
@@ -393,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'pe_below_15', label: 'P/E < 15 (Value)' }
     ];
 
-    window.activeFilters = window.activeFilters || new Set(); 
+    window.activeFilters = new Set(); // เก็บค่า ID ของตัวกรองที่ถูกเลือก
 
     const btnFilter = document.getElementById('btn-filter-scanner');
     const modalFilter = document.getElementById('modal-filter-scanner');
@@ -401,50 +373,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClearFilter = document.getElementById('btn-clear-filters');
     const btnApplyFilter = document.getElementById('btn-apply-filters');
     const optionsContainer = document.getElementById('filter-options-container');
-    const modalContent = document.getElementById('modal-filter-content');
 
+    // 📌 ฟังก์ชันวาดปุ่มเลือกตัวกรอง
     const renderFilterOptions = () => {
         if (!optionsContainer) return;
-        
-        const iconMap = {
-            'rsi_overbought': 'trending_up',
-            'rsi_oversold': 'trending_down',
-            'ath_drop_30': 'monitoring',
-            'vol_spike': 'bolt',
-            'pe_below_15': 'universal_currency_alt'
-        };
-
         optionsContainer.innerHTML = SCANNER_FEATURES.map(feat => {
             const isActive = window.activeFilters.has(feat.id);
-            const currentIcon = iconMap[feat.id] || 'tune';
-            
             return `
-            <button data-id="${feat.id}" class="filter-option-btn w-full flex items-center justify-between p-4 rounded-xl border text-left active:scale-[0.98] select-none ${
-                isActive 
-                ? 'scanner-glow-active border-[#fbbf24]' 
-                : 'border-border-dark bg-background-dark/40 hover:bg-slate-800/60 hover:border-slate-700'
+            <button data-id="${feat.id}" class="filter-option-btn flex items-center justify-between p-3 rounded-xl border transition-all ${
+                isActive ? 'border-[#fbbf24] bg-[#fbbf24]/10' : 'border-border-dark bg-background-dark hover:bg-slate-800'
             }">
-                <div class="flex items-center gap-3">
-                    <div class="size-8 rounded-lg flex items-center justify-center transition-colors ${isActive ? 'bg-[#fbbf24]/10' : 'bg-surface-dark border border-border-dark/50'}">
-                        <span class="material-symbols-outlined text-[18px] ${isActive ? 'text-[#fbbf24]' : 'text-slate-500'}">
-                            ${currentIcon}
-                        </span>
-                    </div>
-                    <span class="text-sm font-semibold tracking-wide ${isActive ? 'text-[#fbbf24]' : 'text-slate-200'}">${feat.label}</span>
-                </div>
-                <div class="flex items-center justify-center size-5 rounded-full border text-transparent transition-all ${
-                    isActive 
-                    ? 'filter-checkbox-checked text-background-dark' 
-                    : 'border-slate-700 bg-background-dark'
-                }">
-                    <span class="material-symbols-outlined text-[12px] font-black">check</span>
-                </div>
+                <span class="text-sm font-bold ${isActive ? 'text-[#fbbf24]' : 'text-slate-300'}">${feat.label}</span>
+                ${isActive ? '<span class="material-symbols-outlined text-[#fbbf24] text-[18px]">check_circle</span>' : ''}
             </button>`;
         }).join('');
 
-        const countEl = document.getElementById('filter-count');
-        if (countEl) countEl.textContent = window.activeFilters.size;
-
+        // ผูก Event ให้แต่ละปุ่ม
         document.querySelectorAll('.filter-option-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
@@ -453,41 +397,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     window.activeFilters.add(id);
                 }
-                renderFilterOptions();
+                renderFilterOptions(); // วาดใหม่เพื่ออัปเดตสี
             });
         });
     };
 
-    const closeFilterModal = () => {
-        if (!modalFilter || !modalContent) return;
-        modalFilter.classList.add('opacity-0');
-        modalContent.classList.add('translate-y-full', 'scale-95');
-        setTimeout(() => {
-            modalFilter.classList.add('hidden');
-            modalFilter.classList.remove('flex');
-        }, 300);
-    };
-
-    if (btnFilter && modalFilter && modalContent) {
+    if (btnFilter) {
         btnFilter.addEventListener('click', () => {
             renderFilterOptions();
             modalFilter.classList.remove('hidden');
             modalFilter.classList.add('flex');
-            
             setTimeout(() => {
                 modalFilter.classList.remove('opacity-0');
-                modalContent.classList.remove('translate-y-full', 'scale-95');
+                document.getElementById('modal-filter-content').classList.remove('scale-95');
             }, 10);
         });
 
-        btnCloseFilter.addEventListener('click', closeFilterModal);
+        const closeModal = () => {
+            modalFilter.classList.add('opacity-0');
+            document.getElementById('modal-filter-content').classList.add('scale-95');
+            setTimeout(() => {
+                modalFilter.classList.add('hidden');
+                modalFilter.classList.remove('flex');
+            }, 200);
+        };
+
+        btnCloseFilter.addEventListener('click', closeModal);
+
         btnClearFilter.addEventListener('click', () => {
             window.activeFilters.clear();
             renderFilterOptions();
         });
 
         btnApplyFilter.addEventListener('click', () => {
-            closeFilterModal();
+            closeModal();
+            // 📌 เมื่อกด "ใช้ตัวกรอง" ให้สั่งวาดหน้า Watchlist ใหม่
             if (typeof window.renderWatchlist === 'function') {
                 window.renderWatchlist();
             }
@@ -496,9 +440,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 1. ตั้งค่าตัวแปร Global เพื่อให้ระบบรู้ว่าตอนนี้อยู่หน้าแฟ้มไหน
     window.currentActiveCategory = 'All';
 
-    const getPortfolioData = () => {
+    // 2. ดึงข้อมูลพอร์ตโฟลิโอ (พร้อมสร้างโครงสร้างพื้นฐานถ้ายังไม่มี)
+        const getPortfolioData = () => {
         let data = JSON.parse(localStorage.getItem('koda_portfolio_data') || '{}');
         if (!data.categories || !data.watchlists) {
             data.categories = ['All'];
@@ -511,27 +457,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return data;
     };
 
+
+    // 3. ฟังก์ชันวาดปุ่มแถบเลื่อนด้านบน (All, Tech, Energy ฯลฯ)
     window.renderCategoryPills = () => {
         const data = getPortfolioData();
         const container = document.getElementById('watchlist-categories');
         if (!container) return;
 
+        // วาดปุ่มแต่ละอัน
         container.innerHTML = data.categories.map(cat => `
             <button class="cat-pill-btn px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
                 cat === window.currentActiveCategory 
-                ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm' 
-                : 'bg-surface-dark text-slate-400 border border-border-dark hover:text-slate-200' 
+                ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm' // สีปุ่มตอนถูกเลือก
+                : 'bg-surface-dark text-slate-400 border border-border-dark hover:text-slate-200' // สีปุ่มตอนไม่ได้เลือก
             }" data-cat="${cat}">
                 ${cat === window.currentActiveCategory ? '<span class="material-symbols-outlined text-[14px] align-middle mr-1">check</span>' : ''}${cat}
             </button>
         `).join('');
 
+        // ใส่ Event ให้กดเปลี่ยนแฟ้มได้
         document.querySelectorAll('.cat-pill-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 window.currentActiveCategory = e.currentTarget.dataset.cat;
                 document.getElementById('current-category-title').textContent = window.currentActiveCategory;
-                window.renderCategoryPills();
+                window.renderCategoryPills(); // วาดปุ่มใหม่เพื่อเปลี่ยนสี
                 
+                // 📌 จุดแก้บัค: สั่งวาดหุ้นบนหน้าจอ "ทันที" แบบไม่ต้องรอ Delay 5 วิ
                 if (typeof window.renderWatchlist === 'function') {
                     window.renderWatchlist();
                 }
@@ -539,6 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // 4. ระบบจัดการแฟ้ม (เปิด/ปิด Modal, เพิ่มแฟ้ม, ลบแฟ้ม)
     const btnManage = document.getElementById('btn-manage-categories');
     const modalCategories = document.getElementById('modal-manage-categories');
     const btnCloseCat = document.getElementById('btn-close-categories');
@@ -559,6 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `).join('');
 
+        // ลบแฟ้ม
         document.querySelectorAll('.btn-delete-cat').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const catToDelete = e.currentTarget.dataset.cat;
@@ -568,6 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     delete data.watchlists[catToDelete];
                     localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
                     
+                    // ถ้าลบแฟ้มที่เปิดอยู่ ให้กลับไปหน้า All
                     if (window.currentActiveCategory === catToDelete) {
                         window.currentActiveCategory = 'All';
                         document.getElementById('current-category-title').textContent = 'All';
@@ -582,6 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (btnManage) {
+        // กดไอคอน Tune เพื่อเปิดหน้าต่างจัดการแฟ้ม
         btnManage.addEventListener('click', () => {
             renderManageList();
             modalCategories.classList.remove('hidden');
@@ -589,6 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => modalCategories.classList.remove('opacity-0'), 10);
         });
 
+        // ปิดหน้าต่างจัดการแฟ้ม
         btnCloseCat.addEventListener('click', () => {
             modalCategories.classList.add('opacity-0');
             setTimeout(() => {
@@ -597,25 +553,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 200);
         });
 
+        // พิมพ์ชื่อแล้วกดเพิ่มแฟ้ม
         btnAddCat.addEventListener('click', () => {
             const newCat = inputNewCat.value.trim();
             if (!newCat) return;
 
             let data = getPortfolioData();
+            
+            // เช็คชื่อซ้ำ
             if (data.categories.includes(newCat)) {
                 alert('ชื่อแฟ้มนี้มีอยู่แล้ว!');
                 return;
             }
 
+            // บันทึกแฟ้มใหม่
             data.categories.push(newCat);
-            data.watchlists[newCat] = []; 
+            data.watchlists[newCat] = []; // สร้างอาร์เรย์ว่างรับข้อมูลหุ้น
             localStorage.setItem('koda_portfolio_data', JSON.stringify(data));
             
-            inputNewCat.value = ''; 
-            renderManageList(); 
-            window.renderCategoryPills(); 
+            inputNewCat.value = ''; // เคลียร์ช่องพิมพ์
+            renderManageList(); // อัปเดตรายการในหน้าต่าง
+            window.renderCategoryPills(); // อัปเดตปุ่มด้านบน
         });
     }
+
+    // สั่งรันสร้างปุ่มครั้งแรกเมื่อเปิดหน้าเว็บ
     window.renderCategoryPills();
 });
 </script>
@@ -628,7 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="material-symbols-outlined text-[#fbbf24] text-[18px]">tune</span>
                     </div>
                     <div>
-                        <h3 class="text-white font-bold text-base leading-none">KODA Scanner</h3>
+                        <h3 class="text-slate-900 font-bold text-base leading-none">KODA Scanner</h3>
                         <p class="text-slate-400 text-[10px] mt-1">คัดกรองหุ้นตามปัจจัยพื้นฐานและเทคนิค</p>
                     </div>
                 </div>

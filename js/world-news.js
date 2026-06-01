@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cachedResult = await loadTimelineFromApi(`/api/get-world-news?cache=1&_=${Date.now()}`);
             const hasCachedNews = renderTimelineResult(cachedResult);
 
-            const shouldSync = forceRefresh || true;
+            const shouldSync = forceRefresh || !hasCachedNews;
             if (!shouldSync) return;
 
             if (!hasCachedNews) {

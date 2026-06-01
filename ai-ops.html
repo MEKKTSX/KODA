@@ -1,80 +1,59 @@
 <!DOCTYPE html>
-<html class="dark" lang="en">
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>KODA - AI Operations</title>
     <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="js/tailwind-config.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0a0e17">
-    <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#34a8eb", 
-                        "success": "#00c076", 
-                        "danger": "#ff4d4d", 
-                        "background-dark": "#0a0e17", 
-                        "surface-dark": "#161c2b", 
-                        "border-dark": "#232b3e",
-                    },
-                    fontFamily: {
-                        "display": ["Inter", "sans-serif"]
-                    },
-                    borderRadius: {
-                        "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "9999px"
-                    },
-                },
-            },
-        }
-    </script>
+    <meta name="theme-color" content="#2563EB">
+    <link rel="stylesheet" href="css/koda-tokens.css">
+    <link rel="stylesheet" href="css/koda-shell.css">
     <style>
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        .fill-icon { font-variation-settings: 'FILL' 1; }
-        ::-webkit-scrollbar { display: none; }
-        body { min-height: max(884px, 100dvh); }
-        
         .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
-        
-        .ai-message-content b, .ai-message-content strong { color: #fff; font-weight: 700; }
+        .ai-message-content b, .ai-message-content strong { color: #0f172a; font-weight: 700; }
         .ai-message-content p { margin-bottom: 0.5rem; }
         .ai-message-content ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
         .ai-message-content li { margin-bottom: 0.25rem; }
+        @media (min-width: 1024px) {
+            #chat-container { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; max-width: 72rem; margin: 0 auto; }
+            #recent-chats-wrapper { grid-column: 1; }
+            #chat-messages, #scroll-anchor, .koda-briefing-wrap { grid-column: 2; }
+        }
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen font-display flex flex-col relative">
-<div class="max-w-md mx-auto flex flex-col min-h-screen w-full border-x border-border-dark/30 relative overflow-x-hidden">
+<body class="bg-background-dark text-slate-900 min-h-screen font-display flex flex-col relative">
+<div id="koda-sidebar-container"></div>
+<div class="koda-app flex flex-col flex-1">
+<div class="koda-main w-full relative overflow-x-hidden flex flex-col min-h-screen">
     
-    <header class="flex items-center p-4 pb-3 justify-between sticky top-0 bg-background-dark/95 backdrop-blur-md z-20 border-b border-border-dark/30 shrink-0">
-        <div class="flex size-10 items-center justify-center rounded-full bg-primary/20 border border-primary/30">
+    <header class="koda-page-header shrink-0">
+        <div class="flex size-10 items-center justify-center rounded-lg bg-primary/10">
             <span class="material-symbols-outlined text-primary text-xl">auto_awesome</span>
         </div>
-        <div class="flex flex-col items-center flex-1">
-            <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight">KODA Copilot</h2>
+        <div class="flex flex-col items-center flex-1 lg:items-start lg:ml-2">
+            <h2 class="koda-page-title">KODA Copilot</h2>
             <p class="text-success text-[10px] uppercase font-bold tracking-wider flex items-center gap-1" id="header-status">
                 <span class="size-1.5 bg-success rounded-full animate-pulse"></span> Online
             </p>
         </div>
-        <button id="btn-new-chat" class="flex size-10 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors">
+        <button type="button" id="btn-new-chat" class="flex size-10 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 transition-colors">
             <span class="material-symbols-outlined">add_comment</span>
         </button>
     </header>
 
-    <main class="flex-1 overflow-y-auto pb-48 px-4 pt-4 flex flex-col gap-5" id="chat-container">
+    <main class="flex-1 overflow-y-auto pb-48 lg:pb-36 px-4 lg:px-0 pt-4 flex flex-col gap-5 max-w-5xl lg:max-w-7xl lg:mx-auto lg:w-full" id="chat-container">
         
-        <div class="bg-gradient-to-br from-surface-dark to-background-dark border border-border-dark rounded-2xl p-4 shadow-lg shrink-0">
+        <div class="koda-briefing-wrap bg-surface-dark border border-border-dark rounded-2xl p-4 shadow-sm shrink-0 koda-card">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-white text-sm font-bold flex items-center gap-2">
+                <h3 class="text-slate-900 text-sm font-bold flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary text-base">summarize</span> Morning Briefing
                 </h3>
                 <span class="text-slate-500 text-[10px]">Daily Update</span>
@@ -100,7 +79,7 @@
 
     </main>
 
-    <div class="fixed bottom-[68px] left-1/2 -translate-x-1/2 w-full max-w-md bg-background-dark/95 backdrop-blur-lg border-t border-border-dark z-20 px-4 py-3">
+    <div class="fixed bottom-[68px] left-0 right-0 lg:left-[var(--koda-sidebar-width,240px)] w-full lg:max-w-none max-w-lg mx-auto lg:mx-0 bg-surface-dark/95 backdrop-blur-lg border-t border-border-dark z-20 px-4 py-3 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
         
         <!-- 📌 [เพิ่มใหม่] คอนเทนเนอร์แสดงรูปที่แนบก่อนกดส่ง -->
         <div id="image-preview-container" class="hidden pb-2 w-full pl-2">
@@ -127,7 +106,7 @@
             </button>
 
             <!-- กล่องพิมพ์ (ของเดิม) -->
-            <textarea id="chat-input" rows="1" class="flex-1 min-w-0 bg-transparent border-none text-sm text-slate-100 placeholder:text-slate-500 focus:ring-0 p-0 py-2 outline-none resize-none max-h-32 overflow-y-auto no-scrollbar" placeholder="Ask KODA or attach chart..."></textarea>
+            <textarea id="chat-input" rows="1" class="flex-1 min-w-0 bg-transparent border-none text-sm text-slate-900 placeholder:text-slate-400 focus:ring-0 p-0 py-2 outline-none resize-none max-h-32 overflow-y-auto no-scrollbar" placeholder="Ask KODA or attach chart..."></textarea>
             
             <!-- ปุ่มส่ง (ของเดิม) -->
             <button type="button" id="send-btn" class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-0.5 outline-none" disabled>
@@ -174,6 +153,8 @@
     </div>
 
     <div id="bottom-nav-container"></div>
+</div>
+</div>
     
     <div id="modal-clear-chat" class="fixed inset-0 bg-background-dark/90 backdrop-blur-sm z-[100] hidden flex-col justify-center items-center transition-opacity opacity-0 px-4">
         <div class="bg-surface-dark border border-border-dark rounded-3xl p-6 w-full max-sm shadow-[0_10px_40px_rgba(0,0,0,0.5)] transform scale-95 transition-transform" id="modal-clear-content">
@@ -193,7 +174,7 @@
     </div>
 </div>
 
-<script src="js/nav.js"></script>
+<script src="js/layout.js"></script>
 <script src="js/ai-helper.js"></script>
 
 <script>

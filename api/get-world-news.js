@@ -207,39 +207,74 @@ async function insertNewItems(supabase, newsItems, geminiKeys) {
     let savedCount = 0;
     const errors = [];
 
-    for (const news of newsItems) {
-        if (savedCount >= MAX_NEW_INSERTS_PER_RUN) break;
+    // Slice candidates up to double the limit to check for existing entries in bulk
+    const candidates = newsItems.slice(0, MAX_NEW_INSERTS_PER_RUN * 2);
+    const candidateLinks = candidates.map(news => news.link).filter(Boolean);
 
-        const { data: exists, error: existsError } = await supabase
+    if (candidateLinks.length === 0) {
+        return { savedCount: 0, errors };
+    }
+
+    // 1. Bulk Lookup existing items
+    const { data: existingItems, error: existsError } = await supabase
+        .from(TABLE_NAME)
+        .select('source_url')
+        .in('source_url', candidateLinks);
+
+    if (existsError) {
+        errors.push(`Bulk lookup failed: ${existsError.message}`);
+        return { savedCount: 0, errors };
+    }
+
+    const existingLinksSet = new Set((existingItems || []).map(item => item.source_url));
+
+    // Filter to items that DO NOT exist in database yet, up to the MAX limit
+    const newNewsItems = candidates
+        .filter(news => news.link && !existingLinksSet.has(news.link))
+        .slice(0, MAX_NEW_INSERTS_PER_RUN);
+
+    if (newNewsItems.length === 0) {
+        return { savedCount: 0, errors };
+    }
+
+    // 2. Parallel translation using Promise.all
+    const translatedItems = await Promise.all(
+        newNewsItems.map(async (news, index) => {
+            try {
+                const currentKey = geminiKeys[index % Math.max(geminiKeys.length, 1)];
+                const thaiTitle = await translateHeadlineToThai(news.title, news.source, currentKey);
+                return {
+                    ...news,
+                    title: thaiTitle
+                };
+            } catch (err) {
+                errors.push(`Translation failed for ${news.title}: ${err.message}`);
+                return news; // fallback to original title if translation fails
+            }
+        })
+    );
+
+    // 3. Bulk insert translated items
+    const recordsToInsert = translatedItems.map(news => ({
+        title: news.title,
+        summary: news.summary,
+        source_url: news.link,
+        source_name: news.source,
+        news_type: news.source.includes('Trump') ? 'truth' : 'geo',
+        published_time: news.created_at,
+        created_at: news.created_at
+    }));
+
+    if (recordsToInsert.length > 0) {
+        const { error: insertError } = await supabase
             .from(TABLE_NAME)
-            .select('id')
-            .eq('source_url', news.link)
-            .maybeSingle();
-
-        if (existsError) {
-            errors.push(`lookup failed for ${news.link}: ${existsError.message}`);
-            continue;
-        }
-        if (exists) continue;
-
-        const currentKey = geminiKeys[savedCount % Math.max(geminiKeys.length, 1)];
-        const thaiTitle = await translateHeadlineToThai(news.title, news.source, currentKey);
-        const { error: insertError } = await supabase.from(TABLE_NAME).insert([{
-            title: thaiTitle,
-            summary: news.summary,
-            source_url: news.link,
-            source_name: news.source,
-            news_type: news.source.includes('Trump') ? 'truth' : 'geo',
-            published_time: news.created_at,
-            created_at: news.created_at
-        }]);
+            .insert(recordsToInsert);
 
         if (insertError) {
-            errors.push(`insert failed for ${news.link}: ${insertError.message}`);
-            continue;
+            errors.push(`Bulk insert failed: ${insertError.message}`);
+        } else {
+            savedCount = recordsToInsert.length;
         }
-
-        savedCount++;
     }
 
     return { savedCount, errors };

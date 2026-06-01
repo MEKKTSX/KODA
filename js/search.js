@@ -3,15 +3,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const FINNHUB_API_KEY = window.ENV_KEYS?.FINNHUB || '';
 
     const searchHTML = `
-    <div id="koda-search-modal" class="fixed inset-0 z-[100] hidden bg-background-dark/95 backdrop-blur-md flex-col opacity-0 transition-opacity duration-200">
-        <div class="p-4 pt-6 flex items-center gap-3 border-b border-border-dark bg-surface-dark/50">
-            <span class="material-symbols-outlined text-slate-400">search</span>
-            <input type="text" id="koda-search-input" class="flex-1 bg-transparent border-none text-white focus:ring-0 placeholder-slate-500 text-lg outline-none" placeholder="Search Stocks, Crypto, Forex, ETF..." autocomplete="off">
-            <button id="koda-search-close" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors active:scale-90">
+    <div id="koda-search-modal" class="fixed inset-0 z-[100] hidden bg-slate-900/30 backdrop-blur-md flex-col opacity-0 transition-opacity duration-200">
+        <div class="p-4 pt-6 flex items-center gap-3 border-b border-border-dark bg-surface-dark shadow-sm max-w-2xl mx-auto w-full lg:mt-8 lg:rounded-t-xl">
+            <span class="material-symbols-outlined text-slate-500">search</span>
+            <input type="text" id="koda-search-input" class="flex-1 bg-transparent border-none text-slate-900 focus:ring-0 placeholder-slate-400 text-lg outline-none" placeholder="Search Stocks, Crypto, Forex, ETF..." autocomplete="off">
+            <button id="koda-search-close" type="button" class="text-slate-500 hover:text-slate-900 p-2 rounded-full hover:bg-slate-100 transition-colors active:scale-90">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
-        <div id="koda-search-results" class="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar pb-20"></div>
+        <div id="koda-search-results" class="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar pb-20 bg-background-dark max-w-2xl mx-auto w-full"></div>
     </div>`;
     
     document.body.insertAdjacentHTML('beforeend', searchHTML);
@@ -115,14 +115,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             return `
-            <a href="stock-detail.html?symbol=${sym}" class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-800 active:bg-slate-700 transition-colors border border-transparent hover:border-border-dark group">
+            <a href="stock-detail.html?symbol=${sym}" class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors border border-transparent hover:border-border-dark group koda-card">
                 <div class="flex items-center gap-3">
                     <div class="size-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 relative" style="background:${bg};">
                         <span class="text-white font-bold text-[11px] select-none">${initials}</span>
                         <img src="${logoSrc}" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-cover rounded-full" onerror="this.remove();">
                     </div>
                     <div class="flex flex-col">
-                        <span class="text-white font-bold text-base">${sym}</span>
+                        <span class="text-slate-900 font-bold text-base">${sym}</span>
                         <span class="text-slate-500 text-[10px] truncate max-w-[180px]">${item.description}</span>
                     </div>
                 </div>
@@ -241,5 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn.innerHTML.includes('>search<') || btn.textContent.trim() === 'search') {
             btn.addEventListener('click', (e) => { e.preventDefault(); openSearch(); });
         }
+    });
+    document.querySelectorAll('.koda-search-trigger').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.preventDefault(); openSearch(); });
     });
 });

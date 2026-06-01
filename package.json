@@ -1,5 +1,4 @@
 {
-  "type": "module",
   "name": "koda-cache-pipeline",
   "version": "1.0.0",
   "dependencies": {

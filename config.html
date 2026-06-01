@@ -1,51 +1,33 @@
 <!DOCTYPE html>
-<html class="dark" lang="en">
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>KODA - Settings</title>
     <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="js/tailwind-config.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0a0e17">
-    <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#34a8eb", 
-                        "success": "#00c076", 
-                        "danger": "#ff4d4d", 
-                        "background-dark": "#0a0e17", 
-                        "surface-dark": "#161c2b", 
-                        "border-dark": "#232b3e",
-                    },
-                    fontFamily: { "display": ["Inter", "sans-serif"] },
-                },
-            },
-        }
-    </script>
+    <meta name="theme-color" content="#2563EB">
+    <link rel="stylesheet" href="css/koda-tokens.css">
+    <link rel="stylesheet" href="css/koda-shell.css">
     <style>
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        ::-webkit-scrollbar { display: none; }
-        body { min-height: max(884px, 100dvh); }
-        .toggle-checkbox:checked { right: 0; border-color: #34a8eb; }
-        .toggle-checkbox:checked + .toggle-label { background-color: #34a8eb; }
+        .toggle-checkbox:checked { right: 0; border-color: #2563eb; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #2563eb; }
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen font-display flex flex-col">
-<div class="max-w-md mx-auto flex flex-col min-h-screen w-full border-x border-border-dark/30 relative">
+<body class="bg-background-dark text-slate-900 min-h-screen font-display flex flex-col">
+<div id="koda-sidebar-container"></div>
+<div class="koda-app flex flex-col flex-1">
+<div class="koda-main w-full relative">
     
-    <header class="flex items-center p-4 pb-3 justify-center sticky top-0 bg-background-dark/95 backdrop-blur-md z-20 border-b border-border-dark/30">
-        <h2 class="text-slate-100 text-lg font-bold leading-tight tracking-tight">Settings</h2>
+    <header class="koda-page-header lg:justify-center">
+        <h2 class="koda-page-title">Settings</h2>
     </header>
 
-    <main class="flex-1 overflow-y-auto pb-28 px-4 pt-6 space-y-6">
+    <main class="flex-1 overflow-y-auto pb-28 px-4 lg:px-0 pt-6 space-y-6 max-w-2xl lg:max-w-3xl">
         
         <section id="profile-section" class="bg-surface-dark border border-border-dark rounded-2xl p-4 flex items-center gap-4">
             <div class="relative">
@@ -193,8 +175,9 @@
 
     <div id="bottom-nav-container"></div>
 </div>
+</div>
 
-<script src="js/nav.js"></script>
+<script src="js/layout.js"></script>
 
 <script src="js/market-plus.js"></script>
 

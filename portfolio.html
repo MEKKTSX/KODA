@@ -1,47 +1,30 @@
 <!DOCTYPE html>
-<html class="dark" lang="en">
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>KODA - Portfolio Manager</title>
     <script src="js/keys.js"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="js/tailwind-config.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0a0e17">
-    
+    <meta name="theme-color" content="#2563EB">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#34a8eb", "success": "#00c076", "danger": "#ff4d4d", 
-                        "background-dark": "#0a0e17", "surface-dark": "#161c2b", "border-dark": "#232b3e",
-                    },
-                    fontFamily: { "display": ["Inter", "sans-serif"] },
-                },
-            },
-        }
-    </script>
-    <style>
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        ::-webkit-scrollbar { display: none; }
-    </style>
+    <link rel="stylesheet" href="css/koda-tokens.css">
+    <link rel="stylesheet" href="css/koda-shell.css">
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen font-display">
-<div class="max-w-md mx-auto flex flex-col min-h-screen border-x border-border-dark/30 relative overflow-x-hidden">
+<body class="bg-background-dark text-slate-900 min-h-screen font-display">
+<div id="koda-sidebar-container"></div>
+<div class="koda-app">
+<div class="koda-main relative overflow-x-hidden">
     
-    <header class="flex items-center p-4 pb-3 justify-between sticky top-0 bg-background-dark/90 backdrop-blur-md z-20 border-b border-border-dark/30">
-        <a href="index.html" class="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-dark text-slate-300 transition-colors">
+    <header class="koda-page-header lg:pt-2">
+        <a href="watchlist.html" class="lg:hidden flex size-10 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 transition-colors">
             <span class="material-symbols-outlined">arrow_back</span>
         </a>
-        <h2 class="text-slate-100 text-lg font-bold leading-tight flex-1 px-2 text-center tracking-tight">My Holdings</h2>
+        <h2 class="koda-page-title flex-1 lg:flex-none text-center lg:text-left">My Holdings</h2>
         <button id="btn-open-add-stock" class="flex size-10 items-center justify-center rounded-full bg-primary/20 text-primary hover:bg-primary hover:text-white transition-colors">
             <span class="material-symbols-outlined">add</span>
         </button>
@@ -49,13 +32,13 @@
 
     <main class="flex-1 overflow-y-auto pb-28">
         
-        <section class="pt-6 pb-2 border-b border-border-dark/50 bg-gradient-to-b from-surface-dark/50 to-background-dark">
+        <section class="pt-6 pb-2 border-b border-border-dark bg-slate-50/80 lg:rounded-xl lg:border lg:mx-0 lg:mt-2">
             <div class="px-4 flex items-center justify-between mb-4">
                 <div class="flex flex-col">
                     <p class="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Portfolio Value</p>
-                    <p class="text-white text-3xl font-black mt-1 tracking-tight" id="port-total-val">$0.00</p>
+                    <p class="text-slate-900 text-3xl font-black mt-1 tracking-tight" id="port-total-val">$0.00</p>
                     <div class="flex items-center gap-2 mt-1">
-                    <p class="text-slate-400 text-sm font-bold">Cash: <span id="port-cash-val" class="text-white">$0.00</span></p>
+                    <p class="text-slate-500 text-sm font-bold">Cash: <span id="port-cash-val" class="text-slate-900">$0.00</span></p>
                     <button id="btn-manage-cash" class="bg-surface-dark border border-border-dark text-[10px] px-2 py-0.5 rounded-md text-slate-300 hover:text-white transition-colors flex items-center gap-1">
                         <span class="material-symbols-outlined text-[12px]">edit</span>
                     </button>
@@ -118,7 +101,7 @@
             </div>
             
             <div class="flex items-center justify-between mt-1">
-                <p class="text-slate-400 text-sm font-medium">Positions (<span id="position-count" class="text-white font-bold">0</span>)</p>
+                <p class="text-slate-500 text-sm font-medium">Positions (<span id="position-count" class="text-slate-900 font-bold">0</span>)</p>
                 
                 <div class="relative">
                     <button id="sort-btn" class="flex items-center gap-1 bg-surface-dark border border-border-dark text-slate-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none hover:bg-slate-800 transition-colors">
@@ -513,8 +496,9 @@
 
     <div id="bottom-nav-container"></div>
 </div>
+</div>
 
-<script src="js/nav.js"></script>
+<script src="js/layout.js"></script>
 <script>
     window.loadKodaConfig().then(() => {
         const scripts = ["js/api.js", "js/portfolio-calc.js", "js/analytics.js", "js/kodalab1.js"];

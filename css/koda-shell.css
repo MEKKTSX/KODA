@@ -1,0 +1,265 @@
+/**
+ * KODA UI v2 — App shell, layout, components
+ */
+@import url("koda-tokens.css");
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: var(--koda-bg);
+  color: var(--koda-text);
+  -webkit-tap-highlight-color: transparent;
+  min-height: 100dvh;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+.fill-icon {
+  font-variation-settings: "FILL" 1;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* App shell */
+.koda-app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+@media (min-width: 1024px) {
+  .koda-app {
+    padding-left: var(--koda-sidebar-width);
+  }
+}
+
+.koda-main {
+  flex: 1;
+  width: 100%;
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: 5.5rem;
+}
+@media (min-width: 1024px) {
+  .koda-main {
+    padding-bottom: 2rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+.koda-page-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  background: rgba(248, 250, 252, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--koda-border);
+}
+@media (min-width: 1024px) {
+  .koda-page-header {
+    padding-left: 0;
+    padding-right: 0;
+    margin-bottom: 0.5rem;
+    position: relative;
+    background: transparent;
+    border-bottom: none;
+  }
+}
+
+.koda-page-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--koda-text);
+  letter-spacing: -0.02em;
+}
+
+/* Cards */
+.koda-card {
+  background: var(--koda-surface);
+  border: 1px solid var(--koda-border);
+  border-radius: var(--koda-radius);
+  box-shadow: var(--koda-shadow-sm);
+}
+.koda-card:hover {
+  border-color: var(--koda-border-strong);
+}
+
+.koda-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--koda-text-muted);
+}
+
+.koda-stat-value {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--koda-text);
+  letter-spacing: -0.02em;
+}
+
+/* Desktop sidebar */
+.koda-sidebar {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .koda-sidebar {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--koda-sidebar-width);
+    background: var(--koda-surface);
+    border-right: 1px solid var(--koda-border);
+    z-index: 50;
+    padding: 1.25rem 0.75rem;
+  }
+  .koda-sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0 0.75rem 1.25rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--koda-border);
+  }
+  .koda-sidebar-brand-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    background: var(--koda-primary-muted);
+    color: var(--koda-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .koda-sidebar-brand-text {
+    font-weight: 700;
+    font-size: 1.125rem;
+    color: var(--koda-text);
+  }
+  .koda-sidebar-brand-sub {
+    font-size: 0.65rem;
+    color: var(--koda-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .koda-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+  .koda-sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--koda-text-muted);
+    transition: background 0.15s, color 0.15s;
+  }
+  .koda-sidebar-link:hover {
+    background: var(--koda-surface-muted);
+    color: var(--koda-text);
+  }
+  .koda-sidebar-link.active {
+    background: var(--koda-primary-muted);
+    color: var(--koda-primary);
+    font-weight: 600;
+  }
+  .koda-sidebar-link .material-symbols-outlined {
+    font-size: 1.25rem;
+  }
+}
+
+/* Mobile bottom nav */
+.koda-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--koda-border);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+@media (min-width: 1024px) {
+  .koda-bottom-nav {
+    display: none;
+  }
+}
+
+/* Modals — desktop centered */
+@media (min-width: 1024px) {
+  .koda-modal-backdrop.items-end {
+    align-items: center;
+    padding: 1.5rem;
+  }
+  .koda-modal-sheet.rounded-t-3xl {
+    border-radius: var(--koda-radius-lg);
+    max-height: 85vh;
+  }
+  .koda-modal-sheet.translate-y-full {
+    transform: translateY(0) scale(0.96);
+    opacity: 0;
+  }
+  .koda-modal-sheet:not(.translate-y-full) {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* AI / enterprise callouts */
+.koda-ai-summary {
+  background: var(--koda-surface-muted);
+  border: 1px solid var(--koda-border);
+  border-left: 3px solid var(--koda-primary);
+  border-radius: var(--koda-radius);
+  padding: 1rem;
+  color: var(--koda-text);
+  line-height: 1.6;
+}
+.koda-future-card {
+  background: var(--koda-surface);
+  border: 1px solid var(--koda-border);
+  border-radius: var(--koda-radius);
+  padding: 1rem;
+}
+
+/* Watchlist — toned-down highlights (v2) */
+.golden-border-content {
+  background: var(--koda-surface) !important;
+}
+.highlight-today-col {
+  border-color: var(--koda-success) !important;
+  background-color: rgba(5, 150, 105, 0.06) !important;
+  box-shadow: 0 0 8px rgba(5, 150, 105, 0.12) !important;
+}
+
+/* Tabs */
+.koda-tab-active {
+  color: var(--koda-primary);
+  border-bottom: 2px solid var(--koda-primary);
+  font-weight: 600;
+}
+.koda-tab-inactive {
+  color: var(--koda-text-muted);
+  border-bottom: 2px solid transparent;
+}
