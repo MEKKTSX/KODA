@@ -465,6 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!document.hidden && !isWhatIfMode) {
             updateUI();
         }
-    }, 2000); 
+    }, 10000);
 
 });

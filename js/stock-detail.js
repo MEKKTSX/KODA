@@ -423,6 +423,7 @@
     let isRealtimeRunning = false;
     const startRealtimeEngine = () => {
         const fetchAndUpdateYF = async () => {
+            if (document.hidden) return;
             try {
                 const yfData = await fetchYFQuote(symbol);
                 if (yfData) {
@@ -437,7 +438,10 @@
         fetchAndUpdateYF(); 
         if(!isRealtimeRunning) {
             // 🚀 อัปเดตทุกๆ 5 วิ
-            setInterval(fetchAndUpdateYF, 5000); 
+            setInterval(fetchAndUpdateYF, 30000);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) fetchAndUpdateYF();
+            });
             isRealtimeRunning = true;
         }
     };

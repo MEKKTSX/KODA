@@ -186,6 +186,7 @@
     };
 
         const fetchRealPrices = async () => {
+        if (document.hidden) return;
         // 📌 1. จดจำว่าก่อนดึงข้อมูล เราอยู่แฟ้มไหน
         const fetchTriggerCategory = window.currentActiveCategory || 'All';
 
@@ -723,9 +724,14 @@
             window.KodaAI.isFast = true;
         }
     };
-    setInterval(setupFastTranslation, 500); 
+    setupFastTranslation();
+    const translationSetupTimer = setInterval(() => {
+        setupFastTranslation();
+        if (window.KodaAI?.isFast) clearInterval(translationSetupTimer);
+    }, 5000);
 
     const fetchMarketNews = async () => {
+        if (document.hidden) return;
         try {
             const rssUrl = 'https://th.investing.com/rss/news_285.rss'; 
             const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`;
@@ -842,5 +848,8 @@
     fetchMarketNews(); fetchRealPrices(); 
 
     // 🚀 เปลี่ยนเป็นอัปเดตทุก 5 วินาที
-    setInterval(fetchRealPrices, 5000); 
-    setInterval(fetchMarketNews, 300000);
+    setInterval(fetchRealPrices, 30000);
+    setInterval(fetchMarketNews, 900000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) fetchRealPrices();
+    });

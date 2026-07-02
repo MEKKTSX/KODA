@@ -34,7 +34,7 @@ window.KodaMarketPlus = {
     initDynamics: () => {
         window.KodaMarketPlus.injectTradingViewWidget();
         setInterval(() => {
-            window.KodaMarketPlus.injectTradingViewWidget();
+            if (!document.hidden) window.KodaMarketPlus.injectTradingViewWidget();
         }, 900000); 
     },
 

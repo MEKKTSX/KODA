@@ -420,6 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let lastAlertFetchTime = 0;
     const runMasterController = () => {
+        if (document.hidden) return;
         const now = Date.now();
         if (now - lastAlertFetchTime >= 300000) {
             fetchMarketAlerts();
@@ -429,11 +430,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     setTimeout(() => {
+        if (document.hidden) return;
         fetchFearAndGreed();
         renderEarningsCalendar();;
         fetchMarketAlerts();
         lastAlertFetchTime = Date.now();
     }, 500);
 
-    setInterval(runMasterController, 60000);
+    setInterval(runMasterController, 300000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) runMasterController();
+    });
 });
