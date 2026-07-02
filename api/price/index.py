@@ -6,6 +6,47 @@ from datetime import datetime
 import pytz
 import math
 import pandas as pd
+import time
+
+PRICE_CACHE = {}
+
+def get_cache_policy(mode, market_state=None):
+    if mode == 'fx':
+        return 21600, 'public, s-maxage=21600, stale-while-revalidate=43200'
+    if mode in ('financials', 'analysis'):
+        return 21600, 'public, s-maxage=21600, stale-while-revalidate=86400'
+    if mode == 'chart':
+        return 300, 'public, s-maxage=300, stale-while-revalidate=1800'
+    if mode == 'price':
+        ttl = 300 if market_state == 'CLOSED' else 30
+        return ttl, f'public, s-maxage={ttl}, stale-while-revalidate={ttl * 2}'
+    return 60, 'public, s-maxage=60, stale-while-revalidate=300'
+
+def make_cache_key(mode, query):
+    parts = [mode]
+    for key in ('symbol', 'base', 'target', 'range', 'interval'):
+        value = query.get(key, [''])[0].strip().upper()
+        if value:
+            parts.append(f'{key}:{value}')
+    return '|'.join(parts)
+
+def cache_get(key, now=None):
+    now = time.time() if now is None else now
+    item = PRICE_CACHE.get(key)
+    if not item:
+        return None
+    if item['expires_at'] <= now:
+        PRICE_CACHE.pop(key, None)
+        return None
+    return item['response'], item['cache_control']
+
+def cache_set(key, response, ttl, cache_control, now=None):
+    now = time.time() if now is None else now
+    PRICE_CACHE[key] = {
+        'response': response,
+        'cache_control': cache_control,
+        'expires_at': now + ttl
+    }
 
 def clean_val(v):
     try:
@@ -19,9 +60,16 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         query = parse_qs(urlparse(self.path).query)
         mode = query.get('mode', ['price'])[0].strip().lower()
+        cache_key = make_cache_key(mode, query)
+        cache_control = 'no-store, no-cache, must-revalidate, max-age=0'
+        cache_status = 'MISS'
 
         try:
-            if mode == 'fx':
+            cached = cache_get(cache_key)
+            if cached:
+                response, cache_control = cached
+                cache_status = 'HIT'
+            elif mode == 'fx':
                 base = query.get('base', ['USD'])[0].strip().upper()
                 target = query.get('target', ['THB'])[0].strip().upper()
                 response = self.get_exchange_rate(base, target)
@@ -47,6 +95,10 @@ class handler(BaseHTTPRequestHandler):
                 else:
                     response = self.get_price(ticker, symbol)
 
+            if cache_status == 'MISS' and response.get('success'):
+                ttl, cache_control = get_cache_policy(mode, response.get('marketState'))
+                cache_set(cache_key, response, ttl, cache_control)
+
         except Exception as e:
             response = {
                 "success": False,
@@ -56,7 +108,8 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Cache-Control', cache_control)
+        self.send_header('X-KODA-Cache', cache_status)
         self.end_headers()
         self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
 
